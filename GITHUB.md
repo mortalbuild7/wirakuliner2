@@ -26,10 +26,12 @@ git credential-manager github login --username mortalbuild7
 
 ```powershell
 cd C:\projectWebApp\wira-kuliner
-gh repo create wira-kuliner --public --source=. --remote=origin --push --description "WIRA Kuliner - multi-merchant food delivery (Next.js + Supabase)"
+gh repo create wirakuliner2 --public --source=. --remote=origin --push --description "WIRA Kuliner - multi-merchant food delivery (Next.js + Supabase)"
 ```
 
-Jika repo `mortalbuild7/wira-kuliner` **sudah ada** di GitHub, cukup:
+Repo aktif: **https://github.com/mortalbuild7/wirakuliner2**
+
+Jika repo **sudah ada** di GitHub, cukup:
 
 ```powershell
 cd C:\projectWebApp\wira-kuliner
@@ -54,7 +56,7 @@ Ganti `USERNAME` dengan username GitHub Anda.
 
 ## Setelah online
 
-- Kode: `https://github.com/mortalbuild7/wira-kuliner` (sesuaikan username)
+- Kode: `https://github.com/mortalbuild7/wirakuliner2`
 - Deploy frontend: [Vercel](https://vercel.com) → import repo → set env dari `.env.local.example`
 - Database: Supabase project `voswtzwrsjmgeqmyboix` (sudah terhubung)
 
