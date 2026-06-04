@@ -21,8 +21,10 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "https://wirakuliner2.vercel.app"
+site_url = "https://wirakuliner.web.id"
 additional_redirect_urls = [
+  "https://wirakuliner.web.id/**",
+  "https://www.wirakuliner.web.id/**",
   "https://wirakuliner2.vercel.app/**",
   "https://*.vercel.app/**",
   "http://localhost:3000/**",
