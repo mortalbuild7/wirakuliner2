@@ -2,6 +2,12 @@
 
 Repo: **https://github.com/mortalbuild7/wirakuliner2**
 
+## Production (live)
+
+**https://wirakuliner2.vercel.app**
+
+Dashboard: https://vercel.com/mortalbuild7s-projects/wirakuliner2
+
 ## Cara tercepat (import GitHub)
 
 1. Buka: **https://vercel.com/new/import?s=https://github.com/mortalbuild7/wirakuliner2**
