@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+.env
+.env.local
+.env*.local
+.vercel
+*.tsbuildinfo
+.DS_Store
+
+# Supabase local / secrets
+supabase/.temp/
+supabase/.branches/
+
+# Logs
+*.log
+gcm-diagnose.log
