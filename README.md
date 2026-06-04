@@ -2,6 +2,8 @@
 
 Multi-merchant food delivery platform — **Next.js 15** (Vercel) + **Supabase** (PostgreSQL, Auth, Realtime, Storage) + **FCM** via Supabase Edge Functions (no Firebase Cloud Functions).
 
+**Upload ke GitHub:** lihat [GITHUB.md](./GITHUB.md) (login `gh auth login` lalu push).
+
 ## Architecture
 
 ```
