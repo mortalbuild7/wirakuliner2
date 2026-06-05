@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "WIRA Driver",
+    "slug": "wira-driver",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "wiradriver",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "id.web.wirakuliner.driver"
+    },
+    "android": {
+      "package": "id.web.wirakuliner.driver",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png"
+      },
+      "permissions": [
+        "INTERNET",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0f172a",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "WIRA Driver membutuhkan lokasi untuk pelacakan pengantaran."
+        }
+      ],
+      "expo-asset",
+      "expo-font"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/c44445c7-958c-4501-8440-85bf5ea325de",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c44445c7-958c-4501-8440-85bf5ea325de"
+      }
+    },
+    "owner": "daffacell"
+  }
+}

@@ -9,159 +9,339 @@ import { Label } from "@/components/ui/label";
 import { Alert } from "@/components/ui/alert";
 import { LocationPicker } from "@/components/maps/location-picker";
 import {
+  deliveryZoneCenter,
+  distanceToZone,
   FLAT_DELIVERY_FEE_IDR,
-  haversineKm,
-  isWithinRadius,
+  isWithinDeliveryZone,
   JALAN_WIRA,
+  type ZoneCenter,
 } from "@/lib/geo-config";
+import { formatDineInAddress } from "@/lib/order-channel";
+import { isStoreOpen } from "@/lib/merchant-open";
 import { formatIdr } from "@/lib/utils";
-import { createPaymentSnapToken, openMidtransSnap } from "@/lib/payment-stub";
-import { NegotiationChat } from "@/components/customer/negotiation-chat";
+import { isPaymentBypassEnabled, runCheckoutPayment } from "@/lib/payment-flow";
 import type { CartItem } from "@/types/database";
+import { NegotiationChat } from "@/components/customer/negotiation-chat";
 import { CreditCard, MessageCircle } from "lucide-react";
+import { useSingleMerchantRealtime } from "@/hooks/use-merchant-realtime";
 
 function CheckoutForm() {
   const params = useSearchParams();
   const merchantId = params.get("merchant");
+  const dineIn = params.get("mode") === "dine_in";
   const [items, setItems] = useState<CartItem[]>([]);
+  const [merchantName, setMerchantName] = useState("");
+  const [merchantLat, setMerchantLat] = useState<number | null>(null);
+  const [merchantLng, setMerchantLng] = useState<number | null>(null);
+  const [zoneCenter, setZoneCenter] = useState<ZoneCenter>({
+    lat: JALAN_WIRA.latitude,
+    lng: JALAN_WIRA.longitude,
+    name: JALAN_WIRA.name,
+  });
   const [address, setAddress] = useState("");
-  const [lat, setLat] = useState(JALAN_WIRA.latitude + 0.001);
-  const [lng, setLng] = useState(JALAN_WIRA.longitude + 0.001);
+  const [lat, setLat] = useState(JALAN_WIRA.latitude);
+  const [lng, setLng] = useState(JALAN_WIRA.longitude);
   const [distance, setDistance] = useState(0);
   const [outside, setOutside] = useState(false);
+  const [gpsAccuracyM, setGpsAccuracyM] = useState<number | null>(null);
+  const [bestGpsAccuracyM, setBestGpsAccuracyM] = useState<number | null>(null);
+  const [negoStarting, setNegoStarting] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const [placeError, setPlaceError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [storeOpen, setStoreOpen] = useState(true);
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setUserId(data.session?.user?.id ?? null));
+    supabase.auth.getSession().then(({ data }) => {
+      setUserId(data.session?.user?.id ?? null);
+      setAuthReady(true);
+    });
     if (merchantId) {
       const cart = JSON.parse(
         localStorage.getItem(`wira_cart_${merchantId}`) ?? "[]"
       ) as CartItem[];
       setItems(cart);
+      supabase
+        .from("merchants")
+        .select("name, latitude, longitude, is_open")
+        .eq("id", merchantId)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setMerchantName(data.name);
+            setMerchantLat(data.latitude);
+            setMerchantLng(data.longitude);
+            const center = deliveryZoneCenter(
+              data.latitude,
+              data.longitude,
+              data.name
+            );
+            setZoneCenter(center);
+            setStoreOpen(isStoreOpen(data));
+            if (dineIn) {
+              setLat(data.latitude);
+              setLng(data.longitude);
+              setAddress(formatDineInAddress(data.name));
+            }
+          }
+        });
     }
-  }, [merchantId]);
+  }, [merchantId, dineIn]);
+
+  useSingleMerchantRealtime(merchantId ?? undefined, (m) => {
+    setMerchantName(m.name);
+    setMerchantLat(m.latitude);
+    setMerchantLng(m.longitude);
+    setZoneCenter(deliveryZoneCenter(m.latitude, m.longitude, m.name));
+    setStoreOpen(isStoreOpen(m));
+  });
 
   useEffect(() => {
-    const d = haversineKm(JALAN_WIRA.latitude, JALAN_WIRA.longitude, lat, lng);
+    if (dineIn) {
+      setDistance(0);
+      setOutside(false);
+      return;
+    }
+    const d = distanceToZone(lat, lng, zoneCenter.lat, zoneCenter.lng);
     setDistance(d);
-    setOutside(!isWithinRadius(lat, lng));
-  }, [lat, lng]);
+    const accuracyForZone = bestGpsAccuracyM ?? gpsAccuracyM;
+    setOutside(
+      !isWithinDeliveryZone(
+        lat,
+        lng,
+        accuracyForZone,
+        undefined,
+        zoneCenter.lat,
+        zoneCenter.lng
+      )
+    );
+  }, [lat, lng, dineIn, gpsAccuracyM, bestGpsAccuracyM, zoneCenter]);
 
   const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
-  const deliveryFee = outside ? 0 : FLAT_DELIVERY_FEE_IDR;
+  const deliveryFee = dineIn ? 0 : outside ? 0 : FLAT_DELIVERY_FEE_IDR;
   const total = subtotal + deliveryFee;
 
-  function handleLocationChange(newLat: number, newLng: number) {
+  function handleLocationChange(newLat: number, newLng: number, accuracyM?: number) {
     setLat(newLat);
     setLng(newLng);
+    if (accuracyM != null) {
+      setGpsAccuracyM(accuracyM);
+      setBestGpsAccuracyM((prev) =>
+        prev == null ? accuracyM : Math.min(prev, accuracyM)
+      );
+      if (!address.trim()) {
+        setAddress(`Patokan GPS (akurasi ±${Math.round(accuracyM)} m)`);
+      }
+    }
   }
 
+  function deliveryAddressForOrder(): string {
+    const trimmed = address.trim();
+    if (trimmed) return trimmed;
+    if (gpsAccuracyM != null) {
+      return `GPS ${lat.toFixed(5)}, ${lng.toFixed(5)} (±${Math.round(gpsAccuracyM)} m)`;
+    }
+    return "";
+  }
+
+  const canPlaceDelivery =
+    dineIn || Boolean(deliveryAddressForOrder()) || gpsAccuracyM != null;
+
   async function placeOrder() {
+    setPlaceError(null);
+
     if (!userId || !merchantId) {
-      alert("Silakan login sebagai customer");
-      router.push(`/login?redirect=/customer/checkout?merchant=${merchantId}`);
+      const q = dineIn ? `merchant=${merchantId}&mode=dine_in` : `merchant=${merchantId}`;
+      router.push(`/login?redirect=/customer/checkout?${q}`);
       return;
     }
 
-    const { data: order, error } = await supabase
-      .from("orders")
-      .insert({
-        customer_id: userId,
-        merchant_id: merchantId,
-        total_product_amount: subtotal,
-        delivery_fee: deliveryFee,
-        is_outside_radius: outside,
-        negotiation_status: outside ? "negotiating" : "none",
-        order_status: "pending_payment",
-        delivery_address: address,
-        delivery_lat: lat,
-        delivery_lng: lng,
-        distance_km: distance,
-      })
-      .select()
-      .single();
-
-    if (error || !order) {
-      alert(error?.message ?? "Gagal membuat pesanan");
+    if (!items.length) {
+      setPlaceError("Keranjang kosong. Tambahkan menu terlebih dahulu.");
       return;
     }
 
-    for (const item of items) {
-      await supabase.from("order_items").insert({
-        order_id: order.id,
-        product_id: item.product.id,
-        quantity: item.quantity,
-        price: item.product.price,
-        product_name: item.product.name,
-      });
+    if (!storeOpen) {
+      setPlaceError(`${merchantName || "Toko"} sedang tutup. Tidak bisa memesan.`);
+      return;
     }
 
-    setOrderId(order.id);
-    localStorage.removeItem(`wira_cart_${merchantId}`);
+    const deliveryAddr = dineIn
+      ? formatDineInAddress(merchantName || "Toko")
+      : deliveryAddressForOrder();
 
-    if (outside) {
-      const { data: drivers } = await supabase
-        .from("drivers")
-        .select("id")
-        .eq("status", "idle")
-        .limit(1);
-      if (drivers?.[0]) {
-        await supabase.from("negotiations").insert({
-          order_id: order.id,
-          driver_id: drivers[0].id,
-          proposed_fee: 25000,
-          status: "pending",
-        });
-      }
-      await fetch("/api/fcm/driver-notify", {
+    if (!dineIn && !deliveryAddr) {
+      setPlaceError("Tunggu GPS atau isi alamat lengkap.");
+      return;
+    }
+
+    setPlacing(true);
+    setNegoStarting(outside && !dineIn);
+
+    try {
+      const res = await fetch("/api/orders/place-delivery", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
-          record: {
-            id: order.id,
-            is_outside_radius: true,
-            negotiation_status: "negotiating",
-            delivery_address: address,
-          },
+          merchantId,
+          dineIn,
+          items: items.map((i: CartItem) => ({
+            productId: i.product.id,
+            quantity: i.quantity,
+            price: i.product.price,
+            name: i.product.name,
+          })),
+          deliveryAddress: deliveryAddr,
+          deliveryLat: lat,
+          deliveryLng: lng,
+          distanceKm: distance,
+          isOutsideRadius: outside,
+          accuracyM: bestGpsAccuracyM ?? gpsAccuracyM,
+          skipPayment: isPaymentBypassEnabled(),
         }),
       });
-      return;
-    }
 
-    const token = await createPaymentSnapToken(order.id, total);
-    openMidtransSnap(token);
-    await supabase.from("orders").update({ order_status: "paid" }).eq("id", order.id);
-    router.push(`/customer/orders/${order.id}`);
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        orderId?: string;
+        paid?: boolean;
+        outside?: boolean;
+        driversNotified?: boolean;
+        negotiationsCreated?: number;
+        needsPayment?: boolean;
+      };
+
+      if (!res.ok) {
+        setPlaceError(json.error ?? "Gagal membuat pesanan");
+        return;
+      }
+
+      if (!json.orderId) {
+        setPlaceError("Pesanan gagal dibuat. Coba lagi.");
+        return;
+      }
+
+      setOrderId(json.orderId);
+      localStorage.removeItem(`wira_cart_${merchantId}`);
+
+      if (json.paid) {
+        try {
+          sessionStorage.setItem(
+            `wira_track_${json.orderId}`,
+            JSON.stringify({
+              id: json.orderId,
+              order_status: "paid",
+              merchant_id: merchantId,
+              delivery_address: deliveryAddr,
+            })
+          );
+        } catch {
+          /* ignore */
+        }
+        router.push(`/customer/orders/${json.orderId}`);
+        return;
+      }
+
+      if (json.needsPayment) {
+        await runCheckoutPayment(json.orderId, total);
+        const confirmRes = await fetch("/api/orders/confirm-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ orderId: json.orderId }),
+        });
+        const confirmJson = (await confirmRes.json().catch(() => ({}))) as { error?: string };
+        if (!confirmRes.ok) {
+          setPlaceError(confirmJson.error ?? "Gagal mengonfirmasi pembayaran");
+          return;
+        }
+        try {
+          sessionStorage.setItem(
+            `wira_track_${json.orderId}`,
+            JSON.stringify({
+              id: json.orderId,
+              order_status: "paid",
+              merchant_id: merchantId,
+              delivery_address: deliveryAddr,
+            })
+          );
+        } catch {
+          /* ignore */
+        }
+        router.push(`/customer/orders/${json.orderId}`);
+        return;
+      }
+
+      if (json.outside) {
+        if (!json.driversNotified && (json.negotiationsCreated ?? 0) === 0) {
+          setPlaceError(
+            "Nego dimulai. Belum ada driver ONLINE — tunggu driver aktifkan status."
+          );
+        }
+        return;
+      }
+    } catch (e) {
+      setPlaceError(e instanceof Error ? e.message : "Gagal memproses pesanan");
+    } finally {
+      setPlacing(false);
+      setNegoStarting(false);
+    }
   }
 
   return (
     <main className="space-y-4 px-4 py-4">
       <div>
-        <h1 className="text-xl font-bold text-white">Checkout</h1>
-        <p className="text-sm text-muted-foreground">Tentukan lokasi akurat di peta</p>
+        <h1 className="text-xl font-bold text-white">
+          {dineIn ? "Pesan di tempat" : "Checkout"}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {dineIn
+            ? "Merchant akan memproses pesanan di kasir"
+            : "Tentukan lokasi akurat di peta"}
+        </p>
       </div>
 
-      <section className="glass-card space-y-4 p-4">
-        <LocationPicker
-          latitude={lat}
-          longitude={lng}
-          onChange={handleLocationChange}
-          distanceKm={distance}
-          withinRadius={!outside}
-        />
+      {!storeOpen && (
+        <Alert variant="warning" className="border-amber-500/30 bg-amber-500/10">
+          <strong>{merchantName || "Toko"} tutup</strong>
+          <p className="mt-1 text-xs">Pesanan tidak dapat dilanjutkan.</p>
+        </Alert>
+      )}
 
-        <div>
-          <Label className="text-muted-foreground">Alamat lengkap</Label>
-          <Input
-            className="mt-1.5 rounded-xl border-white/10 bg-white/5"
-            placeholder="No rumah, patokan, dll."
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
+      {dineIn ? (
+        <section className="glass-card p-4">
+          <p className="text-sm text-muted-foreground">Lokasi</p>
+          <p className="mt-1 font-medium text-white">{address || merchantName}</p>
+          <p className="mt-2 text-xs text-cyan-300/90">Tanpa ongkir — ambil di toko</p>
+        </section>
+      ) : (
+        <section className="glass-card space-y-4 p-4">
+          <LocationPicker
+            latitude={lat}
+            longitude={lng}
+            onChange={handleLocationChange}
+            distanceKm={distance}
+            withinRadius={!outside}
+            accuracyM={gpsAccuracyM}
+            zoneCenter={zoneCenter}
           />
-        </div>
-      </section>
+
+          <div>
+            <Label className="text-muted-foreground">Alamat lengkap</Label>
+            <Input
+              className="mt-1.5 rounded-xl border-white/10 bg-white/5"
+              placeholder="No rumah, patokan, dll."
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+          </div>
+        </section>
+      )}
 
       <section className="glass-card p-4">
         <p className="text-sm text-muted-foreground">Ringkasan</p>
@@ -189,14 +369,37 @@ function CheckoutForm() {
           </Alert>
         )}
 
+        {placeError && (
+          <Alert variant="warning" className="mt-4 border-amber-500/30 bg-amber-500/10">
+            {placeError}
+          </Alert>
+        )}
+
         {!orderId && (
           <Button
             className="mt-4 h-12 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-orange-500 font-semibold text-slate-950"
-            onClick={placeOrder}
-            disabled={!address.trim()}
+            onClick={() => void placeOrder()}
+            disabled={
+              !authReady ||
+              !storeOpen ||
+              !items.length ||
+              (!dineIn && !canPlaceDelivery) ||
+              placing ||
+              negoStarting
+            }
           >
-            {outside ? (
-              <>Mulai nego driver</>
+            {!authReady ? (
+              "Memuat akun..."
+            ) : placing ? (
+              "Memproses pesanan..."
+            ) : dineIn ? (
+              <>
+                <CreditCard className="mr-2 h-4 w-4" /> Bayar & kirim ke dapur
+              </>
+            ) : outside ? (
+              <>{negoStarting ? "Menghubungi driver..." : "Mulai nego driver"}</>
+            ) : isPaymentBypassEnabled() ? (
+              <>Bayar (mode uji — tanpa Midtrans)</>
             ) : (
               <>
                 <CreditCard className="mr-2 h-4 w-4" /> Bayar (Midtrans)

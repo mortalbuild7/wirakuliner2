@@ -54,46 +54,43 @@ function RegisterForm() {
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { name, role } },
+      });
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name, role } },
-    });
+      if (error) {
+        alert(error.message);
+        return;
+      }
 
-    if (error) {
-      alert(error.message);
+      if (!data.user) {
+        alert("Cek email untuk konfirmasi, atau nonaktifkan confirm email di Supabase.");
+        return;
+      }
+
+      const assignRes = await fetch("/api/auth/assign-role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ role }),
+      });
+
+      if (!assignRes.ok) {
+        const body = (await assignRes.json().catch(() => ({}))) as { error?: string };
+        alert(
+          body.error ??
+            "Gagal menyimpan peran. Pastikan SUPABASE_SERVICE_ROLE_KEY di .env.local lalu restart server."
+        );
+        return;
+      }
+
+      window.location.assign(ROLE_REDIRECT[role]);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (!data.user) {
-      alert("Cek email untuk konfirmasi, atau nonaktifkan confirm email di Supabase.");
-      setLoading(false);
-      return;
-    }
-
-    const assignRes = await fetch("/api/auth/assign-role", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ role }),
-    });
-
-    if (!assignRes.ok) {
-      const body = (await assignRes.json().catch(() => ({}))) as { error?: string };
-      alert(
-        body.error ??
-          "Gagal menyimpan peran. Pastikan SUPABASE_SERVICE_ROLE_KEY di .env.local lalu restart server."
-      );
-      setLoading(false);
-      return;
-    }
-
-    await supabase.auth.getSession();
-    setLoading(false);
-    router.push(ROLE_REDIRECT[role]);
-    router.refresh();
   }
 
   const loginHref =

@@ -1,7 +1,13 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { UserRole } from "@/types/database";
+import {
+  enforceMethod,
+  enforceRateLimit,
+  readJsonBody,
+  secureJsonResponse,
+} from "@/lib/security/enforce";
+import { RATE_LIMITS } from "@/lib/security/rate-limit";
 
 const ALLOWED_SELF_ASSIGN: UserRole[] = ["merchant", "customer"];
 
@@ -10,10 +16,17 @@ const ALLOWED_SELF_ASSIGN: UserRole[] = ["merchant", "customer"];
  * Hanya merchant | customer — admin tidak bisa self-assign.
  */
 export async function POST(req: Request) {
+  const methodBlock = enforceMethod(req, ["POST"]);
+  if (methodBlock) return methodBlock;
+  const rl = enforceRateLimit(req, "assign-role", RATE_LIMITS.auth);
+  if (rl) return rl;
+
   try {
-    const { role } = (await req.json()) as { role?: UserRole };
+    const parsed = await readJsonBody<{ role?: UserRole }>(req, 4096);
+    if ("error" in parsed) return parsed.error;
+    const { role } = parsed.data;
     if (!role || !ALLOWED_SELF_ASSIGN.includes(role)) {
-      return NextResponse.json({ error: "Peran tidak valid" }, { status: 400 });
+      return secureJsonResponse({ error: "Peran tidak valid" }, { status: 400 });
     }
 
     const supabase = await createClient();
@@ -22,7 +35,7 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Belum login" }, { status: 401 });
+      return secureJsonResponse({ error: "Belum login" }, { status: 401 });
     }
 
     const admin = createAdminClient();
@@ -34,12 +47,12 @@ export async function POST(req: Request) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return secureJsonResponse({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, role });
+    return secureJsonResponse({ ok: true, role });
   } catch (e) {
-    return NextResponse.json(
+    return secureJsonResponse(
       { error: e instanceof Error ? e.message : "Gagal assign role" },
       { status: 500 }
     );

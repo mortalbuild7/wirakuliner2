@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ChatMessage, Negotiation } from "@/types/database";
+import { isPaymentBypassEnabled, runCheckoutPayment } from "@/lib/payment-flow";
 import { formatIdr } from "@/lib/utils";
 
 export function NegotiationChat({
@@ -65,18 +66,53 @@ export function NegotiationChat({
   }
 
   async function acceptFee(negotiationId: string, fee: number) {
+    const nego = negotiations.find((n) => n.id === negotiationId);
+
+    if (isPaymentBypassEnabled()) {
+      const res = await fetch("/api/orders/confirm-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          orderId,
+          deliveryFee: fee,
+          driverId: nego?.driver_id ?? null,
+          negotiationId,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        alert(json.error ?? "Gagal konfirmasi pembayaran");
+      }
+      return;
+    }
+
     await supabase
       .from("negotiations")
       .update({ status: "accepted" })
       .eq("id", negotiationId);
-    await supabase
+    const { data: order } = await supabase
       .from("orders")
       .update({
         delivery_fee: fee,
         negotiation_status: "agreed",
         order_status: "pending_payment",
+        driver_id: nego?.driver_id ?? null,
       })
-      .eq("id", orderId);
+      .eq("id", orderId)
+      .select("total_product_amount")
+      .single();
+
+    const productTotal = Number(order?.total_product_amount ?? 0);
+    const gross = productTotal + fee;
+    await runCheckoutPayment(orderId, gross);
+    await supabase.from("orders").update({ order_status: "paid" }).eq("id", orderId);
+    await fetch("/api/orders/notify-drivers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ orderId }),
+    });
   }
 
   return (

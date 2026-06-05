@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Sparkles, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 
 export function AuthLayout({
   title,
@@ -30,10 +31,11 @@ export function AuthLayout({
               <Sparkles className="h-4 w-4 text-slate-950" />
             </span>
             <div className="hidden sm:block">
-              <p className="text-sm font-bold text-white">WIRA</p>
-              <p className="text-[10px] uppercase tracking-widest text-cyan-400/90">Kuliner</p>
+              <p className="text-sm font-bold text-white">WIRA Kuliner</p>
+              <PoweredByDaffacell variant="header" />
             </div>
           </Link>
+          <PoweredByDaffacell variant="hidden" />
         </div>
       </header>
 
@@ -95,7 +97,7 @@ export function AuthSubmitButton({
         "flex h-12 w-full items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-500 to-orange-500 text-base font-semibold text-slate-950 shadow-lg shadow-cyan-500/25 transition active:scale-[0.98] disabled:opacity-60"
       )}
     >
-      {loading ? "Memuat..." : children}
+      {loading ? "Memproses..." : children}
     </button>
   );
 }

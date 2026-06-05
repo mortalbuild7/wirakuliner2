@@ -1,29 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Search, Zap, ChevronRight } from "lucide-react";
+import { ProductMenuImage } from "@/components/customer/product-menu-image";
+import { StoreStatusBadge } from "@/components/customer/store-status-badge";
+import { buildMenuCoverMap, getMerchantEtalaseImage } from "@/lib/merchant-etalase";
+import { isStoreOpen } from "@/lib/merchant-open";
+import { Search, Zap, Eye } from "lucide-react";
 import type { Merchant } from "@/types/database";
+import { cn } from "@/lib/utils";
+import { useMerchantListRealtime } from "@/hooks/use-merchant-realtime";
 
 const CATEGORIES = ["semua", "makanan", "minuman", "snack", "umum"];
 
 export default function CustomerHomePage() {
   const [merchants, setMerchants] = useState<Merchant[]>([]);
+  const [menuCovers, setMenuCovers] = useState<Map<string, string>>(new Map());
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("semua");
-  const supabase = createClient();
 
-  useEffect(() => {
-    supabase
+  const load = useCallback(async () => {
+    const supabase = createClient();
+    const { data: merchantRows } = await supabase
       .from("merchants")
       .select("*")
       .eq("is_active", true)
-      .then(({ data }) => setMerchants(data ?? []));
+      .eq("admin_suspended", false);
+
+    setMerchants(merchantRows ?? []);
+
+    const { data: menuPhotos } = await supabase
+      .from("products")
+      .select("merchant_id, image_url, updated_at")
+      .eq("is_available", true)
+      .not("image_url", "is", null)
+      .order("updated_at", { ascending: false });
+
+    setMenuCovers(buildMenuCoverMap(menuPhotos ?? []));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useMerchantListRealtime(
+    (updated) => {
+      setMerchants((prev) =>
+        prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m))
+      );
+    },
+    load
+  );
 
   const filtered = merchants.filter((m) => {
     const matchSearch = m.name.toLowerCase().includes(search.toLowerCase());
@@ -34,23 +63,15 @@ export default function CustomerHomePage() {
   return (
     <main className="px-4 py-4">
       <section className="glass-card mb-5 overflow-hidden p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-cyan-400">
-              <Zap className="h-3.5 w-3.5" /> Antar cepat
-            </p>
-            <h1 className="mt-1 text-2xl font-bold leading-tight text-white">
-              Makanan
-              <br />
-              <span className="bg-gradient-to-r from-cyan-300 to-orange-400 bg-clip-text text-transparent">
-                dalam 3 km
-              </span>
-            </h1>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Ongkir flat Rp 12.000 · luar radius nego driver
-            </p>
-          </div>
-        </div>
+        <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-cyan-400">
+          <Zap className="h-3.5 w-3.5" /> Etalase WIRA
+        </p>
+        <h1 className="mt-1 text-2xl font-bold leading-tight text-white">
+          Toko <span className="text-emerald-300">buka</span> bisa dipesan
+        </h1>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Toko tutup — etalase hanya untuk dilihat
+        </p>
       </section>
 
       <div className="relative mb-4">
@@ -81,29 +102,64 @@ export default function CustomerHomePage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        {filtered.map((m) => (
-          <Link key={m.id} href={`/customer/merchant/${m.id}`} className="group">
-            <article className="glass-card overflow-hidden transition active:scale-[0.98]">
+        {filtered.map((m) => {
+          const cover = getMerchantEtalaseImage(m, menuCovers);
+          const open = isStoreOpen(m);
+
+          const cardInner = (
+            <article
+              className={cn(
+                "glass-card overflow-hidden transition",
+                open ? "active:scale-[0.98]" : "opacity-75 saturate-50"
+              )}
+            >
               <div className="relative aspect-[4/3] bg-slate-800">
-                {m.image_url ? (
-                  <Image src={m.image_url} alt={m.name} fill className="object-cover" sizes="50vw" />
-                ) : (
-                  <div className="flex h-full items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 text-4xl">
-                    🍽️
+                <ProductMenuImage src={cover} alt={m.name} sizes="50vw" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/20 to-transparent" />
+                <StoreStatusBadge merchant={m} className="absolute left-2 top-2" />
+                {!open && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+                    <span className="rounded-lg bg-slate-900/80 px-2 py-1 text-[10px] font-medium text-slate-200">
+                      Hanya lihat
+                    </span>
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
-                <Badge className="absolute left-2 top-2 border-0 bg-black/50 text-[10px] backdrop-blur">
-                  {m.category ?? "umum"}
-                </Badge>
               </div>
-              <div className="flex items-center justify-between p-3">
+              <div className="p-3">
                 <p className="line-clamp-1 text-sm font-semibold text-white">{m.name}</p>
-                <ChevronRight className="h-4 w-4 shrink-0 text-cyan-400 opacity-0 transition group-hover:opacity-100" />
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  {open ? `${m.name} sedang buka` : `${m.name} tutup`}
+                </p>
+                {!open && (
+                  <span className="mt-2 inline-flex items-center gap-1 text-[10px] text-cyan-400/90">
+                    <Eye className="h-3 w-3" />
+                    Ketuk &quot;Lihat menu&quot; di bawah
+                  </span>
+                )}
               </div>
             </article>
-          </Link>
-        ))}
+          );
+
+          if (open) {
+            return (
+              <Link key={m.id} href={`/customer/merchant/${m.id}`} className="group block">
+                {cardInner}
+              </Link>
+            );
+          }
+
+          return (
+            <div key={m.id} className="flex flex-col gap-2">
+              {cardInner}
+              <Link
+                href={`/customer/merchant/${m.id}?view=1`}
+                className="rounded-xl border border-white/10 bg-white/5 py-2 text-center text-xs font-medium text-cyan-300 hover:bg-white/10"
+              >
+                Lihat menu
+              </Link>
+            </div>
+          );
+        })}
       </div>
 
       {filtered.length === 0 && (

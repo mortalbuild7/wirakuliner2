@@ -94,3 +94,75 @@
     @apply !rounded-lg !border-white/20 !bg-slate-900/90 !text-cyan-300;
   }
 }
+
+/* ——— Print: thermal struk (58mm) vs laporan penjualan (A4) ——— */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body.print-thermal * {
+    visibility: hidden !important;
+  }
+
+  body.print-thermal #thermal-receipt,
+  body.print-thermal #thermal-receipt * {
+    visibility: visible !important;
+  }
+
+  body.print-thermal #thermal-receipt {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 58mm !important;
+    max-width: 58mm !important;
+    margin: 0 !important;
+    padding: 4mm !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  body.print-thermal .thermal-print-backdrop {
+    visibility: hidden !important;
+  }
+
+  @page {
+    size: auto;
+  }
+
+  body.print-sales * {
+    visibility: hidden !important;
+  }
+
+  body.print-sales #sales-report-print,
+  body.print-sales #sales-report-print * {
+    visibility: visible !important;
+  }
+
+  body.print-sales #sales-report-print,
+  body.print-sales .sales-report-print-host {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    opacity: 1 !important;
+    z-index: 99999 !important;
+    pointer-events: auto !important;
+  }
+
+  body.print-sales #sales-report-print {
+    background: white !important;
+    color: black !important;
+  }
+
+  body.print-sales .sales-report-paper {
+    box-shadow: none !important;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 15mm;
+}

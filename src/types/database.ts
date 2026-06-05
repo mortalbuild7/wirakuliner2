@@ -1,10 +1,12 @@
 export type UserRole = "admin" | "merchant" | "customer" | "driver";
+export type AccountStatus = "active" | "warned" | "suspended" | "blocked";
 export type DriverStatus = "idle" | "delivering" | "offline";
 export type NegotiationStatus = "none" | "negotiating" | "agreed";
 export type OrderStatus =
   | "pending_payment"
   | "paid"
   | "preparing"
+  | "ready_for_pickup"
   | "on_the_way"
   | "delivered"
   | "cancelled";
@@ -16,12 +18,16 @@ export interface Profile {
   phone: string | null;
   email: string | null;
   role: UserRole;
+  account_status?: AccountStatus;
+  admin_note?: string | null;
+  warned_at?: string | null;
+  suspended_until?: string | null;
   created_at: string;
 }
 
 export interface Merchant {
   id: string;
-  owner_id: string;
+  owner_id: string | null;
   name: string;
   description: string | null;
   address: string | null;
@@ -30,6 +36,10 @@ export interface Merchant {
   image_url: string | null;
   category: string | null;
   is_active: boolean;
+  /** Status buka/tutup harian — default true */
+  is_open?: boolean;
+  admin_suspended?: boolean;
+  admin_note?: string | null;
 }
 
 export interface Product {
@@ -48,10 +58,29 @@ export interface Driver {
   name: string;
   phone: string;
   vehicle_plate: string | null;
+  photo_url?: string | null;
   status: DriverStatus;
   current_lat: number | null;
   current_lng: number | null;
   fcm_token: string | null;
+  reward_points?: number;
+}
+
+export type DriverPublicInfo = Pick<
+  Driver,
+  "id" | "name" | "phone" | "vehicle_plate" | "photo_url"
+> & {
+  lat?: number | null;
+  lng?: number | null;
+};
+
+export interface DriverPointTransaction {
+  id: string;
+  driver_id: string;
+  order_id: string | null;
+  points: number;
+  reason: string;
+  created_at: string;
 }
 
 export interface Order {
@@ -69,7 +98,13 @@ export interface Order {
   delivery_lng: number;
   distance_km: number | null;
   snap_token: string | null;
+  payment_gateway?: string | null;
   created_at: string;
+  admin_cancel_reason?: string | null;
+  admin_cancelled_at?: string | null;
+  admin_cancelled_by?: string | null;
+  refund_status?: string | null;
+  refund_amount?: number | null;
   merchants?: Merchant;
 }
 

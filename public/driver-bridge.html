@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>WIRA Driver — Menghubungkan</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0f172a;
+        color: #a7f3d0;
+        font-family: system-ui, -apple-system, sans-serif;
+        padding: 24px;
+        text-align: center;
+      }
+      .spin {
+        width: 32px;
+        height: 32px;
+        margin: 0 auto 16px;
+        border: 2px solid rgba(52, 211, 153, 0.3);
+        border-top-color: #34d399;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      p { margin: 0; font-size: 14px; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <div class="spin" aria-hidden="true"></div>
+      <p id="msg">Menghubungkan akun...</p>
+    </div>
+    <script>
+      (function () {
+        var done = false;
+        var msg = document.getElementById("msg");
+        var pendingTokens = null;
+
+        function setMsg(t) {
+          if (msg) msg.textContent = t;
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(
+              JSON.stringify({ type: "WIRA_BRIDGE_MSG", text: t })
+            );
+          }
+        }
+
+        function saveTokens(detail) {
+          try {
+            sessionStorage.setItem(
+              "wira_bridge_tokens",
+              JSON.stringify({
+                access_token: detail.access_token,
+                refresh_token: detail.refresh_token,
+              })
+            );
+          } catch (e) {
+            /* ignore */
+          }
+        }
+
+        function goDriver() {
+          window.location.replace("/driver/app-entry");
+        }
+
+        function applySession(detail) {
+          if (done || !detail || !detail.access_token || !detail.refresh_token) return;
+          done = true;
+          pendingTokens = detail;
+          saveTokens(detail);
+          setMsg("Memuat dashboard driver...");
+
+          fetch("/api/driver/bridge-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              access_token: detail.access_token,
+              refresh_token: detail.refresh_token,
+            }),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (res) {
+              if (!res.ok) {
+                setMsg((res.j && res.j.error) || "Cookie gagal — lanjut dengan token...");
+              }
+              goDriver();
+            })
+            .catch(function () {
+              setMsg("Lanjut ke dashboard...");
+              goDriver();
+            });
+        }
+
+        window.addEventListener("wira-set-session", function (e) {
+          applySession(e.detail);
+        });
+
+        if (window.__WIRA_NATIVE_SESSION__) {
+          applySession(window.__WIRA_NATIVE_SESSION__);
+        }
+
+        setInterval(function () {
+          if (!done && window.__WIRA_NATIVE_SESSION__) {
+            applySession(window.__WIRA_NATIVE_SESSION__);
+          }
+        }, 300);
+
+        setTimeout(function () {
+          if (!done) {
+            setMsg("Menunggu token terlalu lama. Tutup aplikasi dan login ulang.");
+          }
+        }, 15000);
+
+        function isChunkErr(msg) {
+          return /ChunkLoadError|Loading chunk \d+ failed/i.test(String(msg));
+        }
+
+        function reloadForChunk(msg) {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(
+              JSON.stringify({ type: "CHUNK_LOAD_ERROR", message: String(msg) })
+            );
+          }
+          try {
+            if (!sessionStorage.getItem("wira_chunk_reload")) {
+              sessionStorage.setItem("wira_chunk_reload", "1");
+              window.location.reload();
+            }
+          } catch (e) {
+            window.location.reload();
+          }
+        }
+
+        window.onerror = function (message, source) {
+          if (isChunkErr(message) || (source && String(source).indexOf("/_next/static/chunks/") !== -1)) {
+            reloadForChunk(message);
+            return true;
+          }
+          setMsg("Error: " + message);
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(
+              JSON.stringify({ type: "WEB_ERROR", message: String(message) })
+            );
+          }
+        };
+
+        window.addEventListener("unhandledrejection", function (e) {
+          var msg = String((e.reason && (e.reason.message || e.reason)) || "");
+          if (isChunkErr(msg)) reloadForChunk(msg);
+        });
+      })();
+    </script>
+  </body>
+</html>

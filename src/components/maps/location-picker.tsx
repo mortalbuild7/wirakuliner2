@@ -1,14 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Crosshair, MapPin, Radar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DELIVERY_RADIUS_KM,
   FLAT_DELIVERY_FEE_IDR,
-  JALAN_WIRA,
+  type ZoneCenter,
 } from "@/lib/geo-config";
+import { useMapLocation } from "@/hooks/use-map-location";
 import { formatIdr } from "@/lib/utils";
 
 const LocationMapInner = dynamic(
@@ -16,8 +17,8 @@ const LocationMapInner = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-[220px] items-center justify-center rounded-2xl bg-slate-800/80 text-sm text-cyan-300/80">
-        Memuat peta GPS...
+      <div className="flex h-[260px] items-center justify-center rounded-2xl bg-slate-800/80 text-sm text-cyan-300/80">
+        Memuat peta GPS realtime...
       </div>
     ),
   }
@@ -29,46 +30,69 @@ export function LocationPicker({
   onChange,
   distanceKm,
   withinRadius,
+  accuracyM,
+  zoneCenter,
 }: {
   latitude: number;
   longitude: number;
-  onChange: (lat: number, lng: number) => void;
+  onChange: (lat: number, lng: number, accuracyM?: number) => void;
   distanceKm: number;
   withinRadius: boolean;
+  accuracyM?: number | null;
+  zoneCenter: ZoneCenter;
 }) {
-  const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
+  const [manualPin, setManualPin] = useState(false);
+
+  const { fix, loading: gpsLoading, zoomLocked, bestAccuracy } = useMapLocation(true);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEffect(() => {
+    if (!fix || manualPin) return;
+    onChangeRef.current(fix.lat, fix.lng, bestAccuracy ?? fix.accuracy);
+    setGpsError(null);
+  }, [fix, manualPin, bestAccuracy]);
 
   function useMyLocation() {
     if (!navigator.geolocation) {
       setGpsError("GPS tidak didukung di perangkat ini");
       return;
     }
-    setGpsLoading(true);
+    setManualPin(false);
     setGpsError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        onChange(pos.coords.latitude, pos.coords.longitude);
-        setGpsLoading(false);
+        onChange(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
       },
       (err) => {
-        setGpsLoading(false);
         setGpsError(
           err.code === 1
             ? "Izinkan akses lokasi di pengaturan browser / HP"
             : "Gagal mengambil GPS. Geser pin di peta."
         );
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   }
+
+  function handlePinDrag(lat: number, lng: number) {
+    setManualPin(true);
+    onChange(lat, lng);
+  }
+
+  const displayAccuracy = manualPin
+    ? accuracyM
+    : (bestAccuracy ?? fix?.accuracy ?? accuracyM);
+
+  const followGps = !manualPin && fix != null;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium text-cyan-300">
           <Radar className="h-4 w-4" />
-          Pelacak lokasi · radius {DELIVERY_RADIUS_KM} km
+          GPS realtime · radius {DELIVERY_RADIUS_KM} km
         </div>
         <Button
           type="button"
@@ -86,12 +110,21 @@ export function LocationPicker({
       <LocationMapInner
         latitude={latitude}
         longitude={longitude}
-        onLocationChange={onChange}
-        height={240}
+        onLocationChange={handlePinDrag}
+        accuracyM={displayAccuracy}
+        hubLat={zoneCenter.lat}
+        hubLng={zoneCenter.lng}
+        hubLabel={zoneCenter.name.slice(0, 1)}
+        followGps={followGps}
+        lockZoom={followGps && zoomLocked}
+        height={280}
       />
 
       <p className="text-center text-[11px] text-muted-foreground">
-        Geser pin biru atau tap &quot;Lokasi saya&quot; · titik <span className="text-orange-400">W</span> = {JALAN_WIRA.name}
+        {followGps && zoomLocked
+          ? "Zoom dikunci · mengikuti GPS realtime"
+          : "Geser pin biru untuk koreksi manual"}{" "}
+        · titik oranye = {zoneCenter.name}
       </p>
 
       {gpsError && (
@@ -108,8 +141,13 @@ export function LocationPicker({
         <div className="flex items-center gap-2">
           <MapPin className={`h-5 w-5 ${withinRadius ? "text-cyan-400" : "text-amber-400"}`} />
           <div>
-            <p className="text-xs text-muted-foreground">Jarak ke {JALAN_WIRA.name}</p>
+            <p className="text-xs text-muted-foreground">Jarak ke {zoneCenter.name}</p>
             <p className="text-lg font-bold tabular-nums">{distanceKm.toFixed(2)} km</p>
+            {displayAccuracy != null && displayAccuracy > 0 && (
+              <p className="text-[10px] text-muted-foreground">
+                Akurasi GPS ±{Math.round(displayAccuracy)} m
+              </p>
+            )}
           </div>
         </div>
         <div className="text-right">

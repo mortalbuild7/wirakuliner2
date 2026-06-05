@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { formatIdr, merchantNameFromJoin } from "@/lib/utils";
 import type { Order } from "@/types/database";
@@ -10,19 +9,15 @@ import { Package, ChevronRight } from "lucide-react";
 
 export default function CustomerOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const supabase = createClient();
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const user = session?.user;
-      if (!user) return;
-      const { data } = await supabase
-        .from("orders")
-        .select("*, merchants(name)")
-        .eq("customer_id", user.id)
-        .order("created_at", { ascending: false });
-      setOrders((data as Order[]) ?? []);
-    });
+    fetch("/api/customer/orders", { credentials: "include" })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = (await res.json()) as { orders?: Order[] };
+        setOrders(json.orders ?? []);
+      })
+      .catch(() => {});
   }, []);
 
   return (

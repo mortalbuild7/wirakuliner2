@@ -1,0 +1,17 @@
+{
+  "name": "WIRA Driver",
+  "short_name": "WIRA Driver",
+  "description": "Aplikasi driver WIRA Kuliner — terima & antar pesanan",
+  "start_url": "/driver",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#059669",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}

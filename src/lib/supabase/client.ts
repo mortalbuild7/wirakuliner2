@@ -15,6 +15,11 @@ export function createClient() {
     );
   }
 
-  browserClient = createBrowserClient(url, key);
+  try {
+    browserClient = createBrowserClient(url, key);
+  } catch (e) {
+    console.error("[supabase] createBrowserClient failed", e);
+    throw e;
+  }
   return browserClient;
 }

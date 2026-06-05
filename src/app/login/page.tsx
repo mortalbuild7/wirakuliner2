@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,82 +12,100 @@ import {
   AuthSubmitButton,
 } from "@/components/auth/auth-layout";
 import type { UserRole } from "@/types/database";
-import { LogIn, Store, Shield, UtensilsCrossed } from "lucide-react";
+import { isDriverAppEnabledClient } from "@/lib/feature-flags";
+import { LogIn, Store, Shield, UtensilsCrossed, Bike } from "lucide-react";
 
 const ROLE_REDIRECT: Record<UserRole, string> = {
   admin: "/admin",
   merchant: "/merchant",
   customer: "/customer",
-  driver: "/customer",
+  driver: "/driver",
 };
 
 function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
   const params = useSearchParams();
   const redirect = params.get("redirect") ?? "";
   const supabase = createClient();
 
+  const notice = params.get("notice");
+  const driverClosed = notice === "driver-closed";
+
   const redirectHint =
-    redirect.startsWith("/merchant")
-      ? { icon: Store, text: "Masuk untuk kelola toko / setup merchant" }
-      : redirect.startsWith("/admin")
-        ? { icon: Shield, text: "Masuk ke Panel Admin" }
-        : redirect.startsWith("/customer")
-          ? { icon: UtensilsCrossed, text: "Masuk untuk pesan makanan" }
-          : null;
+    driverClosed
+      ? { icon: Bike, text: "Aplikasi driver sementara ditutup" }
+      : redirect.startsWith("/merchant")
+        ? { icon: Store, text: "Masuk untuk kelola toko / setup merchant" }
+        : redirect.startsWith("/admin")
+          ? { icon: Shield, text: "Masuk ke Panel Admin" }
+          : redirect.startsWith("/customer")
+            ? { icon: UtensilsCrossed, text: "Masuk untuk pesan makanan" }
+            : redirect.startsWith("/driver")
+              ? { icon: Bike, text: "Masuk ke aplikasi driver" }
+              : null;
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      alert(error.message);
-      setLoading(false);
-      return;
-    }
-    const metaRole = data.user!.user_metadata?.role as UserRole | undefined;
-    let { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", data.user!.id)
-      .single();
-
-    if (!profile) {
-      const role = metaRole ?? "customer";
-      if (role !== "admin") {
-        await fetch("/api/auth/assign-role", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ role }),
-        });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        alert(error.message);
+        return;
       }
-      profile = { role };
-    }
 
-    const role = (profile.role ?? "customer") as UserRole;
-    const wanted = redirect;
-    let target = wanted || ROLE_REDIRECT[role];
-    if (wanted.startsWith("/admin") && role !== "admin") {
-      target = "/?error=unauthorized&need=admin";
-    } else if (wanted.startsWith("/merchant") && role !== "merchant") {
-      target = "/?error=unauthorized&need=merchant";
-    } else if (role === "merchant") {
-      const { data: shop } = await supabase
-        .from("merchants")
-        .select("id")
-        .eq("owner_id", data.user!.id)
-        .maybeSingle();
-      target = shop ? "/merchant" : "/merchant/setup";
-    }
+      if (redirect.startsWith("/driver") && !isDriverAppEnabledClient()) {
+        alert("Aplikasi driver sementara ditutup. Hubungi admin WIRA Kuliner.");
+        return;
+      }
 
-    router.push(target);
-    router.refresh();
+      // Fast path: middleware handles role & setup checks (reliable in WebView/APK)
+      if (redirect) {
+        window.location.assign(redirect);
+        return;
+      }
+
+      const metaRole = data.user!.user_metadata?.role as UserRole | undefined;
+      let { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user!.id)
+        .single();
+
+      if (!profile) {
+        const role = metaRole ?? "customer";
+        if (role !== "admin") {
+          await fetch("/api/auth/assign-role", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ role }),
+          });
+        }
+        profile = { role };
+      }
+
+      const role = (profile.role ?? "customer") as UserRole;
+      let target = ROLE_REDIRECT[role];
+      if (role === "driver") {
+        if (!isDriverAppEnabledClient()) {
+          alert("Aplikasi driver sementara ditutup. Hubungi admin WIRA Kuliner.");
+          return;
+        }
+        target = "/driver";
+      } else if (role === "merchant") {
+        target = "/merchant";
+      }
+
+      window.location.assign(target);
+    } finally {
+      setLoading(false);
+    }
   }
 
+  const isDriverLogin = redirect.startsWith("/driver");
   const registerHref =
     redirect.startsWith("/merchant")
       ? "/register?role=merchant"
@@ -101,12 +119,18 @@ function LoginForm() {
       title="Masuk"
       subtitle="Satu akun untuk customer, merchant, atau admin"
       footer={
-        <p className="text-center text-sm text-muted-foreground">
-          Belum punya akun?{" "}
-          <Link href={registerHref} className="font-medium text-cyan-400 underline-offset-4 hover:underline">
-            Daftar sekarang
-          </Link>
-        </p>
+        isDriverLogin ? (
+          <p className="text-center text-xs text-muted-foreground">
+            Akun driver dibuat oleh admin. Hubungi operator WIRA Kuliner jika belum punya akun.
+          </p>
+        ) : (
+          <p className="text-center text-sm text-muted-foreground">
+            Belum punya akun?{" "}
+            <Link href={registerHref} className="font-medium text-cyan-400 underline-offset-4 hover:underline">
+              Daftar sekarang
+            </Link>
+          </p>
+        )
       }
     >
       {redirectHint && HintIcon && (

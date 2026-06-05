@@ -2,9 +2,23 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HomeAccessBanner } from "@/components/home-access-banner";
-import { ChefHat, Shield, Store, UtensilsCrossed } from "lucide-react";
+import {
+  isHomeAdminPanelVisible,
+  isHomeDriverPanelVisible,
+} from "@/lib/feature-flags";
+import { Bike, ChefHat, Shield, Store, UtensilsCrossed } from "lucide-react";
 
 export default function HomePage() {
+  const showDriverCard = isHomeDriverPanelVisible();
+  const showAdminCard = isHomeAdminPanelVisible();
+  const panelCount = 2 + (showDriverCard ? 1 : 0) + (showAdminCard ? 1 : 0);
+  const gridCols =
+    panelCount >= 4
+      ? "lg:grid-cols-4"
+      : panelCount === 3
+        ? "lg:grid-cols-3"
+        : "lg:grid-cols-2";
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-orange-50 to-background">
       <header className="border-b bg-white/80 backdrop-blur">
@@ -39,7 +53,7 @@ export default function HomePage() {
           </Link>
         </div>
       </section>
-      <section className="mx-auto grid max-w-5xl gap-4 px-4 pb-16 md:grid-cols-3">
+      <section className={`mx-auto grid max-w-5xl gap-4 px-4 pb-16 sm:grid-cols-2 ${gridCols}`}>
         <Card>
           <CardHeader>
             <Store className="h-8 w-8 text-wira-orange" />
@@ -67,18 +81,34 @@ export default function HomePage() {
             </Link>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <Shield className="h-8 w-8 text-wira-orange" />
-            <CardTitle className="text-lg">Admin</CardTitle>
-            <CardDescription>Onboard merchant & laporan keuangan</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" className="w-full" asChild>
-              <Link href="/login?redirect=/admin">Panel Admin</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <div className={showDriverCard ? undefined : "hidden"} aria-hidden={!showDriverCard}>
+          <Card>
+            <CardHeader>
+              <Bike className="h-8 w-8 text-emerald-600" />
+              <CardTitle className="text-lg">Driver</CardTitle>
+              <CardDescription>Terima order, nego ongkir & antar makanan</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" className="w-full" asChild>
+                <Link href="/login?redirect=/driver">Masuk Driver App</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+        <div className={showAdminCard ? undefined : "hidden"} aria-hidden={!showAdminCard}>
+          <Card>
+            <CardHeader>
+              <Shield className="h-8 w-8 text-wira-orange" />
+              <CardTitle className="text-lg">Admin</CardTitle>
+              <CardDescription>Onboard merchant & laporan keuangan</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" className="w-full" asChild>
+                <Link href="/login?redirect=/admin">Panel Admin</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </section>
     </main>
   );

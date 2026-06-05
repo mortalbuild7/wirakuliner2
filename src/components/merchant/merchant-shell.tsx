@@ -3,13 +3,16 @@
 import type { ComponentType } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, ClipboardList, Store } from "lucide-react";
+import { LayoutDashboard, Package, ClipboardList, Store, Zap, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 
 const NAV = [
   { href: "/merchant", label: "Home", icon: LayoutDashboard, exact: true },
+  { href: "/merchant/pos", label: "Kasir", icon: Zap, exact: false },
   { href: "/merchant/products", label: "Menu", icon: Package, exact: false },
   { href: "/merchant/orders", label: "Order", icon: ClipboardList, exact: false },
+  { href: "/merchant/reports", label: "Laporan", icon: BarChart3, exact: false },
 ];
 
 function NavLink({
@@ -72,14 +75,19 @@ export function MerchantShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 border-b border-white/10 glass-panel md:hidden">
-          <div className="flex items-center gap-2 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-            <Store className="h-5 w-5 text-orange-400" />
-            <p className="font-bold">Toko — WIRA</p>
+        <header className="sticky top-0 z-40 border-b border-white/10 glass-panel">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-6">
+            <div className="flex items-center gap-2 md:hidden">
+              <Store className="h-5 w-5 shrink-0 text-orange-400" />
+              <p className="font-bold">Toko — WIRA</p>
+            </div>
+            <p className="hidden text-sm font-semibold text-white/90 md:block">Merchant Hub</p>
+            <PoweredByDaffacell variant="header" className="text-orange-300/50" />
           </div>
         </header>
 
         <div className="safe-pb-merchant flex-1">{children}</div>
+        <PoweredByDaffacell variant="hidden" />
 
         <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 glass-panel pb-[env(safe-area-inset-bottom,0px)] md:hidden">
           <div className="flex justify-around px-2 py-2">

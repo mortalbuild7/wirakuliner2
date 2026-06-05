@@ -15,3 +15,9 @@ supabase/.branches/
 # Logs
 *.log
 gcm-diagnose.log
+
+driver-expo/.env
+driver-expo/node_modules
+driver-app/node_modules
+driver-app/android
+driver-app/ios

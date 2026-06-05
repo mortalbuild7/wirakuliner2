@@ -58,9 +58,10 @@ export async function POST(req: Request) {
         address: address.trim(),
         description: description?.trim() ?? "",
         category: category ?? "makanan",
-        latitude: latitude ?? -5.1348,
-        longitude: longitude ?? 119.4065,
+        latitude: latitude ?? -6.42776,
+        longitude: longitude ?? 106.727392,
         is_active: true,
+        is_open: true,
       })
       .select("id")
       .single();

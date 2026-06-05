@@ -1,5 +1,19 @@
 # Koneksi Supabase — voswtzwrsjmgeqmyboix
 
+## Status terakhir (otomatis)
+
+| Item | Status |
+|------|--------|
+| Migrations (00–07) | ✅ Applied remote |
+| Auth config (site_url, redirects) | ✅ Up to date |
+| Edge Function `send-driver-push` | ✅ Deployed |
+| Storage `menu-images` | ✅ Ada (public) |
+| FCM secrets | ⚠️ Belum — butuh Firebase service account JSON |
+
+Verifikasi: `npm run verify:supabase`
+
+---
+
 ## Sudah dikonfigurasi di proyek
 
 | File | Isi |
@@ -48,6 +62,22 @@ npm run dev
 ```
 
 Buka http://localhost:3000
+
+### 6. Deploy Edge Function (FCM)
+
+```powershell
+npx supabase functions deploy send-driver-push --no-verify-jwt
+```
+
+### 7. FCM secrets (Firebase)
+
+Download **service account JSON** dari Firebase Console, lalu:
+
+```powershell
+node scripts/setup-fcm-secrets.mjs C:\path\to\firebase-sa.json
+```
+
+Tanpa langkah ini, push notifikasi driver akan return `FCM secrets not configured` (checkout tetap jalan via API bridge).
 
 ---
 
