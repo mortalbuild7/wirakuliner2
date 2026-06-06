@@ -46,7 +46,8 @@ function MerchantDetailContent() {
 
   useSingleMerchantRealtime(id, (row) => setMerchant(row));
 
-  const canOrder = merchant ? isStoreOpen(merchant) : false;
+  const canOrder =
+    merchant?.approval_status === "approved" && merchant ? isStoreOpen(merchant) : false;
   const viewOnly = viewOnlyParam || !canOrder;
 
   function addToCart(product: Product) {

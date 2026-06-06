@@ -56,6 +56,29 @@ export default function AdminDriversPage() {
     load();
   }, [load]);
 
+  async function deleteDriver(id: string, name: string) {
+    if (
+      !confirm(
+        `Hapus permanen driver "${name}" beserta akun login? Tindakan ini tidak bisa dibatalkan.`
+      )
+    ) {
+      return;
+    }
+
+    setError(null);
+    const res = await fetch(`/api/admin/drivers/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setError(body.error ?? "Gagal menghapus driver");
+      return;
+    }
+    setSuccess(`Driver ${name} berhasil dihapus`);
+    load();
+  }
+
   async function registerDriver(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -254,6 +277,14 @@ export default function AdminDriversPage() {
                     <span className="text-amber-600">Belum punya akun login</span>
                   )}
                 </p>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="mt-2"
+                  onClick={() => deleteDriver(d.id, d.name)}
+                >
+                  Hapus driver
+                </Button>
                 </div>
               </li>
             ))}

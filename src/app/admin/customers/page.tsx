@@ -47,6 +47,29 @@ export default function AdminCustomersPage() {
     load();
   }, [load]);
 
+  async function deleteCustomer(id: string, name: string) {
+    if (
+      !confirm(
+        `Hapus permanen akun customer "${name}" beserta riwayat pesanannya? Tindakan ini tidak bisa dibatalkan.`
+      )
+    ) {
+      return;
+    }
+
+    setError(null);
+    const res = await fetch(`/api/admin/customers/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setError(body.error ?? "Gagal menghapus customer");
+      return;
+    }
+    setSuccess(`Akun ${name} berhasil dihapus`);
+    load();
+  }
+
   async function customerAction(
     id: string,
     action: "warn" | "suspend" | "block" | "restore"
@@ -226,6 +249,13 @@ export default function AdminCustomersPage() {
                         Pulihkan
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => deleteCustomer(c.id, c.name)}
+                    >
+                      Hapus akun
+                    </Button>
                   </div>
                 </li>
               );

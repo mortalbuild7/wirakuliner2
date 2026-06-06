@@ -1,3 +1,4 @@
+import { assignDriverOffer } from "@/lib/driver-order-offer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isOnsiteOrder } from "@/lib/order-channel";
 
@@ -35,9 +36,14 @@ export async function notifyDriversNewOrder(orderId: string) {
   }
   if (isOnsiteOrder(order.delivery_address)) return { skipped: true };
 
+  const offeredDriverId = await assignDriverOffer(orderId);
+
   const type =
     order.order_status === "ready_for_pickup" ? "ready_for_pickup" : "delivery_paid";
-  return callDriverPush(type, order);
+  return callDriverPush(type, {
+    ...order,
+    offered_driver_id: offeredDriverId,
+  });
 }
 
 /** FCM ke driver yang sudah menerima order saat merchant tandai siap diambil. */

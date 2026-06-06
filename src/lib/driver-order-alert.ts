@@ -1,3 +1,22 @@
+let audioUnlocked = false;
+
+/** Buka audio context setelah interaksi user (WebView APK). */
+export async function unlockDriverOrderAudio(): Promise<void> {
+  if (audioUnlocked || typeof window === "undefined") return;
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    if (ctx.state === "suspended") await ctx.resume();
+    await ctx.close();
+    audioUnlocked = true;
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Notifikasi suara + getar saat pesanan masuk ke driver. */
 export async function playDriverIncomingOrderSound(): Promise<void> {
   if (typeof window === "undefined") return;

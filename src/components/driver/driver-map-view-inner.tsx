@@ -14,6 +14,7 @@ export function DriverMapViewInner({
   followDriver = false,
   lockDriverZoom = true,
   navigationMode = false,
+  navigationRouteLine,
   className = "h-full w-full",
 }: {
   merchantLat?: number;
@@ -26,6 +27,7 @@ export function DriverMapViewInner({
   followDriver?: boolean;
   lockDriverZoom?: boolean;
   navigationMode?: boolean;
+  navigationRouteLine?: [number, number][];
   className?: string;
 }) {
   const hasRoute =
@@ -86,6 +88,7 @@ export function DriverMapViewInner({
       draggableUser={false}
       extraPoints={extraPoints}
       routeLine={routeLine}
+      navigationRouteLine={navigationRouteLine}
       navigationTarget={navTarget}
       className={`${className} z-0 min-h-[280px]`}
     />

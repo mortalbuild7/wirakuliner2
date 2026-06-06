@@ -192,7 +192,7 @@ export async function middleware(request: NextRequest) {
   if (requiredRole === "merchant") {
     const { data: shop } = await supabase
       .from("merchants")
-      .select("id, admin_suspended")
+      .select("id, admin_suspended, approval_status")
       .eq("owner_id", user.id)
       .maybeSingle();
 
@@ -203,12 +203,24 @@ export async function middleware(request: NextRequest) {
     }
 
     const isSetup = pathname.startsWith("/merchant/setup");
+    const isPending = pathname.startsWith("/merchant/pending");
+    const approval = shop?.approval_status ?? "approved";
 
     if (!shop && !isSetup) {
       return withSecurity(NextResponse.redirect(new URL("/merchant/setup", request.url)));
     }
 
     if (shop && isSetup) {
+      const dest =
+        approval === "approved" ? "/merchant" : "/merchant/pending";
+      return withSecurity(NextResponse.redirect(new URL(dest, request.url)));
+    }
+
+    if (shop && approval !== "approved" && !isPending) {
+      return withSecurity(NextResponse.redirect(new URL("/merchant/pending", request.url)));
+    }
+
+    if (shop && approval === "approved" && isPending) {
       return withSecurity(NextResponse.redirect(new URL("/merchant", request.url)));
     }
   }

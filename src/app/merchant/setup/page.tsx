@@ -77,12 +77,14 @@ export default function MerchantSetupPage() {
 
         const { data: existing } = await supabase
           .from("merchants")
-          .select("id")
+          .select("id, approval_status")
           .eq("owner_id", user.id)
           .maybeSingle();
 
         if (existing) {
-          router.replace("/merchant");
+          router.replace(
+            existing.approval_status === "approved" ? "/merchant" : "/merchant/pending"
+          );
           return;
         }
         setLoading(false);
@@ -126,7 +128,7 @@ export default function MerchantSetupPage() {
         return;
       }
 
-      router.replace("/merchant");
+      router.replace("/merchant/pending");
       router.refresh();
     } catch {
       alert(
@@ -220,8 +222,11 @@ export default function MerchantSetupPage() {
                 <Input value={lng} onChange={(e) => setLng(e.target.value)} />
               </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Setelah submit, toko Anda akan ditinjau admin sebelum bisa menerima pesanan.
+            </p>
             <Button type="submit" className="w-full" disabled={saving}>
-              {saving ? "Menyimpan..." : "Simpan & Buka Dashboard"}
+              {saving ? "Mengirim..." : "Kirim Pendaftaran Toko"}
             </Button>
           </form>
         </CardContent>

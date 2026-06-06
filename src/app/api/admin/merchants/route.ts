@@ -117,6 +117,9 @@ export async function POST(req: Request) {
       is_active: true,
       is_open: false,
       admin_suspended: false,
+      approval_status: "approved",
+      approved_at: new Date().toISOString(),
+      approved_by: auth.userId,
     })
     .select("id")
     .single();

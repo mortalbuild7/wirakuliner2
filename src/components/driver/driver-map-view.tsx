@@ -18,6 +18,7 @@ type Props = {
   followDriver?: boolean;
   lockDriverZoom?: boolean;
   navigationMode?: boolean;
+  navigationRouteLine?: [number, number][];
   className?: string;
 };
 

@@ -40,6 +40,10 @@ export interface Merchant {
   is_open?: boolean;
   admin_suspended?: boolean;
   admin_note?: string | null;
+  approval_status?: "pending" | "approved" | "rejected";
+  approved_at?: string | null;
+  approved_by?: string | null;
+  rejection_note?: string | null;
 }
 
 export interface Product {
@@ -105,6 +109,9 @@ export interface Order {
   admin_cancelled_by?: string | null;
   refund_status?: string | null;
   refund_amount?: number | null;
+  offered_driver_id?: string | null;
+  offered_at?: string | null;
+  offer_skip_driver_ids?: string[];
   merchants?: Merchant;
 }
 

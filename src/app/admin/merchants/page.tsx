@@ -91,12 +91,44 @@ export default function AdminMerchantsPage() {
     load();
   }
 
+  async function deleteMerchant(id: string, name: string) {
+    if (
+      !confirm(
+        `Hapus permanen toko "${name}" beserta menu, riwayat pesanan, dan akun pemilik? Tidak bisa dibatalkan.`
+      )
+    ) {
+      return;
+    }
+
+    setError(null);
+    const res = await fetch(`/api/admin/merchants/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ delete_owner: true }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setError(body.error ?? "Gagal menghapus toko");
+      return;
+    }
+    setSuccess(`Toko ${name} berhasil dihapus`);
+    load();
+  }
+
   async function merchantAction(
     id: string,
-    action: "suspend" | "unsuspend" | "force_close" | "disconnect" | "activate"
+    action:
+      | "suspend"
+      | "unsuspend"
+      | "force_close"
+      | "disconnect"
+      | "activate"
+      | "approve"
+      | "reject"
   ) {
     const note = actionNote[id]?.trim();
-    if ((action === "suspend" || action === "disconnect") && !note) {
+    if ((action === "suspend" || action === "disconnect" || action === "reject") && !note) {
       alert("Isi catatan admin untuk aksi ini");
       return;
     }
@@ -107,6 +139,8 @@ export default function AdminMerchantsPage() {
       force_close: "tutup paksa toko (is_open=false)",
       disconnect: "putus hubungan mitra (owner dikosongkan)",
       activate: "aktifkan kembali toko",
+      approve: "setujui pendaftaran toko ini",
+      reject: "tolak pendaftaran toko ini",
     };
 
     if (!confirm(`Yakin ${labels[action]}?`)) return;
@@ -136,8 +170,8 @@ export default function AdminMerchantsPage() {
           Kelola Merchant / Toko
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          Buat toko baru lengkap dengan akun login merchant. Suspend, tutup paksa, atau putus
-          hubungan mitra jika pemilik salah mengaktifkan toko.
+          Buat toko baru (langsung disetujui) atau setujui pendaftaran mandiri merchant. Suspend,
+          hapus toko, atau putus hubungan mitra bila diperlukan.
         </p>
       </div>
 
@@ -254,6 +288,15 @@ export default function AdminMerchantsPage() {
                       )}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
+                      Persetujuan:{" "}
+                      {m.approval_status === "pending" ? (
+                        <span className="font-medium text-amber-600">Menunggu approval</span>
+                      ) : m.approval_status === "rejected" ? (
+                        <span className="font-medium text-red-600">Ditolak</span>
+                      ) : (
+                        <span className="text-emerald-600">Disetujui</span>
+                      )}
+                      {" · "}
                       Status:{" "}
                       {m.admin_suspended ? (
                         <span className="font-medium text-red-600">Suspend admin</span>
@@ -265,6 +308,9 @@ export default function AdminMerchantsPage() {
                       {" · "}
                       Buka/tutup: {isStoreOpen(m) ? "Buka" : "Tutup"}
                     </p>
+                    {m.rejection_note && (
+                      <p className="mt-1 text-xs italic text-red-700">Alasan tolak: {m.rejection_note}</p>
+                    )}
                     {m.admin_note && (
                       <p className="mt-1 text-xs italic text-amber-700">Catatan: {m.admin_note}</p>
                     )}
@@ -281,6 +327,20 @@ export default function AdminMerchantsPage() {
                 />
 
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {m.approval_status === "pending" && m.owner_id && (
+                    <>
+                      <Button size="sm" onClick={() => merchantAction(m.id, "approve")}>
+                        Setujui
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => merchantAction(m.id, "reject")}
+                      >
+                        Tolak
+                      </Button>
+                    </>
+                  )}
                   {!m.admin_suspended ? (
                     <Button
                       size="sm"
@@ -308,11 +368,18 @@ export default function AdminMerchantsPage() {
                       Putus mitra
                     </Button>
                   )}
-                  {m.owner_id && !m.is_active && !m.admin_suspended && (
+                  {m.owner_id && !m.is_active && !m.admin_suspended && m.approval_status === "approved" && (
                     <Button size="sm" onClick={() => merchantAction(m.id, "activate")}>
                       Aktifkan
                     </Button>
                   )}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => deleteMerchant(m.id, m.name)}
+                  >
+                    Hapus toko
+                  </Button>
                 </div>
               </li>
             ))}

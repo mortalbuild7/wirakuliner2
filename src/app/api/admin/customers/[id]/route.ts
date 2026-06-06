@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/admin-server";
+import { deleteAuthUser, deleteOrdersForCustomer } from "@/lib/admin-delete-ops";
 import {
   enforceMethod,
   enforceRateLimit,
@@ -116,4 +117,63 @@ export async function PATCH(
   }
 
   return secureJsonResponse({ ok: true, action, customerId: id });
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const methodBlock = enforceMethod(_req, ["DELETE"]);
+  if (methodBlock) return methodBlock;
+  const rl = enforceRateLimit(_req, "admin-customer-delete", RATE_LIMITS.adminWrite);
+  if (rl) return rl;
+
+  const auth = await requireAdmin();
+  if ("error" in auth) {
+    return secureJsonResponse({ error: auth.error }, { status: auth.status });
+  }
+
+  const { id } = await params;
+  if (!isValidUuid(id)) {
+    return secureJsonResponse({ error: "ID customer tidak valid" }, { status: 400 });
+  }
+
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id, role, name")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!profile) {
+    return secureJsonResponse({ error: "Customer tidak ditemukan" }, { status: 404 });
+  }
+  if (profile.role !== "customer") {
+    return secureJsonResponse({ error: "Akun bukan customer" }, { status: 400 });
+  }
+
+  const { count: activeOrders } = await admin
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("customer_id", id)
+    .in("order_status", ["paid", "preparing", "ready_for_pickup", "on_the_way"]);
+
+  if (activeOrders && activeOrders > 0) {
+    return secureJsonResponse(
+      { error: "Customer masih punya pesanan aktif — selesaikan atau batalkan dulu" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    await deleteOrdersForCustomer(admin, id);
+    await deleteAuthUser(admin, id);
+  } catch (e) {
+    return secureJsonResponse(
+      { error: e instanceof Error ? e.message : "Gagal menghapus customer" },
+      { status: 500 }
+    );
+  }
+
+  return secureJsonResponse({ ok: true, deletedCustomerId: id });
 }

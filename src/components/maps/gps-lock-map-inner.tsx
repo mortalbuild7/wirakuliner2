@@ -95,6 +95,7 @@ export function GpsLockMapInner({
   onUserDrag,
   extraPoints = [],
   routeLine,
+  navigationRouteLine,
   navigationTarget,
   height,
   className = "h-full w-full",
@@ -112,6 +113,7 @@ export function GpsLockMapInner({
   onUserDrag?: (lat: number, lng: number) => void;
   extraPoints?: GpsLockMapPoint[];
   routeLine?: [number, number][];
+  navigationRouteLine?: [number, number][];
   navigationTarget?: { lat: number; lng: number } | null;
   height?: number | null;
   className?: string;
@@ -126,7 +128,9 @@ export function GpsLockMapInner({
     ? bearingDegrees(userLat, userLng, navigationTarget.lat, navigationTarget.lng)
     : undefined;
   const activeRoute: [number, number][] | undefined = navActive
-    ? [userPos, [navigationTarget.lat, navigationTarget.lng]]
+    ? navigationRouteLine && navigationRouteLine.length >= 2
+      ? navigationRouteLine
+      : [userPos, [navigationTarget.lat, navigationTarget.lng]]
     : routeLine;
   const driverIcon = userMarkerIcon(bearing);
 

@@ -18,6 +18,7 @@ import { clearLocalAuth, restoreNativeSession, syncNativeSession } from "./lib/a
 import { fetchDriverMeNative, setDriverStatusNative } from "./lib/driver-api";
 import { getAppEntryUrl, supabase } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
+import { playNativeIncomingOrderSound } from "./lib/incoming-order-sound";
 
 const ALLOWED_HOSTS = ["wirakuliner.web.id", "wirakuliner2.vercel.app", "localhost"];
 
@@ -336,6 +337,7 @@ export default function App() {
 
         if (data.type === "WIRA_INCOMING_ORDER") {
           Vibration.vibrate([0, 180, 100, 180, 100, 280]);
+          void playNativeIncomingOrderSound();
         }
 
         if (data.type === "CHUNK_LOAD_ERROR") {

@@ -36,7 +36,9 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
   const { data: order } = await admin
     .from("orders")
-    .select("id, driver_id, order_status, delivery_address, negotiation_status")
+    .select(
+      "id, driver_id, order_status, delivery_address, negotiation_status, offered_driver_id"
+    )
     .eq("id", orderId)
     .single();
 
@@ -52,9 +54,23 @@ export async function POST(req: Request) {
     return secureJsonResponse({ error: "Order sudah diambil driver lain" }, { status: 409 });
   }
 
-  const allowedStatuses = ["paid", "preparing"];
+  const allowedStatuses = ["paid", "preparing", "ready_for_pickup"];
   if (!allowedStatuses.includes(order.order_status)) {
-    return secureJsonResponse({ error: "Order belum siap diambil" }, { status: 400 });
+    return secureJsonResponse(
+      { error: `Order tidak bisa diterima (status: ${order.order_status})` },
+      { status: 400 }
+    );
+  }
+
+  if (
+    order.negotiation_status !== "negotiating" &&
+    order.offered_driver_id &&
+    order.offered_driver_id !== auth.driver.id
+  ) {
+    return secureJsonResponse(
+      { error: "Penawaran ini sedang ditawarkan ke driver lain" },
+      { status: 409 }
+    );
   }
 
   if (order.negotiation_status === "negotiating") {
@@ -70,14 +86,23 @@ export async function POST(req: Request) {
   }
 
   if (!order.driver_id) {
-    const { error } = await admin
+    const { data: claimed, error } = await admin
       .from("orders")
-      .update({ driver_id: auth.driver.id })
+      .update({
+        driver_id: auth.driver.id,
+        offered_driver_id: null,
+        offered_at: null,
+      })
       .eq("id", orderId)
-      .is("driver_id", null);
+      .is("driver_id", null)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       return secureJsonResponse({ error: error.message }, { status: 500 });
+    }
+    if (!claimed) {
+      return secureJsonResponse({ error: "Order sudah diambil driver lain" }, { status: 409 });
     }
   }
 

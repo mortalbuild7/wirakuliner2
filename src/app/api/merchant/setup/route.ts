@@ -42,12 +42,17 @@ export async function POST(req: Request) {
 
     const { data: existing } = await supabase
       .from("merchants")
-      .select("id")
+      .select("id, approval_status")
       .eq("owner_id", user.id)
       .maybeSingle();
 
     if (existing) {
-      return NextResponse.json({ ok: true, merchantId: existing.id, alreadyExists: true });
+      return NextResponse.json({
+        ok: true,
+        merchantId: existing.id,
+        alreadyExists: true,
+        approvalStatus: existing.approval_status ?? "approved",
+      });
     }
 
     const { data: merchant, error } = await supabase
@@ -60,8 +65,9 @@ export async function POST(req: Request) {
         category: category ?? "makanan",
         latitude: latitude ?? -6.42776,
         longitude: longitude ?? 106.727392,
-        is_active: true,
-        is_open: true,
+        is_active: false,
+        is_open: false,
+        approval_status: "pending",
       })
       .select("id")
       .single();
@@ -70,7 +76,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, merchantId: merchant.id });
+    return NextResponse.json({
+      ok: true,
+      merchantId: merchant.id,
+      approvalStatus: "pending",
+      pendingApproval: true,
+    });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Gagal menyimpan toko" },

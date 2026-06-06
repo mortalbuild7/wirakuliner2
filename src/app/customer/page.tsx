@@ -27,7 +27,8 @@ export default function CustomerHomePage() {
       .from("merchants")
       .select("*")
       .eq("is_active", true)
-      .eq("admin_suspended", false);
+      .eq("admin_suspended", false)
+      .eq("approval_status", "approved");
 
     setMerchants(merchantRows ?? []);
 

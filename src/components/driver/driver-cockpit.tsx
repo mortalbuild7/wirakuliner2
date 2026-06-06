@@ -16,20 +16,42 @@ import {
   ORDER_STATUS_LABEL,
 } from "@/lib/order-flow";
 import { DRIVER_STATUS_LABEL } from "@/lib/driver";
-import type { DriverStatus, Order } from "@/types/database";
-import { Award, Bike, Map, MapPin, Navigation, Package, Phone, User } from "lucide-react";
+import type { DriverStatus, Order, OrderItem } from "@/types/database";
+import {
+  Award,
+  Bike,
+  ChevronUp,
+  Map,
+  MapPin,
+  Navigation,
+  Package,
+  Phone,
+  Store,
+  User,
+} from "lucide-react";
 import { openMapNavigation } from "@/lib/map-navigation";
 import { Button } from "@/components/ui/button";
 import { DriverHeaderControls } from "@/components/driver/driver-header-controls";
-import { playDriverIncomingOrderSound } from "@/lib/driver-order-alert";
+import {
+  playDriverIncomingOrderSound,
+  unlockDriverOrderAudio,
+} from "@/lib/driver-order-alert";
 import { cn } from "@/lib/utils";
+import { useDriverNavRoute } from "@/hooks/use-driver-nav-route";
+import { haversineMeters } from "@/lib/geo-distance";
+import { offerSecondsLeft } from "@/lib/driver-order-offer";
 
 type Tab = "map" | "profile";
 
 type OrderRow = Order & {
   merchants?: { name: string; latitude: number; longitude: number; address: string | null };
   profiles?: { name: string; phone: string | null } | { name: string; phone: string | null }[];
+  order_items?: OrderItem[];
 };
+
+function shortOrderId(id: string) {
+  return id.replace(/-/g, "").slice(0, 8).toUpperCase();
+}
 
 function pickOne<T>(v: T | T[] | null | undefined): T | undefined {
   if (v == null) return undefined;
@@ -72,6 +94,9 @@ export function DriverCockpit() {
   const [todayCount, setTodayCount] = useState(0);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [customerNavMode, setCustomerNavMode] = useState(false);
+  const [orderCardExpanded, setOrderCardExpanded] = useState(true);
+  const [arrivedNotice, setArrivedNotice] = useState(false);
+  const [offerCountdown, setOfferCountdown] = useState(0);
   const router = useRouter();
   const supabase = createClient();
   const orderAlertsReadyRef = useRef(false);
@@ -120,10 +145,17 @@ export function DriverCockpit() {
       setIncomingOffer(null);
       return;
     }
-    const pool = (json.incoming ?? []).filter(
-      (o) => !isOnsiteOrder(o.delivery_address) && !dismissed.has(o.id)
-    );
+    const pool = (json.incoming ?? []).filter((o) => {
+      if (isOnsiteOrder(o.delivery_address)) return false;
+      if (o.negotiation_status === "negotiating") return !dismissed.has(o.id);
+      return true;
+    });
     setIncomingOffer(pool[0] ?? null);
+    if (pool[0]?.offered_at) {
+      setOfferCountdown(offerSecondsLeft(pool[0].offered_at));
+    } else {
+      setOfferCountdown(0);
+    }
   }, [driver?.id, dismissed]);
 
   const loadStats = useCallback(async () => {
@@ -163,21 +195,74 @@ export function DriverCockpit() {
 
   useEffect(() => {
     setCustomerNavMode(false);
+    setOrderCardExpanded(true);
+    setArrivedNotice(false);
   }, [activeOrder?.id, activeOrder?.order_status]);
 
   useEffect(() => {
+    if (customerNavMode) setOrderCardExpanded(false);
+  }, [customerNavMode]);
+
+  useEffect(() => {
     if (!driver?.id || !isOnline || hasActive) return;
+    const intervalMs = incomingOffer && incomingOffer.negotiation_status !== "negotiating" ? 3000 : 12_000;
     const timer = setInterval(() => {
       void loadPool();
-    }, 12_000);
+    }, intervalMs);
     return () => clearInterval(timer);
-  }, [driver?.id, hasActive, isOnline, loadPool]);
+  }, [driver?.id, hasActive, isOnline, loadPool, incomingOffer?.id, incomingOffer?.negotiation_status]);
+
+  useEffect(() => {
+    if (!incomingOffer?.offered_at || hasActive) return;
+    const tick = () => setOfferCountdown(offerSecondsLeft(incomingOffer.offered_at));
+    tick();
+    const timer = setInterval(tick, 500);
+    return () => clearInterval(timer);
+  }, [incomingOffer?.id, incomingOffer?.offered_at, hasActive]);
 
   const navToCustomer =
     customerNavMode &&
     activeOrder?.order_status === "on_the_way" &&
     activeOrder.delivery_lat != null &&
     activeOrder.delivery_lng != null;
+
+  const driverPos =
+    mapGps.fix?.lat != null && mapGps.fix?.lng != null
+      ? { lat: mapGps.fix.lat, lng: mapGps.fix.lng }
+      : driver?.current_lat != null && driver?.current_lng != null
+        ? { lat: driver.current_lat, lng: driver.current_lng }
+        : null;
+
+  const navRouteLine = useDriverNavRoute(
+    navToCustomer,
+    driverPos,
+    navToCustomer && activeOrder
+      ? { lat: activeOrder.delivery_lat, lng: activeOrder.delivery_lng }
+      : null
+  );
+
+  useEffect(() => {
+    if (!navToCustomer || !driverPos || !activeOrder?.delivery_lat || !activeOrder.delivery_lng) {
+      return;
+    }
+    const dist = haversineMeters(
+      driverPos.lat,
+      driverPos.lng,
+      activeOrder.delivery_lat,
+      activeOrder.delivery_lng
+    );
+    if (dist <= 75) {
+      setCustomerNavMode(false);
+      setOrderCardExpanded(true);
+      setArrivedNotice(true);
+    }
+  }, [
+    navToCustomer,
+    driverPos?.lat,
+    driverPos?.lng,
+    activeOrder?.delivery_lat,
+    activeOrder?.delivery_lng,
+  ]);
 
   const mapProps = useMemo(() => {
     const order = activeOrder ?? incomingOffer;
@@ -197,6 +282,7 @@ export function DriverCockpit() {
       followDriver: navigating || (!order && live != null),
       lockDriverZoom: navigating || (!order && mapGps.zoomLocked),
       navigationMode: navigating,
+      navigationRouteLine: navigating ? navRouteLine ?? undefined : undefined,
     };
   }, [
     activeOrder,
@@ -206,6 +292,7 @@ export function DriverCockpit() {
     mapGps.fix,
     mapGps.zoomLocked,
     navToCustomer,
+    navRouteLine,
   ]);
 
   async function setStatus(next: DriverStatus) {
@@ -225,7 +312,12 @@ export function DriverCockpit() {
     await refresh();
   }
 
+  function handleUserGesture() {
+    void unlockDriverOrderAudio();
+  }
+
   async function acceptOffer() {
+    handleUserGesture();
     if (!incomingOffer || !driver) return;
     if (incomingOffer.negotiation_status === "negotiating") {
       router.push(`/driver/orders/${incomingOffer.id}`);
@@ -249,18 +341,42 @@ export function DriverCockpit() {
     setTab("map");
   }
 
-  function rejectOffer() {
+  async function rejectOffer() {
     if (!incomingOffer || !driver) return;
-    const next = new Set(dismissed);
-    next.add(incomingOffer.id);
-    setDismissed(next);
-    saveDismissed(driver.id, next);
+
+    if (incomingOffer.negotiation_status === "negotiating") {
+      const next = new Set(dismissed);
+      next.add(incomingOffer.id);
+      setDismissed(next);
+      saveDismissed(driver.id, next);
+      setIncomingOffer(null);
+      void loadPool();
+      return;
+    }
+
+    const res = await fetchWithDriverAuth("/api/driver/decline-offer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: incomingOffer.id }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert((j as { error?: string }).error ?? "Gagal menolak penawaran");
+      return;
+    }
+    lastAlertOrderIdRef.current = null;
     setIncomingOffer(null);
     void loadPool();
   }
 
   async function pickupOrder() {
     if (!activeOrder) return;
+    const customerName = customerOf(activeOrder)?.name ?? "customer";
+    const orderCode = shortOrderId(activeOrder.id);
+    const ok = confirm(
+      `Konfirmasi pengambilan di toko:\n\nSebutkan ke kasir:\n• Nama: ${customerName}\n• ID: ${orderCode}\n\nSudah menerima paket dari restoran?`
+    );
+    if (!ok) return;
     setBusy(true);
     const res = await fetchWithDriverAuth("/api/driver/pickup", {
       method: "POST",
@@ -330,6 +446,7 @@ export function DriverCockpit() {
 
   const orderCardBottom =
     "bottom-[max(7rem,calc(0.75rem+env(safe-area-inset-bottom)))]";
+  const orderItems = activeOrder?.order_items ?? [];
 
   return (
     <div className="flex h-[100dvh] min-h-0 flex-col">
@@ -372,12 +489,20 @@ export function DriverCockpit() {
           <DriverMapView {...mapProps} className="absolute inset-0 h-full w-full" />
 
           {navToCustomer && activeCustomer && (
-            <div className="pointer-events-none absolute inset-x-4 top-3 z-10 rounded-2xl border border-cyan-400/50 bg-cyan-950/90 px-4 py-2.5 text-center shadow-lg">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
-                Mode navigasi
+            <div className="pointer-events-none absolute inset-x-4 top-3 z-10 rounded-2xl border border-sky-400/60 bg-sky-950/92 px-4 py-2.5 text-center shadow-lg">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300">
+                Mode navigasi aktif
               </p>
               <p className="text-sm font-medium text-white">
-                Menuju {activeCustomer.name}
+                Garis biru menuju {activeCustomer.name}
+              </p>
+            </div>
+          )}
+
+          {arrivedNotice && activeOrder?.order_status === "on_the_way" && (
+            <div className="pointer-events-none absolute inset-x-4 top-3 z-10 rounded-2xl border border-emerald-400/50 bg-emerald-950/90 px-4 py-2.5 text-center shadow-lg">
+              <p className="text-sm font-medium text-emerald-100">
+                Sudah dekat lokasi customer — selesaikan pengantaran
               </p>
             </div>
           )}
@@ -425,12 +550,23 @@ export function DriverCockpit() {
                   ongkir {formatIdr(Number(incomingOffer.delivery_fee))}
                 </span>
               </p>
+              {incomingOffer.negotiation_status !== "negotiating" && offerCountdown > 0 && (
+                <p className="mt-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-100">
+                  Waktu terima:{" "}
+                  <span className="font-mono font-bold text-amber-300">{offerCountdown} detik</span>
+                  {" — "}
+                  bila habis, order ke driver lain
+                </p>
+              )}
               <div className="mt-4 flex gap-2">
                 <Button
                   variant="outline"
                   className="h-11 flex-1 rounded-xl border-red-500/40 text-red-300"
                   disabled={busy}
-                  onClick={rejectOffer}
+                  onClick={() => {
+                    handleUserGesture();
+                    rejectOffer();
+                  }}
                 >
                   Tolak
                 </Button>
@@ -447,42 +583,99 @@ export function DriverCockpit() {
             </div>
           )}
 
-          {activeOrder && (
-            <div
-              className={`absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl border border-cyan-500/30 bg-slate-950/95 p-4 shadow-xl backdrop-blur`}
+          {activeOrder && !orderCardExpanded && (
+            <button
+              type="button"
+              onClick={() => {
+                handleUserGesture();
+                setOrderCardExpanded(true);
+              }}
+              className={`absolute inset-x-4 ${orderCardBottom} z-20 flex w-auto items-center justify-between gap-3 rounded-2xl border border-sky-400/50 bg-slate-950/95 px-4 py-3 shadow-xl backdrop-blur`}
             >
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-400">
-                Pesanan aktif
-              </p>
-              <p className="mt-1 text-lg font-bold text-white">{shop?.name ?? "Toko"}</p>
-              <p className="mt-0.5 text-xs text-emerald-200/90">
-                {ORDER_STATUS_LABEL[activeOrder.order_status]}
-              </p>
-              {activeCustomer && (
-                <div className="mt-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300/90">
-                    Customer
+              <div className="min-w-0 text-left">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300">
+                  {customerNavMode ? "Navigasi aktif" : "Pesanan aktif"}
+                </p>
+                <p className="truncate text-sm font-semibold text-white">
+                  {activeCustomer?.name ?? shop?.name ?? "Pesanan"}
+                </p>
+              </div>
+              <ChevronUp className="h-5 w-5 shrink-0 text-sky-300" />
+            </button>
+          )}
+
+          {activeOrder && orderCardExpanded && (
+            <div
+              className={`absolute inset-x-4 ${orderCardBottom} z-20 max-h-[min(70dvh,520px)] overflow-y-auto rounded-2xl border border-cyan-500/30 bg-slate-950/95 p-4 shadow-xl backdrop-blur`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-400">
+                    Pesanan aktif
                   </p>
-                  <p className="mt-0.5 font-medium text-white">{activeCustomer.name}</p>
-                  {activeCustomer.phone && (
-                    <a
-                      href={`tel:${activeCustomer.phone}`}
-                      className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-300 hover:underline"
-                    >
-                      <Phone className="h-3 w-3" />
-                      {activeCustomer.phone}
-                    </a>
-                  )}
-                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {activeOrder.delivery_address}
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    ID: <span className="font-mono text-cyan-200">{shortOrderId(activeOrder.id)}</span>
                   </p>
                 </div>
-              )}
+                {customerNavMode && (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-white/10 px-2 py-1 text-[10px] text-muted-foreground"
+                    onClick={() => setOrderCardExpanded(false)}
+                  >
+                    Minimize
+                  </button>
+                )}
+              </div>
 
-              {!activeCustomer && (
-                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                  {activeOrder.delivery_address}
-                </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-xl border border-orange-500/25 bg-orange-500/5 px-3 py-2">
+                  <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-orange-300">
+                    <Store className="h-3 w-3" />
+                    Restoran
+                  </p>
+                  <p className="mt-0.5 font-medium text-white">{shop?.name ?? "Toko"}</p>
+                  {shop?.address && (
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{shop.address}</p>
+                  )}
+                </div>
+                {activeCustomer && (
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300/90">
+                      Customer
+                    </p>
+                    <p className="mt-0.5 font-medium text-white">{activeCustomer.name}</p>
+                    {activeCustomer.phone && (
+                      <a
+                        href={`tel:${activeCustomer.phone}`}
+                        className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-300 hover:underline"
+                      >
+                        <Phone className="h-3 w-3" />
+                        {activeCustomer.phone}
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <p className="mt-2 text-xs text-emerald-200/90">
+                {ORDER_STATUS_LABEL[activeOrder.order_status]}
+              </p>
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                {activeOrder.delivery_address}
+              </p>
+
+              {orderItems.length > 0 && (
+                <ul className="mt-2 space-y-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">
+                  {orderItems.map((item) => (
+                    <li key={item.id} className="flex justify-between gap-2 text-white/90">
+                      <span>
+                        {item.quantity}× {item.product_name}
+                      </span>
+                      <span className="text-muted-foreground">{formatIdr(Number(item.price) * item.quantity)}</span>
+                    </li>
+                  ))}
+                </ul>
               )}
 
               <p className="mt-2 font-semibold text-cyan-300">
@@ -500,9 +693,10 @@ export function DriverCockpit() {
                       variant="outline"
                       size="sm"
                       className="h-9 flex-1 rounded-xl border-orange-500/40 text-orange-200"
-                      onClick={() =>
-                        openMapNavigation(shop.latitude, shop.longitude, shop.name ?? "Toko")
-                      }
+                      onClick={() => {
+                        handleUserGesture();
+                        openMapNavigation(shop.latitude, shop.longitude, shop.name ?? "Toko");
+                      }}
                     >
                       <Navigation className="mr-1.5 h-3.5 w-3.5" />
                       Navigasi ke toko
@@ -517,14 +711,30 @@ export function DriverCockpit() {
               )}
 
               {activeOrder.order_status === "ready_for_pickup" && (
-                <Button
-                  className="mt-3 h-11 w-full rounded-xl bg-orange-500 font-semibold"
-                  disabled={busy}
-                  onClick={pickupOrder}
-                >
-                  <Package className="mr-2 h-4 w-4" />
-                  Ambil pesanan di toko
-                </Button>
+                <>
+                  <div className="mt-3 rounded-xl border border-orange-500/40 bg-orange-500/10 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-200">
+                      Sebutkan ke kasir restoran
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-white">
+                      Nama: {activeCustomer?.name ?? "—"}
+                    </p>
+                    <p className="text-sm font-mono text-orange-100">
+                      ID: {shortOrderId(activeOrder.id)}
+                    </p>
+                  </div>
+                  <Button
+                    className="mt-3 h-11 w-full rounded-xl bg-orange-500 font-semibold"
+                    disabled={busy}
+                    onClick={() => {
+                      handleUserGesture();
+                      void pickupOrder();
+                    }}
+                  >
+                    <Package className="mr-2 h-4 w-4" />
+                    Sudah sebutkan — ambil pesanan
+                  </Button>
+                </>
               )}
 
               {activeOrder.order_status === "on_the_way" && (
@@ -534,18 +744,31 @@ export function DriverCockpit() {
                     className={cn(
                       "mt-3 h-11 w-full rounded-xl font-semibold",
                       customerNavMode
-                        ? "border border-cyan-400/50 bg-cyan-950 text-cyan-100"
+                        ? "border border-sky-400/50 bg-sky-950 text-sky-100"
                         : "bg-gradient-to-r from-sky-500 to-cyan-500 text-slate-950"
                     )}
-                    onClick={() => setCustomerNavMode((v) => !v)}
+                    onClick={() => {
+                      handleUserGesture();
+                      setCustomerNavMode((v) => {
+                        const next = !v;
+                        if (next) {
+                          setOrderCardExpanded(false);
+                          setArrivedNotice(false);
+                        }
+                        return next;
+                      });
+                    }}
                   >
                     <MapPin className="mr-2 h-4 w-4" />
-                    {customerNavMode ? "Hentikan navigasi map" : "Navigasi map ke customer"}
+                    {customerNavMode ? "Hentikan navigasi map" : "Mode navigasi ke customer"}
                   </Button>
                   <Button
                     className="mt-2 h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 font-semibold text-slate-950"
                     disabled={busy}
-                    onClick={completeOrder}
+                    onClick={() => {
+                      handleUserGesture();
+                      void completeOrder();
+                    }}
                   >
                     Selesai antar (+{DRIVER_REWARD_POINTS_PER_ORDER} poin)
                   </Button>

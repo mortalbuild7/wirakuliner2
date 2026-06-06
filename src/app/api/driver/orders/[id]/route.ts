@@ -44,6 +44,7 @@ export async function GET(
   const isAssigned = order.driver_id === auth.driver.id;
   const isPool =
     !order.driver_id &&
+    order.offered_driver_id === auth.driver.id &&
     ["paid", "preparing", "ready_for_pickup"].includes(order.order_status);
   const isNego =
     !order.driver_id &&
