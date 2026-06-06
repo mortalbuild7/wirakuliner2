@@ -2,6 +2,11 @@
 
 import { GpsLockMapInner, type GpsLockMapPoint } from "@/components/maps/gps-lock-map-inner";
 import { JALAN_WIRA } from "@/lib/geo-config";
+import {
+  driverNavTargetColor,
+  driverNavTargetLabel,
+  type DriverNavTarget,
+} from "@/lib/driver-map-nav";
 
 export function DriverMapViewInner({
   merchantLat,
@@ -14,6 +19,7 @@ export function DriverMapViewInner({
   followDriver = false,
   lockDriverZoom = true,
   navigationMode = false,
+  navigationTarget,
   navigationRouteLine,
   className = "h-full w-full",
 }: {
@@ -27,16 +33,21 @@ export function DriverMapViewInner({
   followDriver?: boolean;
   lockDriverZoom?: boolean;
   navigationMode?: boolean;
+  navigationTarget?: DriverNavTarget | null;
   navigationRouteLine?: [number, number][];
   className?: string;
 }) {
-  const hasRoute =
-    merchantLat != null &&
-    merchantLng != null &&
-    deliveryLat != null &&
-    deliveryLng != null;
-
+  const hasMerchant = merchantLat != null && merchantLng != null;
+  const hasDelivery = deliveryLat != null && deliveryLng != null;
+  const hasRoute = hasMerchant && hasDelivery;
   const hasDriver = driverLat != null && driverLng != null;
+
+  const navDest =
+    navigationMode && navigationTarget === "merchant" && hasMerchant
+      ? { lat: merchantLat!, lng: merchantLng! }
+      : navigationMode && navigationTarget === "customer" && hasDelivery
+        ? { lat: deliveryLat!, lng: deliveryLng! }
+        : null;
 
   const centerLat = hasDriver
     ? driverLat!
@@ -50,17 +61,14 @@ export function DriverMapViewInner({
       ? (merchantLng! + deliveryLng!) / 2
       : JALAN_WIRA.longitude;
 
-  const navTarget =
-    navigationMode && deliveryLat != null && deliveryLng != null
-      ? { lat: deliveryLat, lng: deliveryLng }
-      : null;
-
   const extraPoints: GpsLockMapPoint[] = [];
   if (hasRoute && !navigationMode) {
     extraPoints.push({ lat: merchantLat!, lng: merchantLng!, label: "T", color: "#f97316" });
     extraPoints.push({ lat: deliveryLat!, lng: deliveryLng!, label: "C", color: "#22d3ee" });
-  } else if (hasRoute && navigationMode) {
+  } else if (navigationMode && navigationTarget === "customer" && hasMerchant) {
     extraPoints.push({ lat: merchantLat!, lng: merchantLng!, label: "T", color: "#9a3412" });
+  } else if (navigationMode && navigationTarget === "merchant" && hasDelivery) {
+    extraPoints.push({ lat: deliveryLat!, lng: deliveryLng!, label: "C", color: "#155e75" });
   }
 
   const routeLine: [number, number][] | undefined =
@@ -89,7 +97,13 @@ export function DriverMapViewInner({
       extraPoints={extraPoints}
       routeLine={routeLine}
       navigationRouteLine={navigationRouteLine}
-      navigationTarget={navTarget}
+      navigationTarget={navDest}
+      navigationTargetLabel={
+        navigationTarget ? driverNavTargetLabel(navigationTarget) : "C"
+      }
+      navigationTargetColor={
+        navigationTarget ? driverNavTargetColor(navigationTarget) : "#22d3ee"
+      }
       className={`${className} z-0 min-h-[280px]`}
     />
   );

@@ -97,6 +97,8 @@ export function GpsLockMapInner({
   routeLine,
   navigationRouteLine,
   navigationTarget,
+  navigationTargetLabel = "C",
+  navigationTargetColor = "#22d3ee",
   height,
   className = "h-full w-full",
 }: {
@@ -115,6 +117,8 @@ export function GpsLockMapInner({
   routeLine?: [number, number][];
   navigationRouteLine?: [number, number][];
   navigationTarget?: { lat: number; lng: number } | null;
+  navigationTargetLabel?: string;
+  navigationTargetColor?: string;
   height?: number | null;
   className?: string;
 }) {
@@ -204,7 +208,7 @@ export function GpsLockMapInner({
         {navActive && (
           <Marker
             position={[navigationTarget.lat, navigationTarget.lng]}
-            icon={pointIcon("#22d3ee", "C")}
+            icon={pointIcon(navigationTargetColor, navigationTargetLabel)}
           />
         )}
         {extraPoints.map((p) => (

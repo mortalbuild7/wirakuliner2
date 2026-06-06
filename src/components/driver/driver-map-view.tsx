@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { DriverNavTarget } from "@/lib/driver-map-nav";
 
 const Inner = dynamic(
   () => import("@/components/driver/driver-map-view-inner").then((m) => m.DriverMapViewInner),
@@ -18,6 +19,7 @@ type Props = {
   followDriver?: boolean;
   lockDriverZoom?: boolean;
   navigationMode?: boolean;
+  navigationTarget?: DriverNavTarget | null;
   navigationRouteLine?: [number, number][];
   className?: string;
 };

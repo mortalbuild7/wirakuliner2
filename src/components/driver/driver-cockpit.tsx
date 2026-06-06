@@ -29,7 +29,6 @@ import {
   Store,
   User,
 } from "lucide-react";
-import { openMapNavigation } from "@/lib/map-navigation";
 import { Button } from "@/components/ui/button";
 import { DriverHeaderControls } from "@/components/driver/driver-header-controls";
 import {
@@ -38,7 +37,10 @@ import {
 } from "@/lib/driver-order-alert";
 import { cn } from "@/lib/utils";
 import { useDriverNavRoute } from "@/hooks/use-driver-nav-route";
-import { haversineMeters } from "@/lib/geo-distance";
+import {
+  hasReachedNavDestination,
+  type DriverNavTarget,
+} from "@/lib/driver-map-nav";
 import { offerSecondsLeft } from "@/lib/driver-order-offer";
 
 type Tab = "map" | "profile";
@@ -93,9 +95,9 @@ export function DriverCockpit() {
   const [incomingOffer, setIncomingOffer] = useState<OrderRow | null>(null);
   const [todayCount, setTodayCount] = useState(0);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const [customerNavMode, setCustomerNavMode] = useState(false);
+  const [navMode, setNavMode] = useState<DriverNavTarget | null>(null);
   const [orderCardExpanded, setOrderCardExpanded] = useState(true);
-  const [arrivedNotice, setArrivedNotice] = useState(false);
+  const [arrivedNotice, setArrivedNotice] = useState<string | null>(null);
   const [offerCountdown, setOfferCountdown] = useState(0);
   const router = useRouter();
   const supabase = createClient();
@@ -217,14 +219,14 @@ export function DriverCockpit() {
   }, [activeOrder?.id, activeOrder?.order_status]);
 
   useEffect(() => {
-    setCustomerNavMode(false);
+    setNavMode(null);
     setOrderCardExpanded(true);
-    setArrivedNotice(false);
+    setArrivedNotice(null);
   }, [activeOrder?.id, activeOrder?.order_status]);
 
   useEffect(() => {
-    if (customerNavMode) setOrderCardExpanded(false);
-  }, [customerNavMode]);
+    if (navMode) setOrderCardExpanded(false);
+  }, [navMode]);
 
   useEffect(() => {
     if (!driver?.id || !isOnline || hasActive) return;
@@ -243,11 +245,26 @@ export function DriverCockpit() {
     return () => clearInterval(timer);
   }, [incomingOffer?.id, incomingOffer?.offered_at, hasActive]);
 
-  const navToCustomer =
-    customerNavMode &&
-    activeOrder?.order_status === "on_the_way" &&
-    activeOrder.delivery_lat != null &&
-    activeOrder.delivery_lng != null;
+  const shop = activeOrder ? merchantOf(activeOrder) : undefined;
+
+  const navDestination = useMemo(() => {
+    if (!navMode || !activeOrder) return null;
+    if (navMode === "merchant" && shop?.latitude != null && shop?.longitude != null) {
+      return { lat: shop.latitude, lng: shop.longitude, label: shop.name ?? "Toko" };
+    }
+    if (
+      navMode === "customer" &&
+      activeOrder.delivery_lat != null &&
+      activeOrder.delivery_lng != null
+    ) {
+      return {
+        lat: activeOrder.delivery_lat,
+        lng: activeOrder.delivery_lng,
+        label: customerOf(activeOrder)?.name ?? "Customer",
+      };
+    }
+    return null;
+  }, [navMode, activeOrder, shop]);
 
   const driverPos =
     mapGps.fix?.lat != null && mapGps.fix?.lng != null
@@ -257,35 +274,24 @@ export function DriverCockpit() {
         : null;
 
   const navRouteLine = useDriverNavRoute(
-    navToCustomer,
+    navDestination != null,
     driverPos,
-    navToCustomer && activeOrder
-      ? { lat: activeOrder.delivery_lat, lng: activeOrder.delivery_lng }
-      : null
+    navDestination ? { lat: navDestination.lat, lng: navDestination.lng } : null
   );
 
   useEffect(() => {
-    if (!navToCustomer || !driverPos || !activeOrder?.delivery_lat || !activeOrder.delivery_lng) {
-      return;
-    }
-    const dist = haversineMeters(
-      driverPos.lat,
-      driverPos.lng,
-      activeOrder.delivery_lat,
-      activeOrder.delivery_lng
-    );
-    if (dist <= 75) {
-      setCustomerNavMode(false);
-      setOrderCardExpanded(true);
-      setArrivedNotice(true);
-    }
-  }, [
-    navToCustomer,
-    driverPos?.lat,
-    driverPos?.lng,
-    activeOrder?.delivery_lat,
-    activeOrder?.delivery_lng,
-  ]);
+    if (!navMode || !driverPos || !navDestination) return;
+    if (!hasReachedNavDestination(driverPos, navDestination)) return;
+
+    const message =
+      navMode === "merchant"
+        ? "Sudah dekat restoran — ambil pesanan di toko"
+        : "Sudah dekat lokasi customer — selesaikan pengantaran";
+
+    setNavMode(null);
+    setOrderCardExpanded(true);
+    setArrivedNotice(message);
+  }, [navMode, driverPos?.lat, driverPos?.lng, navDestination?.lat, navDestination?.lng]);
 
   const mapProps = useMemo(() => {
     const order = activeOrder ?? incomingOffer;
@@ -293,7 +299,7 @@ export function DriverCockpit() {
     const live = mapGps.fix;
     const driverLat = live?.lat ?? driver?.current_lat;
     const driverLng = live?.lng ?? driver?.current_lng;
-    const navigating = navToCustomer;
+    const navigating = navMode != null;
     return {
       merchantLat: shop?.latitude,
       merchantLng: shop?.longitude,
@@ -305,6 +311,7 @@ export function DriverCockpit() {
       followDriver: navigating || (!order && live != null),
       lockDriverZoom: navigating || (!order && mapGps.zoomLocked),
       navigationMode: navigating,
+      navigationTarget: navigating ? navMode : null,
       navigationRouteLine: navigating ? navRouteLine ?? undefined : undefined,
     };
   }, [
@@ -314,7 +321,7 @@ export function DriverCockpit() {
     driver?.current_lng,
     mapGps.fix,
     mapGps.zoomLocked,
-    navToCustomer,
+    navMode,
     navRouteLine,
   ]);
 
@@ -337,6 +344,19 @@ export function DriverCockpit() {
 
   function handleUserGesture() {
     void unlockDriverOrderAudio();
+  }
+
+  function startNavMode(target: DriverNavTarget) {
+    handleUserGesture();
+    setNavMode(target);
+    setOrderCardExpanded(false);
+    setArrivedNotice(null);
+  }
+
+  function stopNavMode() {
+    setNavMode(null);
+    setOrderCardExpanded(true);
+    setArrivedNotice(null);
   }
 
   async function acceptOffer() {
@@ -460,7 +480,6 @@ export function DriverCockpit() {
     );
   }
 
-  const shop = activeOrder ? merchantOf(activeOrder) : undefined;
   const offerShop = incomingOffer ? merchantOf(incomingOffer) : undefined;
   const offerCustomer = incomingOffer ? customerOf(incomingOffer) : undefined;
   const activeCustomer = activeOrder ? customerOf(activeOrder) : undefined;
@@ -511,22 +530,39 @@ export function DriverCockpit() {
         <div className="relative min-h-0 flex-1 overflow-hidden">
           <DriverMapView {...mapProps} className="absolute inset-0 h-full w-full" />
 
-          {navToCustomer && activeCustomer && (
-            <div className="pointer-events-none absolute inset-x-4 top-3 z-10 rounded-2xl border border-sky-400/60 bg-sky-950/92 px-4 py-2.5 text-center shadow-lg">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300">
+          {navMode && navDestination && (
+            <div
+              className={cn(
+                "absolute inset-x-4 top-3 z-10 rounded-2xl border px-4 py-2.5 text-center shadow-lg",
+                navMode === "merchant"
+                  ? "border-orange-400/60 bg-orange-950/92"
+                  : "border-sky-400/60 bg-sky-950/92"
+              )}
+            >
+              <p
+                className={cn(
+                  "text-[10px] font-semibold uppercase tracking-wider",
+                  navMode === "merchant" ? "text-orange-300" : "text-sky-300"
+                )}
+              >
                 Mode navigasi aktif
               </p>
               <p className="text-sm font-medium text-white">
-                Garis biru menuju {activeCustomer.name}
+                Garis biru menuju {navDestination.label}
               </p>
+              <button
+                type="button"
+                onClick={stopNavMode}
+                className="mt-2 rounded-lg border border-white/20 px-3 py-1 text-[10px] text-white/90"
+              >
+                Hentikan navigasi
+              </button>
             </div>
           )}
 
-          {arrivedNotice && activeOrder?.order_status === "on_the_way" && (
+          {arrivedNotice && !navMode && (
             <div className="pointer-events-none absolute inset-x-4 top-3 z-10 rounded-2xl border border-emerald-400/50 bg-emerald-950/90 px-4 py-2.5 text-center shadow-lg">
-              <p className="text-sm font-medium text-emerald-100">
-                Sudah dekat lokasi customer — selesaikan pengantaran
-              </p>
+              <p className="text-sm font-medium text-emerald-100">{arrivedNotice}</p>
             </div>
           )}
 
@@ -617,10 +653,14 @@ export function DriverCockpit() {
             >
               <div className="min-w-0 text-left">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300">
-                  {customerNavMode ? "Navigasi aktif" : "Pesanan aktif"}
+                  {navMode === "merchant"
+                    ? "Navigasi ke toko"
+                    : navMode === "customer"
+                      ? "Navigasi ke customer"
+                      : "Pesanan aktif"}
                 </p>
                 <p className="truncate text-sm font-semibold text-white">
-                  {activeCustomer?.name ?? shop?.name ?? "Pesanan"}
+                  {navDestination?.label ?? activeCustomer?.name ?? shop?.name ?? "Pesanan"}
                 </p>
               </div>
               <ChevronUp className="h-5 w-5 shrink-0 text-sky-300" />
@@ -640,7 +680,7 @@ export function DriverCockpit() {
                     ID: <span className="font-mono text-cyan-200">{shortOrderId(activeOrder.id)}</span>
                   </p>
                 </div>
-                {customerNavMode && (
+                {navMode && (
                   <button
                     type="button"
                     className="rounded-lg border border-white/10 px-2 py-1 text-[10px] text-muted-foreground"
@@ -715,14 +755,18 @@ export function DriverCockpit() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-9 flex-1 rounded-xl border-orange-500/40 text-orange-200"
-                      onClick={() => {
-                        handleUserGesture();
-                        openMapNavigation(shop.latitude, shop.longitude, shop.name ?? "Toko");
-                      }}
+                      className={cn(
+                        "h-9 flex-1 rounded-xl",
+                        navMode === "merchant"
+                          ? "border-orange-400/60 bg-orange-950/40 text-orange-100"
+                          : "border-orange-500/40 text-orange-200"
+                      )}
+                      onClick={() =>
+                        navMode === "merchant" ? stopNavMode() : startNavMode("merchant")
+                      }
                     >
                       <Navigation className="mr-1.5 h-3.5 w-3.5" />
-                      Navigasi ke toko
+                      {navMode === "merchant" ? "Hentikan navigasi toko" : "Navigasi ke toko"}
                     </Button>
                   )}
               </div>
@@ -766,24 +810,18 @@ export function DriverCockpit() {
                     type="button"
                     className={cn(
                       "mt-3 h-11 w-full rounded-xl font-semibold",
-                      customerNavMode
+                      navMode === "customer"
                         ? "border border-sky-400/50 bg-sky-950 text-sky-100"
                         : "bg-gradient-to-r from-sky-500 to-cyan-500 text-slate-950"
                     )}
-                    onClick={() => {
-                      handleUserGesture();
-                      setCustomerNavMode((v) => {
-                        const next = !v;
-                        if (next) {
-                          setOrderCardExpanded(false);
-                          setArrivedNotice(false);
-                        }
-                        return next;
-                      });
-                    }}
+                    onClick={() =>
+                      navMode === "customer" ? stopNavMode() : startNavMode("customer")
+                    }
                   >
                     <MapPin className="mr-2 h-4 w-4" />
-                    {customerNavMode ? "Hentikan navigasi map" : "Mode navigasi ke customer"}
+                    {navMode === "customer"
+                      ? "Hentikan navigasi customer"
+                      : "Navigasi ke customer"}
                   </Button>
                   <Button
                     className="mt-2 h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 font-semibold text-slate-950"
