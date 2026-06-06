@@ -20,21 +20,7 @@ export const supabase = createClient(url, key, {
   },
 });
 
-export function getDriverBaseUrl() {
-  const driverUrl =
-    process.env.EXPO_PUBLIC_DRIVER_URL ?? "https://www.wirakuliner.web.id/driver";
-  try {
-    const u = new URL(driverUrl);
-    return `${u.protocol}//${u.host}`;
-  } catch {
-    return "https://www.wirakuliner.web.id";
-  }
-}
-
-/** Langsung ke app-entry — bridge HTML tidak diperlukan di APK native. */
-export function getAppEntryUrl() {
-  return `${getDriverBaseUrl()}/driver/app-entry`;
-}
+export { getAppEntryUrl, getDriverBaseUrl, getDriverAppEntryUrls } from "./driver-url";
 
 export async function validateDriverSession(session: Session): Promise<string | null> {
   const { data: profile } = await supabase

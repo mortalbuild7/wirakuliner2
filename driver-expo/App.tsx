@@ -16,11 +16,20 @@ import type { WebViewMessageEvent, WebViewNavigation } from "react-native-webvie
 import { DriverLoginScreen } from "./components/DriverLoginScreen";
 import { clearLocalAuth, restoreNativeSession, syncNativeSession } from "./lib/auth-session";
 import { fetchDriverMeNative, setDriverStatusNative } from "./lib/driver-api";
+import { getDriverAppEntryUrls } from "./lib/driver-url";
 import { getAppEntryUrl, supabase } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 import { playNativeIncomingOrderSound } from "./lib/incoming-order-sound";
 
-const ALLOWED_HOSTS = ["wirakuliner.web.id", "wirakuliner2.vercel.app", "localhost"];
+const ALLOWED_HOSTS = [
+  "wirakuliner.web.id",
+  "www.wirakuliner.web.id",
+  "wirakuliner2.vercel.app",
+  "localhost",
+];
+
+const APP_ENTRY_URLS = getDriverAppEntryUrls();
+const WEB_TIMEOUT_CODES = new Set([-8, 8, -6, 6]);
 
 function isAllowedUrl(url: string) {
   try {
@@ -133,9 +142,12 @@ export default function App() {
   const bootCompleteRef = useRef(false);
   const sessionRetryRef = useRef(0);
   const chunkReloadRef = useRef(0);
+  const webRetryRef = useRef(0);
   const [phase, setPhase] = useState<AppPhase>("boot");
   const [session, setSession] = useState<Session | null>(null);
   const [webLoading, setWebLoading] = useState(true);
+  const [webUrlIndex, setWebUrlIndex] = useState(0);
+  const [webError, setWebError] = useState<string | null>(null);
   const [sessionInjected, setSessionInjected] = useState(false);
   const [driverState, setDriverState] = useState<DriverState>({
     online: false,
@@ -144,6 +156,60 @@ export default function App() {
   });
 
   const hideSpinner = useCallback(() => setWebLoading(false), []);
+
+  const activeWebUrl = APP_ENTRY_URLS[webUrlIndex] ?? APP_ENTRY_URLS[0];
+
+  const reloadWebView = useCallback(
+    (resetRetries = false) => {
+      if (resetRetries) {
+        webRetryRef.current = 0;
+        setWebUrlIndex(0);
+      }
+      setWebError(null);
+      setWebLoading(true);
+      webRef.current?.reload();
+    },
+    []
+  );
+
+  const handleWebLoadFailure = useCallback(
+    (description: string, errorCode?: number, failedUrl?: string) => {
+      const desc = description || "net::ERR_TIMED_OUT";
+      const isTimeout =
+        WEB_TIMEOUT_CODES.has(errorCode ?? -1) ||
+        /timed out|timeout|ERR_TIMED_OUT|ERR_CONNECTION/i.test(desc);
+
+      console.warn("[WebView] load failed", {
+        code: errorCode,
+        desc,
+        url: failedUrl ?? activeWebUrl,
+      });
+
+      if (isTimeout && webUrlIndex < APP_ENTRY_URLS.length - 1) {
+        const next = webUrlIndex + 1;
+        webRetryRef.current = 0;
+        setWebUrlIndex(next);
+        setWebError(null);
+        setWebLoading(true);
+        return;
+      }
+
+      if (webRetryRef.current < 3) {
+        webRetryRef.current += 1;
+        setWebLoading(true);
+        setTimeout(() => webRef.current?.reload(), 800 * webRetryRef.current);
+        return;
+      }
+
+      setWebError(
+        isTimeout
+          ? "Koneksi ke server timeout. Periksa internet (WiFi/data) lalu coba lagi."
+          : desc
+      );
+      hideSpinner();
+    },
+    [activeWebUrl, hideSpinner, webUrlIndex]
+  );
 
   const redirectToAppEntry = useCallback(() => {
     bootCompleteRef.current = false;
@@ -374,6 +440,8 @@ export default function App() {
   );
 
   const onWebLoadEnd = useCallback(() => {
+    webRetryRef.current = 0;
+    setWebError(null);
     webRef.current?.injectJavaScript(webErrorGuardScript());
     const active = sessionRef.current;
     if (active) {
@@ -451,6 +519,9 @@ export default function App() {
               sessionInjectedRef.current = false;
               setSessionInjected(false);
               chunkReloadRef.current = 0;
+              webRetryRef.current = 0;
+              setWebUrlIndex(0);
+              setWebError(null);
               setWebLoading(true);
               setPhase("app");
             }}
@@ -465,19 +536,50 @@ export default function App() {
       <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
         <StatusBar style="light" />
         <WebView
-          key={session?.user?.id ?? "webview"}
+          key={`${session?.user?.id ?? "webview"}-${webUrlIndex}`}
           ref={webRef}
-          source={{ uri: getAppEntryUrl() }}
+          source={{ uri: activeWebUrl }}
           style={styles.web}
-          cacheEnabled={false}
-          cacheMode={Platform.OS === "android" ? "LOAD_NO_CACHE" : undefined}
+          startInLoadingState
+          cacheEnabled
+          cacheMode={Platform.OS === "android" ? "LOAD_CACHE_ELSE_NETWORK" : undefined}
           injectedJavaScriptBeforeContentLoaded={beforeLoadScript}
+          onLoadStart={() => {
+            setWebError(null);
+            setWebLoading(true);
+          }}
           onLoadEnd={onWebLoadEnd}
           onNavigationStateChange={onNavChange}
           onShouldStartLoadWithRequest={(req) => isDriverWebPath(req.url)}
           onMessage={onMessage}
-          onError={(e) => console.warn("[WebView] error", e.nativeEvent.description)}
-          onHttpError={(e) => console.warn("[WebView] HTTP", e.nativeEvent.statusCode, e.nativeEvent.url)}
+          onError={(e) => {
+            const { description, code, url } = e.nativeEvent;
+            handleWebLoadFailure(description, code, url);
+          }}
+          onHttpError={(e) => {
+            const { statusCode, url, description } = e.nativeEvent;
+            if (statusCode >= 500) {
+              handleWebLoadFailure(description || `HTTP ${statusCode}`, statusCode, url);
+            }
+          }}
+          onContentProcessDidTerminate={() => {
+            reloadWebView(false);
+          }}
+          renderError={(errorDomain, errorCode, errorDesc) => (
+            <View style={styles.errorScreen}>
+              <Text style={styles.errorTitle}>Gagal memuat halaman driver</Text>
+              <Text style={styles.errorBody}>
+                {errorDesc || "Koneksi timeout — periksa internet Anda."}
+              </Text>
+              {errorDomain ? (
+                <Text style={styles.errorMeta}>Domain: {errorDomain}</Text>
+              ) : null}
+              <Text style={styles.errorMeta}>Kode: {errorCode}</Text>
+              <Pressable style={styles.errorRetryBtn} onPress={() => reloadWebView(true)}>
+                <Text style={styles.errorRetryText}>Coba lagi</Text>
+              </Pressable>
+            </View>
+          )}
           geolocationEnabled
           javaScriptEnabled
           domStorageEnabled
@@ -492,9 +594,25 @@ export default function App() {
               : "WIRADriverExpo/1.0 iOS"
           }
         />
-        {webLoading && (
-          <View style={styles.loader} pointerEvents="none">
-            <ActivityIndicator size="large" color="#34d399" />
+        {(webLoading || webError) && (
+          <View
+            style={styles.loader}
+            pointerEvents={webError ? "auto" : "none"}
+          >
+            {webError ? (
+              <>
+                <Text style={styles.errorTitle}>Tidak bisa terhubung ke server</Text>
+                <Text style={styles.errorBody}>{webError}</Text>
+                <Text style={styles.errorMeta}>
+                  URL: {activeWebUrl.replace("https://", "")}
+                </Text>
+                <Pressable style={styles.errorRetryBtn} onPress={() => reloadWebView(true)}>
+                  <Text style={styles.errorRetryText}>Coba lagi</Text>
+                </Pressable>
+              </>
+            ) : (
+              <ActivityIndicator size="large" color="#34d399" />
+            )}
           </View>
         )}
         <View style={styles.toolbar}>
@@ -599,5 +717,46 @@ const styles = StyleSheet.create({
     color: "#fca5a5",
     fontSize: 12,
     fontWeight: "600",
+  },
+  errorScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0f172a",
+    paddingHorizontal: 24,
+  },
+  errorTitle: {
+    color: "#f8fafc",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  errorBody: {
+    color: "#94a3b8",
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  errorMeta: {
+    color: "#64748b",
+    fontSize: 11,
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  errorRetryBtn: {
+    marginTop: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(52,211,153,0.5)",
+    backgroundColor: "rgba(16,185,129,0.15)",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  errorRetryText: {
+    color: "#6ee7b7",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });
