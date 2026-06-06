@@ -2,7 +2,7 @@
   "expo": {
     "name": "WIRA Driver",
     "slug": "wira-driver",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -33,7 +33,7 @@
         {
           "backgroundColor": "#0f172a",
           "image": "./assets/splash-icon.png",
-          "imageWidth": 200
+          "imageWidth": 280
         }
       ],
       [

@@ -9,6 +9,14 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "WIRA Kuliner — Antar Makanan",
   description: "Multi-merchant food delivery dari Jalan Wira",
+  icons: {
+    icon: [
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
   authors: [{ name: "DAFFACELL", url: POWERED_BY_URL }],
   other: {
     "powered-by": POWERED_BY,

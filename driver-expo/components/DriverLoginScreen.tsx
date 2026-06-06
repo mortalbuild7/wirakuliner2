@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -64,6 +65,14 @@ export function DriverLoginScreen({ onLoggedIn }: Props) {
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      <View style={styles.welcome}>
+        <Image
+          source={require("../assets/logo.png")}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityLabel="WIRA Driver"
+        />
+      </View>
       <View style={styles.card}>
         <Text style={styles.badge}>WIRA DRIVER</Text>
         <Text style={styles.title}>Masuk Driver</Text>
@@ -116,6 +125,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#0f172a",
     justifyContent: "center",
     padding: 24,
+  },
+  welcome: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  logo: {
+    width: 280,
+    height: 120,
   },
   card: {
     borderRadius: 20,
