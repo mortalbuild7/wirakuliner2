@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   let query = admin
     .from("orders")
     .select(
-      "*, merchants(name, is_open, is_active, admin_suspended), profiles:customer_id(name, email), drivers(name)"
+      "*, merchants(name, is_open, is_active, admin_suspended), profiles:customer_id(name, email), drivers!driver_id(name)"
     )
     .order("created_at", { ascending: false })
     .limit(80);
