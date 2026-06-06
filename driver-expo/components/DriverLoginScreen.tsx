@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { clearLocalAuth } from "../lib/auth-session";
 import { supabase, validateDriverSession } from "../lib/supabase";
 
 type Props = {
@@ -32,6 +33,7 @@ export function DriverLoginScreen({ onLoggedIn }: Props) {
 
     setLoading(true);
     try {
+      await clearLocalAuth();
       const { data, error: signErr } = await supabase.auth.signInWithPassword({
         email: trimmed,
         password,

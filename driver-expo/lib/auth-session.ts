@@ -28,10 +28,16 @@ export async function restoreNativeSession(): Promise<Session | null> {
     const session = data.session;
     if (!session) return null;
 
+    const { data: userCheck, error: userErr } = await supabase.auth.getUser(
+      session.access_token
+    );
+    if (!userErr && userCheck.user) {
+      return session;
+    }
+
     const exp = session.expires_at ?? 0;
     const now = Math.floor(Date.now() / 1000);
-    // Hindari refresh dini — rotasi token bisa bentrok dengan setSession di WebView.
-    if (exp >= now + 30) return session;
+    if (exp >= now + 60) return session;
 
     const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
     if (refreshErr) {

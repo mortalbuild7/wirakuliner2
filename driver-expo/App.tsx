@@ -294,6 +294,7 @@ export default function App() {
         ) {
           hideSpinner();
           bootCompleteRef.current = true;
+          sessionRetryRef.current = 0;
           void syncNativeSession({
             access_token: data.access_token,
             refresh_token: data.refresh_token,

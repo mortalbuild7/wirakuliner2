@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { postNativeDriverBoot, postNativeSessionSync } from "@/lib/driver-session-sync";
+import { storeDriverTokens } from "@/lib/driver-native-session";
+import { postNativeDriverBoot } from "@/lib/driver-session-sync";
 
 const STORAGE_KEY = "wira_bridge_tokens";
 
@@ -67,26 +68,49 @@ export default function DriverAppEntryPage() {
           return;
         }
 
+        const {
+          data: { session: latest },
+        } = await supabase.auth.getSession();
+        const active = latest ?? data.session;
+
         setMsg("Menyinkronkan cookie...");
         try {
-          await fetch("/api/driver/bridge-session", {
+          const bridgeRes = await fetch("/api/driver/bridge-session", {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token,
+              access_token: active.access_token,
+              refresh_token: active.refresh_token,
             }),
           });
-        } catch {
-          /* lanjut — client session sudah ada */
+          if (!bridgeRes.ok) {
+            const j = (await bridgeRes.json().catch(() => ({}))) as { error?: string };
+            throw new Error(j.error ?? "Bridge sesi gagal");
+          }
+        } catch (bridgeErr) {
+          const rn = (
+            window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
+          ).ReactNativeWebView;
+          rn?.postMessage(
+            JSON.stringify({
+              type: "WIRA_SESSION_FAILED",
+              message:
+                bridgeErr instanceof Error ? bridgeErr.message : "Bridge sesi gagal",
+            })
+          );
+          setMsg("Gagal sinkron sesi. Login ulang di aplikasi.");
+          return;
         }
 
         appliedRef.current = true;
-        postNativeSessionSync({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        });
+        storeDriverTokens(
+          {
+            access_token: active.access_token,
+            refresh_token: active.refresh_token,
+          },
+          true
+        );
         postNativeDriverBoot("session_ok");
         postNativeDriverBoot("redirecting");
 
