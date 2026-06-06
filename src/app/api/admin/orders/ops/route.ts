@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   let query = admin
     .from("orders")
     .select(
-      "*, merchants(name, is_open, is_active, admin_suspended), profiles:customer_id(name, email), drivers!driver_id(name)"
+      "*, merchants(name, is_open, is_active, admin_suspended), profiles:customer_id(name, email)"
     )
     .order("created_at", { ascending: false })
     .limit(80);
@@ -62,7 +62,31 @@ export async function GET(req: Request) {
     return secureJsonResponse({ error: error.message }, { status: 500 });
   }
 
-  const rows = ((data as Order[]) ?? []).map((o) => enrichOrderForOps(o));
+  const orders = (data as Order[]) ?? [];
+  const driverIds = [
+    ...new Set(orders.map((o) => o.driver_id).filter((id): id is string => Boolean(id))),
+  ];
+
+  const driverNameById = new Map<string, { name: string }>();
+  if (driverIds.length > 0) {
+    const { data: drivers, error: driverErr } = await admin
+      .from("drivers")
+      .select("id, name")
+      .in("id", driverIds);
+    if (driverErr) {
+      return secureJsonResponse({ error: driverErr.message }, { status: 500 });
+    }
+    for (const d of drivers ?? []) {
+      driverNameById.set(d.id, { name: d.name });
+    }
+  }
+
+  const rows = orders.map((o) =>
+    enrichOrderForOps({
+      ...o,
+      drivers: o.driver_id ? (driverNameById.get(o.driver_id) ?? null) : null,
+    })
+  );
   const withIssues =
     filter === "issues" ? rows.filter((r) => r.issues.length > 0) : rows;
 
