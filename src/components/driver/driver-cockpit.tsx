@@ -101,6 +101,7 @@ export function DriverCockpit() {
   const supabase = createClient();
   const orderAlertsReadyRef = useRef(false);
   const lastAlertOrderIdRef = useRef<string | null>(null);
+  const prevActiveStatusRef = useRef<string | null>(null);
 
   const isOnline = driver?.status === "idle" || driver?.status === "delivering";
   const hasActive = Boolean(activeOrder);
@@ -191,7 +192,29 @@ export function DriverCockpit() {
 
   useEffect(() => {
     void loadPool();
-  }, [loadPool, dismissed, activeOrder]);
+  }, [loadPool, dismissed]);
+
+  /** APK WebView sering miss realtime — poll status order aktif tiap 5 detik. */
+  useEffect(() => {
+    if (!driver?.id || !hasActive) return;
+    const timer = setInterval(() => {
+      void loadPool();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [driver?.id, hasActive, loadPool]);
+
+  useEffect(() => {
+    const status = activeOrder?.order_status ?? null;
+    if (!status) {
+      prevActiveStatusRef.current = null;
+      return;
+    }
+    const prev = prevActiveStatusRef.current;
+    if (prev && prev !== status && status === "ready_for_pickup") {
+      void playDriverIncomingOrderSound();
+    }
+    prevActiveStatusRef.current = status;
+  }, [activeOrder?.id, activeOrder?.order_status]);
 
   useEffect(() => {
     setCustomerNavMode(false);

@@ -8,7 +8,8 @@ export type OrderOpsIssue =
   | "merchant_closed"
   | "merchant_inactive"
   | "stuck_ready_pickup"
-  | "stuck_paid";
+  | "stuck_paid"
+  | "driver_not_pickup";
 
 export const ORDER_OPS_ISSUE_LABEL: Record<OrderOpsIssue, string> = {
   no_driver: "Belum ada driver",
@@ -16,6 +17,7 @@ export const ORDER_OPS_ISSUE_LABEL: Record<OrderOpsIssue, string> = {
   merchant_inactive: "Toko nonaktif / ditangguhkan",
   stuck_ready_pickup: "Siap diambil — driver lama tidak ambil",
   stuck_paid: "Terbayar — merchant lama tidak proses",
+  driver_not_pickup: "Driver sudah ditugaskan — belum ambil di toko",
 };
 
 const ACTIVE_STATUSES: OrderStatus[] = [
@@ -29,6 +31,7 @@ const ACTIVE_STATUSES: OrderStatus[] = [
 const NO_DRIVER_MINUTES = 12;
 const STUCK_READY_MINUTES = 18;
 const STUCK_PAID_MINUTES = 25;
+const DRIVER_NOT_PICKUP_MINUTES = 3;
 
 export function minutesSince(iso: string): number {
   return Math.max(0, (Date.now() - new Date(iso).getTime()) / 60_000);
@@ -76,6 +79,18 @@ export function detectOrderIssues(
 
   if (order.order_status === "paid" && ageMin >= STUCK_PAID_MINUTES) {
     issues.push("stuck_paid");
+  }
+
+  if (
+    delivery &&
+    order.driver_id &&
+    order.order_status === "ready_for_pickup"
+  ) {
+    const readySince =
+      (order as Order & { updated_at?: string }).updated_at ?? order.created_at;
+    if (minutesSince(readySince) >= DRIVER_NOT_PICKUP_MINUTES) {
+      issues.push("driver_not_pickup");
+    }
   }
 
   return [...new Set(issues)];

@@ -104,6 +104,7 @@ export interface Order {
   snap_token: string | null;
   payment_gateway?: string | null;
   created_at: string;
+  updated_at?: string;
   admin_cancel_reason?: string | null;
   admin_cancelled_at?: string | null;
   admin_cancelled_by?: string | null;

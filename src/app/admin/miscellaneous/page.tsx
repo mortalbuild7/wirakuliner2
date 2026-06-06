@@ -154,8 +154,10 @@ export default function AdminMiscellaneousPage() {
               setCancelReason(
                 o.issues.includes("merchant_closed")
                   ? "Toko tutup/libur — dibatalkan admin dengan refund penuh"
-                  : o.issues.includes("no_driver") || o.issues.includes("stuck_ready_pickup")
-                    ? "Tidak ada driver — dibatalkan admin dengan refund penuh"
+                  : o.issues.includes("no_driver") ||
+                      o.issues.includes("stuck_ready_pickup") ||
+                      o.issues.includes("driver_not_pickup")
+                    ? "Masalah driver/pengambilan — dibatalkan admin dengan refund penuh"
                     : ""
               );
               setCancelTarget(o);
