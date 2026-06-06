@@ -1,6 +1,6 @@
 /**
- * Pusat zona antar: WIRA Kuliner — Jl. Me. Wira 12, Parung, Bogor.
- * Override via NEXT_PUBLIC_JALAN_WIRA_LAT / NEXT_PUBLIC_JALAN_WIRA_LNG
+ * Zona antar 3 km dihitung dari koordinat toko (merchant.latitude / longitude).
+ * JALAN_WIRA hanya referensi peta default, bukan pusat radius pesanan.
  */
 function parseCoord(raw: string | undefined, fallback: number): number {
   if (raw == null || raw === "") return fallback;
@@ -8,6 +8,7 @@ function parseCoord(raw: string | undefined, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** Pusat peta default (bukan pusat radius pesanan). */
 export const JALAN_WIRA = {
   name: "Jl. Me. Wira, Parung",
   address:
@@ -27,28 +28,24 @@ export type ZoneCenter = {
   name: string;
 };
 
-/** Pusat radius: koordinat toko yang dipesan (paling akurat), fallback pusat WIRA. */
+/** Pusat radius 3 km = koordinat toko yang dipesan. */
 export function deliveryZoneCenter(
   merchantLat?: number | null,
   merchantLng?: number | null,
   merchantName?: string | null
-): ZoneCenter {
+): ZoneCenter | null {
   if (
-    merchantLat != null &&
-    merchantLng != null &&
-    Number.isFinite(merchantLat) &&
-    Number.isFinite(merchantLng)
+    merchantLat == null ||
+    merchantLng == null ||
+    !Number.isFinite(merchantLat) ||
+    !Number.isFinite(merchantLng)
   ) {
-    return {
-      lat: merchantLat,
-      lng: merchantLng,
-      name: merchantName?.trim() || "Toko",
-    };
+    return null;
   }
   return {
-    lat: JALAN_WIRA.latitude,
-    lng: JALAN_WIRA.longitude,
-    name: JALAN_WIRA.name,
+    lat: merchantLat,
+    lng: merchantLng,
+    name: merchantName?.trim() || "Toko",
   };
 }
 
@@ -69,6 +66,7 @@ export function haversineKm(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/** @deprecated Gunakan distanceToZone dari koordinat toko. */
 export function distanceFromJalanWira(deliveryLat: number, deliveryLng: number): number {
   return haversineKm(
     JALAN_WIRA.latitude,
@@ -92,26 +90,46 @@ export function gpsToleranceKm(accuracyMeters?: number | null): number {
   return Math.min(accuracyMeters / 1000, MAX_GPS_TOLERANCE_KM);
 }
 
+/** Cek dalam radius 3 km dari titik toko (wajib beri centerLat/centerLng merchant). */
 export function isWithinRadius(
   deliveryLat: number,
   deliveryLng: number,
-  radiusKm = DELIVERY_RADIUS_KM,
-  centerLat = JALAN_WIRA.latitude,
-  centerLng = JALAN_WIRA.longitude
+  centerLat: number,
+  centerLng: number,
+  radiusKm = DELIVERY_RADIUS_KM
 ): boolean {
   return distanceToZone(deliveryLat, deliveryLng, centerLat, centerLng) <= radiusKm;
 }
 
-/** Radius + toleransi akurasi GPS (server & client). */
+/** Radius 3 km dari toko + toleransi akurasi GPS pelanggan. */
 export function isWithinDeliveryZone(
   deliveryLat: number,
   deliveryLng: number,
+  centerLat: number,
+  centerLng: number,
   accuracyMeters?: number | null,
-  radiusKm = DELIVERY_RADIUS_KM,
-  centerLat = JALAN_WIRA.latitude,
-  centerLng = JALAN_WIRA.longitude
+  radiusKm = DELIVERY_RADIUS_KM
 ): boolean {
   const dist = distanceToZone(deliveryLat, deliveryLng, centerLat, centerLng);
   const effectiveRadius = radiusKm + gpsToleranceKm(accuracyMeters);
   return dist <= effectiveRadius;
+}
+
+/** Shortcut: cek zona antar dari koordinat merchant. */
+export function isWithinMerchantDeliveryZone(
+  deliveryLat: number,
+  deliveryLng: number,
+  merchantLat: number,
+  merchantLng: number,
+  accuracyMeters?: number | null,
+  radiusKm = DELIVERY_RADIUS_KM
+): boolean {
+  return isWithinDeliveryZone(
+    deliveryLat,
+    deliveryLng,
+    merchantLat,
+    merchantLng,
+    accuracyMeters,
+    radiusKm
+  );
 }

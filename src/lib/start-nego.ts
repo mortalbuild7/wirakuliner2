@@ -48,6 +48,10 @@ export async function startOrderNegotiation(
     merchant?.longitude,
     merchant?.name
   );
+  if (!zone) {
+    return { error: "Toko belum memiliki koordinat GPS", status: 400 };
+  }
+
   const distance = distanceToZone(
     order.delivery_lat,
     order.delivery_lng,
@@ -57,10 +61,9 @@ export async function startOrderNegotiation(
   const within = isWithinDeliveryZone(
     order.delivery_lat,
     order.delivery_lng,
-    accuracyM,
-    undefined,
     zone.lat,
-    zone.lng
+    zone.lng,
+    accuracyM
   );
 
   if (within) {

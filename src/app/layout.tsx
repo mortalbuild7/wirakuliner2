@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "WIRA Kuliner — Antar Makanan",
-  description: "Multi-merchant food delivery dari Jalan Wira",
+  description: "Multi-merchant food delivery — radius 3 km dari toko",
   icons: {
     icon: [
       { url: "/favicon.png", sizes: "32x32", type: "image/png" },

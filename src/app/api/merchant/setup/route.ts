@@ -17,6 +17,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Nama toko dan alamat wajib diisi" }, { status: 400 });
     }
 
+    const lat =
+      typeof latitude === "number" && Number.isFinite(latitude) ? latitude : null;
+    const lng =
+      typeof longitude === "number" && Number.isFinite(longitude) ? longitude : null;
+    if (
+      lat == null ||
+      lng == null ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return NextResponse.json(
+        { error: "Koordinat GPS toko (latitude & longitude) wajib diisi dengan benar" },
+        { status: 400 }
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -63,8 +81,8 @@ export async function POST(req: Request) {
         address: address.trim(),
         description: description?.trim() ?? "",
         category: category ?? "makanan",
-        latitude: latitude ?? -6.42776,
-        longitude: longitude ?? 106.727392,
+        latitude: lat,
+        longitude: lng,
         is_active: false,
         is_open: false,
         approval_status: "pending",

@@ -25,7 +25,7 @@ const ROLE_REDIRECT: Record<UserRole, string> = {
 const ROLE_COPY = {
   customer: {
     badge: "Pemesan",
-    subtitle: "Pesan makanan dari toko dalam radius 3 km",
+    subtitle: "Pesan makanan — ongkir flat dalam radius 3 km dari toko",
   },
   merchant: {
     badge: "Toko",

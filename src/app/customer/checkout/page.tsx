@@ -33,14 +33,11 @@ function CheckoutForm() {
   const [merchantName, setMerchantName] = useState("");
   const [merchantLat, setMerchantLat] = useState<number | null>(null);
   const [merchantLng, setMerchantLng] = useState<number | null>(null);
-  const [zoneCenter, setZoneCenter] = useState<ZoneCenter>({
-    lat: JALAN_WIRA.latitude,
-    lng: JALAN_WIRA.longitude,
-    name: JALAN_WIRA.name,
-  });
+  const [zoneCenter, setZoneCenter] = useState<ZoneCenter | null>(null);
   const [address, setAddress] = useState("");
   const [lat, setLat] = useState(JALAN_WIRA.latitude);
   const [lng, setLng] = useState(JALAN_WIRA.longitude);
+  const [merchantCoordsReady, setMerchantCoordsReady] = useState(false);
   const [distance, setDistance] = useState(0);
   const [outside, setOutside] = useState(false);
   const [gpsAccuracyM, setGpsAccuracyM] = useState<number | null>(null);
@@ -81,7 +78,12 @@ function CheckoutForm() {
               data.name
             );
             setZoneCenter(center);
+            setMerchantCoordsReady(center != null);
             setStoreOpen(isStoreOpen(data));
+            if (center && !dineIn) {
+              setLat(center.lat);
+              setLng(center.lng);
+            }
             if (dineIn) {
               setLat(data.latitude);
               setLng(data.longitude);
@@ -96,12 +98,19 @@ function CheckoutForm() {
     setMerchantName(m.name);
     setMerchantLat(m.latitude);
     setMerchantLng(m.longitude);
-    setZoneCenter(deliveryZoneCenter(m.latitude, m.longitude, m.name));
+    const center = deliveryZoneCenter(m.latitude, m.longitude, m.name);
+    setZoneCenter(center);
+    setMerchantCoordsReady(center != null);
     setStoreOpen(isStoreOpen(m));
   });
 
   useEffect(() => {
     if (dineIn) {
+      setDistance(0);
+      setOutside(false);
+      return;
+    }
+    if (!zoneCenter) {
       setDistance(0);
       setOutside(false);
       return;
@@ -113,10 +122,9 @@ function CheckoutForm() {
       !isWithinDeliveryZone(
         lat,
         lng,
-        accuracyForZone,
-        undefined,
         zoneCenter.lat,
-        zoneCenter.lng
+        zoneCenter.lng,
+        accuracyForZone
       )
     );
   }, [lat, lng, dineIn, gpsAccuracyM, bestGpsAccuracyM, zoneCenter]);
@@ -149,7 +157,8 @@ function CheckoutForm() {
   }
 
   const canPlaceDelivery =
-    dineIn || Boolean(deliveryAddressForOrder()) || gpsAccuracyM != null;
+    dineIn ||
+    (merchantCoordsReady && (Boolean(deliveryAddressForOrder()) || gpsAccuracyM != null));
 
   async function placeOrder() {
     setPlaceError(null);
@@ -319,8 +328,15 @@ function CheckoutForm() {
           <p className="mt-1 font-medium text-white">{address || merchantName}</p>
           <p className="mt-2 text-xs text-cyan-300/90">Tanpa ongkir — ambil di toko</p>
         </section>
+      ) : !merchantCoordsReady || !zoneCenter ? (
+        <section className="glass-card p-4 text-sm text-muted-foreground">
+          Memuat lokasi toko untuk radius antar 3 km...
+        </section>
       ) : (
         <section className="glass-card space-y-4 p-4">
+          <p className="text-xs text-cyan-300/80">
+            Radius 3 km dihitung dari <strong className="text-white">{zoneCenter.name}</strong>
+          </p>
           <LocationPicker
             latitude={lat}
             longitude={lng}

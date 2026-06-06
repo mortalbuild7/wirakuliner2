@@ -188,7 +188,7 @@ Deno.serve(async (req) => {
 
       if (isNego) {
         title = "Order Nego — WIRA Kuliner";
-        bodyMsg = `Pesanan di luar radius 3km: ${record.delivery_address}`;
+        bodyMsg = `Pesanan di luar radius 3 km dari toko: ${record.delivery_address}`;
         dataType = "negotiation";
       }
 

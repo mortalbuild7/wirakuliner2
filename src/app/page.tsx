@@ -33,7 +33,7 @@ export default function HomePage() {
         <HomeAccessBanner />
       </div>
       <section className="mx-auto max-w-5xl px-4 py-16 text-center">
-        <p className="text-sm font-medium text-wira-orange">Dari Jalan Wira — radius 3 km</p>
+        <p className="text-sm font-medium text-wira-orange">Radius 3 km dari toko yang dipesan</p>
         <h2 className="mt-2 text-4xl font-bold tracking-tight">
           Antar makanan multi-toko, satu platform
         </h2>

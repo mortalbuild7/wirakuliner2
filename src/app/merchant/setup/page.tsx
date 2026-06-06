@@ -214,16 +214,17 @@ export default function MerchantSetupPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label>Latitude</Label>
-                <Input value={lat} onChange={(e) => setLat(e.target.value)} />
+                <Label>Latitude toko</Label>
+                <Input value={lat} onChange={(e) => setLat(e.target.value)} required />
               </div>
               <div>
-                <Label>Longitude</Label>
-                <Input value={lng} onChange={(e) => setLng(e.target.value)} />
+                <Label>Longitude toko</Label>
+                <Input value={lng} onChange={(e) => setLng(e.target.value)} required />
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Setelah submit, toko Anda akan ditinjau admin sebelum bisa menerima pesanan.
+              Koordinat GPS toko menjadi pusat radius antar 3 km untuk pesanan delivery.
+              Setelah submit, toko ditinjau admin sebelum bisa menerima pesanan.
             </p>
             <Button type="submit" className="w-full" disabled={saving}>
               {saving ? "Mengirim..." : "Kirim Pendaftaran Toko"}

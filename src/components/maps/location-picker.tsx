@@ -92,7 +92,7 @@ export function LocationPicker({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium text-cyan-300">
           <Radar className="h-4 w-4" />
-          GPS realtime · radius {DELIVERY_RADIUS_KM} km
+          GPS realtime · {DELIVERY_RADIUS_KM} km dari toko
         </div>
         <Button
           type="button"

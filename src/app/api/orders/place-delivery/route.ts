@@ -113,24 +113,30 @@ export async function POST(req: Request) {
 
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
   const zone = deliveryZoneCenter(merchant.latitude, merchant.longitude, merchant.name);
+
+  if (!dineIn && !zone) {
+    return secureJsonResponse(
+      { error: "Toko belum memiliki koordinat GPS. Hubungi merchant." },
+      { status: 400 }
+    );
+  }
+
+  const accuracyM = body.accuracyM ?? null;
   const distanceKm = dineIn
     ? 0
-    : (parseBoundedNumber(body.distanceKm, 0, 500) ??
-      distanceToZone(deliveryLat, deliveryLng, zone.lat, zone.lng));
-  const accuracyM = body.accuracyM ?? null;
+    : distanceToZone(deliveryLat, deliveryLng, zone!.lat, zone!.lng);
 
   const withinZone = dineIn
     ? true
     : isWithinDeliveryZone(
         deliveryLat,
         deliveryLng,
-        accuracyM,
-        undefined,
-        zone.lat,
-        zone.lng
+        zone!.lat,
+        zone!.lng,
+        accuracyM
       );
 
-  const outside = !dineIn && body.isOutsideRadius === true && !withinZone;
+  const outside = !dineIn && !withinZone;
   const deliveryFee = dineIn ? 0 : outside ? 0 : FLAT_DELIVERY_FEE_IDR;
   const skipPayment =
     body.skipPayment === true || process.env.NEXT_PUBLIC_PAYMENT_BYPASS === "true";
