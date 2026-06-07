@@ -14,7 +14,10 @@ const NAV = [
     href: "/customer",
     label: "Jelajah",
     icon: Home,
-    match: (p: string) => p === "/customer" || p.startsWith("/customer/ngojek"),
+    match: (p: string) =>
+      p === "/customer" ||
+      p.startsWith("/customer/ride") ||
+      p.startsWith("/customer/ngojek"),
   },
   {
     href: "/customer/cart",

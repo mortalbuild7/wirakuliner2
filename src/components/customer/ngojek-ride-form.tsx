@@ -97,7 +97,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
 
   async function bookRide() {
     if (!userId) {
-      router.push(`/login?next=${encodeURIComponent("/customer?tab=ngojek")}`);
+      router.push(`/login?next=${encodeURIComponent("/customer/ride")}`);
       return;
     }
     if (!destAddress.trim()) {
@@ -206,7 +206,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
 
       {!userId && (
         <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-100">
-          <Link href={`/login?next=${encodeURIComponent("/customer?tab=ngojek")}`} className="underline">
+          <Link href={`/login?next=${encodeURIComponent("/customer/ride")}`} className="underline">
             Login
           </Link>{" "}
           untuk memesan NGOJEK
