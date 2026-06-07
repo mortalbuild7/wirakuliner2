@@ -160,6 +160,7 @@ export function GpsLockMapInner({
   hubLng,
   hubLabel = "W",
   showRadius = true,
+  showHubMarker = true,
   followGps = true,
   lockZoom = true,
   manualPickMode = false,
@@ -183,6 +184,7 @@ export function GpsLockMapInner({
   hubLng: number;
   hubLabel?: string;
   showRadius?: boolean;
+  showHubMarker?: boolean;
   followGps?: boolean;
   lockZoom?: boolean;
   /** Mode pilih titik antar manual: ketuk peta + geser pin, zoom bebas. */
@@ -272,7 +274,9 @@ export function GpsLockMapInner({
             }}
           />
         )}
-        {!navActive && <Marker position={hubPos} icon={hubIcon(hubLabel)} />}
+        {!navActive && showHubMarker && (
+          <Marker position={hubPos} icon={hubIcon(hubLabel)} />
+        )}
         {userAccuracyM != null && userAccuracyM > 0 && (
           <Circle
             center={userPos}

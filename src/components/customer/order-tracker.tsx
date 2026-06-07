@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { ORDER_STATUS_LABEL } from "@/lib/order-flow";
+import { isOnsiteOrder } from "@/lib/order-channel";
+import { CustomerOrderTrackMap } from "@/components/customer/customer-order-track-map";
 import Image from "next/image";
-import { MapPin, Package, Phone, Truck, User, Utensils } from "lucide-react";
+import { Loader2, MapPin, Package, Phone, Search, Truck, User, Utensils } from "lucide-react";
 import type { DriverPublicInfo, Order, OrderStatus } from "@/types/database";
 
 const STEPS: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
@@ -144,6 +146,58 @@ export function OrderTracker({ orderId }: { orderId: string }) {
     };
   }, [orderId, loadOrder, supabase]);
 
+  const driverId = order?.driver_id ?? null;
+  const trackDriverLive =
+    Boolean(driverId) &&
+    order != null &&
+    !isOnsiteOrder(order.delivery_address) &&
+    !["pending_payment", "cancelled", "delivered"].includes(order.order_status);
+
+  useEffect(() => {
+    if (!trackDriverLive || !driverId) return;
+
+    let cancelled = false;
+
+    const applyDriverPos = (lat: number | null, lng: number | null) => {
+      if (cancelled || lat == null || lng == null) return;
+      setDriverPos({ lat, lng });
+    };
+
+    const pollDriver = async () => {
+      const res = await fetch(`/api/orders/${orderId}`, { credentials: "include" });
+      const json = (await res.json().catch(() => ({}))) as TrackResponse;
+      if (res.ok && json.driverPos) {
+        applyDriverPos(json.driverPos.lat, json.driverPos.lng);
+      }
+      if (res.ok && json.driverInfo) {
+        setDriverInfo(json.driverInfo);
+      }
+    };
+
+    const driverChannel = supabase
+      .channel(`track-driver-${driverId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "drivers", filter: `id=eq.${driverId}` },
+        (payload) => {
+          const row = payload.new as { current_lat?: number | null; current_lng?: number | null };
+          applyDriverPos(row.current_lat ?? null, row.current_lng ?? null);
+        }
+      )
+      .subscribe();
+
+    void pollDriver();
+    const timer = setInterval(() => {
+      void pollDriver();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      supabase.removeChannel(driverChannel);
+    };
+  }, [driverId, orderId, supabase, trackDriverLive]);
+
   if (loading) {
     return <p className="text-muted-foreground">Memuat pelacakan...</p>;
   }
@@ -156,11 +210,43 @@ export function OrderTracker({ orderId }: { orderId: string }) {
     );
   }
 
+  const isDelivery = !isOnsiteOrder(order.delivery_address);
+  const searchingDriver =
+    isDelivery &&
+    !order.driver_id &&
+    ["paid", "preparing", "ready_for_pickup"].includes(order.order_status);
+
   const currentIdx = STEPS.findIndex((s) => s.status === order.order_status);
-  const statusLabel = ORDER_STATUS_LABEL[order.order_status] ?? order.order_status;
+  const statusLabel = searchingDriver
+    ? "Mencari driver..."
+    : ORDER_STATUS_LABEL[order.order_status] ?? order.order_status;
+
+  const showDriverMap =
+    isDelivery &&
+    Boolean(order.driver_id) &&
+    order.delivery_lat != null &&
+    order.delivery_lng != null &&
+    !["pending_payment", "cancelled"].includes(order.order_status);
 
   return (
     <div className="space-y-6">
+      {searchingDriver && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20">
+              <Search className="h-5 w-5 animate-pulse text-amber-300" />
+            </span>
+            <div>
+              <p className="font-medium text-amber-100">Mencari driver</p>
+              <p className="mt-0.5 text-xs text-amber-200/80">
+                Pesanan sudah masuk ke sistem. Driver terdekat akan segera menerima penawaran.
+              </p>
+            </div>
+            <Loader2 className="ml-auto h-5 w-5 animate-spin text-amber-300" />
+          </div>
+        </div>
+      )}
+
       <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm">
         <p className="text-muted-foreground">Status saat ini</p>
         <p className="mt-1 font-medium text-white">{statusLabel}</p>
@@ -180,6 +266,25 @@ export function OrderTracker({ orderId }: { orderId: string }) {
           </div>
         ))}
       </div>
+      {showDriverMap && (
+        <div className="overflow-hidden rounded-lg border border-white/10">
+          <p className="border-b border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white">
+            Posisi driver
+          </p>
+          <CustomerOrderTrackMap
+            deliveryLat={order.delivery_lat}
+            deliveryLng={order.delivery_lng}
+            driverLat={driverPos?.lat}
+            driverLng={driverPos?.lng}
+          />
+          {!driverPos && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              Menunggu lokasi GPS driver...
+            </p>
+          )}
+        </div>
+      )}
+
       {driverInfo && order.driver_id && !["pending_payment", "cancelled"].includes(order.order_status) && (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
           <p className="text-sm font-medium text-emerald-200">Driver Anda</p>
@@ -213,9 +318,11 @@ export function OrderTracker({ orderId }: { orderId: string }) {
               </a>
             </div>
           </div>
-          {driverPos && order.order_status === "on_the_way" && (
+          {driverPos && ["on_the_way", "ready_for_pickup", "preparing", "paid"].includes(order.order_status) && (
             <p className="mt-3 text-xs text-muted-foreground">
-              Lokasi driver diperbarui — sedang menuju Anda
+              {order.order_status === "on_the_way"
+                ? "Lokasi driver diperbarui — sedang menuju Anda"
+                : "Driver sudah ditugaskan — pantau posisi di peta di atas"}
             </p>
           )}
         </div>

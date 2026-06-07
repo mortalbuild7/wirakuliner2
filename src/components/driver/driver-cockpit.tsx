@@ -177,10 +177,31 @@ export function DriverCockpit() {
 
     const ch = supabase
       .channel(`driver-cockpit-${driver.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
-        void loadPool();
-        void loadStats();
-      })
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `offered_driver_id=eq.${driver.id}`,
+        },
+        () => {
+          void loadPool();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `driver_id=eq.${driver.id}`,
+        },
+        () => {
+          void loadPool();
+          void loadStats();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -192,14 +213,14 @@ export function DriverCockpit() {
     void loadPool();
   }, [loadPool, dismissed]);
 
-  /** APK WebView sering miss realtime — poll status order aktif tiap 5 detik. */
+  /** APK WebView sering miss realtime — poll order pool saat online (idle atau aktif). */
   useEffect(() => {
-    if (!driver?.id || !hasActive) return;
+    if (!driver?.id || !isOnline) return;
     const timer = setInterval(() => {
       void loadPool();
     }, 5000);
     return () => clearInterval(timer);
-  }, [driver?.id, hasActive, loadPool]);
+  }, [driver?.id, isOnline, loadPool]);
 
   useEffect(() => {
     const status = activeOrder?.order_status ?? null;
