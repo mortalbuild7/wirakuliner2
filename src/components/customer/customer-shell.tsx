@@ -8,7 +8,6 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { CustomerModerationBanner } from "@/components/customer/customer-moderation-banner";
-import { CustomerExploreTabsBar } from "@/components/customer/customer-explore-tabs-bar";
 
 const NAV = [
   {
@@ -78,7 +77,6 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <CustomerModerationBanner />
-      <CustomerExploreTabsBar />
       <div className="safe-pb-nav mx-auto max-w-mobile">{children}</div>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 glass-panel pb-[env(safe-area-inset-bottom,0px)]">
