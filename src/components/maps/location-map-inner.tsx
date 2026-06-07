@@ -19,6 +19,7 @@ export function LocationMapInner({
   manualPickMode = false,
   manualPickCenter = "hub",
   showRadius = true,
+  flyToTrigger,
   height = 220,
 }: {
   latitude: number;
@@ -34,6 +35,7 @@ export function LocationMapInner({
   manualPickMode?: boolean;
   manualPickCenter?: ManualPickCenter;
   showRadius?: boolean;
+  flyToTrigger?: number;
   height?: number;
 }) {
   return (
@@ -52,6 +54,7 @@ export function LocationMapInner({
       draggableUser
       onUserDrag={onLocationChange}
       onUserDragPreview={onLocationPreview}
+      flyToTrigger={flyToTrigger}
       height={height}
     />
   );

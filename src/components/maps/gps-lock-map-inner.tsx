@@ -170,6 +170,26 @@ function MapManualPickView({
   return null;
 }
 
+/** Geser peta ke pin saat koordinat berubah dari geocoding (bukan drag). */
+function MapFlyToUser({
+  lat,
+  lng,
+  trigger,
+}: {
+  lat: number;
+  lng: number;
+  trigger?: number;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (trigger == null || trigger <= 0) return;
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 15), { duration: 0.35 });
+  }, [trigger, lat, lng, map]);
+
+  return null;
+}
+
 export type GpsLockMapPoint = {
   lat: number;
   lng: number;
@@ -200,6 +220,7 @@ export function GpsLockMapInner({
   navigationTargetLabel = "C",
   navigationTargetColor = "#22d3ee",
   userMarkerKind = "customer",
+  flyToTrigger,
   height,
   className = "h-full w-full",
 }: {
@@ -229,6 +250,8 @@ export function GpsLockMapInner({
   navigationTargetColor?: string;
   /** `driver` = ikon motor (APK driver), `customer` = pin biru checkout. */
   userMarkerKind?: "customer" | "driver";
+  /** Naikkan nilai untuk flyTo pin setelah geocode. */
+  flyToTrigger?: number;
   height?: number | null;
   className?: string;
 }) {
@@ -295,6 +318,9 @@ export function GpsLockMapInner({
         )}
         {manualPickMode && onUserDrag && (
           <MapTapPlacePin enabled={manualPickMode} onPlace={onUserDrag} />
+        )}
+        {manualPickMode && flyToTrigger != null && flyToTrigger > 0 && (
+          <MapFlyToUser lat={userLat} lng={userLng} trigger={flyToTrigger} />
         )}
         {showRadius && !navActive && (
           <Circle

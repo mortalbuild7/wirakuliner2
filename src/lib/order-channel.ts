@@ -1,9 +1,46 @@
+import type { OrderStatus } from "@/types/database";
+import { ORDER_STATUS_LABEL } from "@/lib/order-flow";
+
 /** Prefix di delivery_address untuk membedakan pesanan on-the-spot tanpa migrasi wajib. */
 export const POS_ADDRESS_PREFIX = "[POS]";
 export const DINE_IN_ADDRESS_PREFIX = "[DI TEMPAT]";
 export const NGOJEK_ADDRESS_PREFIX = "[NGOJEK]";
 
+export const KULINER_FOOD_LABEL = "KULINER FOOD";
+export const NGOJEK_LABEL = "NGOJEK";
+
 export type OrderChannel = "delivery" | "dine_in" | "pos" | "ngojek";
+
+const NGOJEK_DRIVER_STATUS: Partial<Record<OrderStatus, string>> = {
+  pending_payment: "Menunggu bayar",
+  paid: "Mencari driver",
+  preparing: "Mencari driver",
+  ready_for_pickup: "Menuju jemput",
+  on_the_way: "Menuju tujuan",
+  delivered: "Selesai",
+  cancelled: "Dibatalkan",
+};
+
+const FOOD_DRIVER_STATUS: Partial<Record<OrderStatus, string>> = {
+  pending_payment: "Menunggu bayar",
+  paid: "Order baru",
+  preparing: "Diproses toko",
+  ready_for_pickup: "Siap diambil",
+  on_the_way: "Dalam perjalanan",
+  delivered: "Selesai",
+  cancelled: "Dibatalkan",
+};
+
+/** Label status di panel driver — NGOJEK tidak memakai istilah merchant/siap diambil. */
+export function driverOrderStatusLabel(
+  deliveryAddress: string,
+  status: OrderStatus
+): string {
+  if (isNgojekOrder(deliveryAddress)) {
+    return NGOJEK_DRIVER_STATUS[status] ?? status;
+  }
+  return FOOD_DRIVER_STATUS[status] ?? ORDER_STATUS_LABEL[status] ?? status;
+}
 
 export function formatPosAddress(guestName?: string) {
   const name = guestName?.trim();

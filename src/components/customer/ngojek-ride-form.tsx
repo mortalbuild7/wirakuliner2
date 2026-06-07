@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { GeocodeHit } from "@/lib/geocode";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -54,6 +55,12 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
 
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
+  const [destSuggestions, setDestSuggestions] = useState<GeocodeHit[]>([]);
+  const [geocodingDest, setGeocodingDest] = useState(false);
+  const [mapFlyTrigger, setMapFlyTrigger] = useState(0);
+
+  const skipForwardGeocodeRef = useRef(false);
+  const reverseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { fix: gpsFix, loading: gpsLoading } = useMapLocation(true);
 
@@ -77,6 +84,108 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
   );
 
   const rideFee = useMemo(() => calculateDeliveryFee(distanceKm), [distanceKm]);
+
+  const applyDestinationCoords = useCallback((lat: number, lng: number, fly = true) => {
+    setDestLat(lat);
+    setDestLng(lng);
+    if (fly) setMapFlyTrigger((n) => n + 1);
+  }, []);
+
+  const applyDestinationHit = useCallback(
+    (hit: GeocodeHit) => {
+      skipForwardGeocodeRef.current = true;
+      setDestAddress(hit.label);
+      applyDestinationCoords(hit.lat, hit.lng);
+      setDestSuggestions([]);
+    },
+    [applyDestinationCoords]
+  );
+
+  const reverseGeocodeDest = useCallback(async (lat: number, lng: number) => {
+    try {
+      const params = new URLSearchParams({
+        reverse: "1",
+        lat: String(lat),
+        lng: String(lng),
+      });
+      const res = await fetch(`/api/geocode?${params.toString()}`);
+      const json = (await res.json().catch(() => ({}))) as { results?: GeocodeHit[] };
+      const hit = json.results?.[0];
+      if (hit) {
+        skipForwardGeocodeRef.current = true;
+        setDestAddress(hit.label);
+      }
+    } catch {
+      /* abaikan */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (skipForwardGeocodeRef.current) {
+      skipForwardGeocodeRef.current = false;
+      return;
+    }
+
+    const q = destAddress.trim();
+    if (q.length < 3) {
+      setDestSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        setGeocodingDest(true);
+        setPlaceError(null);
+        try {
+          const params = new URLSearchParams({ q });
+          params.set("nearLat", String(pickupLat));
+          params.set("nearLng", String(pickupLng));
+          const res = await fetch(`/api/geocode?${params.toString()}`);
+          const json = (await res.json().catch(() => ({}))) as {
+            error?: string;
+            results?: GeocodeHit[];
+          };
+          if (!res.ok) {
+            if (json.error) setPlaceError(json.error);
+            setDestSuggestions([]);
+            return;
+          }
+          const results = json.results ?? [];
+          if (results.length === 0) {
+            setDestSuggestions([]);
+            setPlaceError("Alamat tidak ditemukan — coba kata kunci lain atau geser pin");
+            return;
+          }
+          applyDestinationCoords(results[0].lat, results[0].lng);
+          setDestSuggestions(results.length > 1 ? results : []);
+        } catch {
+          setPlaceError("Gagal mencari alamat. Periksa koneksi internet.");
+        } finally {
+          setGeocodingDest(false);
+        }
+      })();
+    }, 750);
+
+    return () => clearTimeout(timer);
+  }, [destAddress, pickupLat, pickupLng, applyDestinationCoords]);
+
+  const handleDestMapChange = useCallback(
+    (lat: number, lng: number) => {
+      applyDestinationCoords(lat, lng, false);
+      setDestSuggestions([]);
+      if (reverseTimerRef.current) clearTimeout(reverseTimerRef.current);
+      reverseTimerRef.current = setTimeout(() => {
+        void reverseGeocodeDest(lat, lng);
+      }, 500);
+    },
+    [applyDestinationCoords, reverseGeocodeDest]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (reverseTimerRef.current) clearTimeout(reverseTimerRef.current);
+    };
+  }, []);
 
   const refreshPickupGps = useCallback(() => {
     if (!navigator.geolocation) {
@@ -260,26 +369,44 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-300">
             <MapPin className="h-4 w-4" />
           </span>
-          <div className="flex-1">
+          <div className="relative flex-1">
             <Label className="text-xs text-cyan-300">Tujuan</Label>
             <Input
               value={destAddress}
-              onChange={(e) => setDestAddress(e.target.value)}
-              placeholder="Alamat tujuan"
-              className="mt-1 border-white/10 bg-white/5"
+              onChange={(e) => {
+                setPlaceError(null);
+                setDestAddress(e.target.value);
+              }}
+              placeholder="Ketik alamat tujuan..."
+              className="mt-1 border-white/10 bg-white/5 pr-9"
             />
+            {geocodingDest && (
+              <Loader2 className="absolute right-3 top-[2.15rem] h-4 w-4 animate-spin text-cyan-400" />
+            )}
+            {destSuggestions.length > 0 && (
+              <ul className="absolute left-0 right-0 top-full z-40 mt-1 max-h-40 overflow-y-auto rounded-xl border border-white/15 bg-slate-950 shadow-xl">
+                {destSuggestions.map((hit) => (
+                  <li key={`${hit.lat}-${hit.lng}-${hit.label}`}>
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2.5 text-left text-xs text-white hover:bg-cyan-500/15"
+                      onClick={() => applyDestinationHit(hit)}
+                    >
+                      {hit.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
         <p className="text-[10px] text-muted-foreground">
-          Geser pin di peta untuk menentukan lokasi tujuan
+          Ketik alamat — pin biru mengikuti. Atau geser pin / ketuk peta.
         </p>
         <DestinationMap
           latitude={destLat}
           longitude={destLng}
-          onLocationChange={(lat, lng) => {
-            setDestLat(lat);
-            setDestLng(lng);
-          }}
+          onLocationChange={handleDestMapChange}
           accuracyM={null}
           hubLat={pickupLat}
           hubLng={pickupLng}
@@ -289,6 +416,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
           lockZoom={false}
           manualPickMode
           manualPickCenter="both"
+          flyToTrigger={mapFlyTrigger}
           height={240}
         />
       </section>

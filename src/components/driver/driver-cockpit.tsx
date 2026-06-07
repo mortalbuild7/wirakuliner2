@@ -10,11 +10,20 @@ import { useDriverMapLocation } from "@/hooks/use-driver-map-location";
 import { DriverMapView } from "@/components/driver/driver-map-view";
 import { DriverStatusToggle } from "@/components/driver/driver-status-toggle";
 import { formatIdr } from "@/lib/utils";
-import { isNgojekOrder, isOnsiteOrder, parseNgojekLegs } from "@/lib/order-channel";
 import {
-  DRIVER_REWARD_POINTS_PER_ORDER,
-  ORDER_STATUS_LABEL,
-} from "@/lib/order-flow";
+  driverOrderStatusLabel,
+  isNgojekOrder,
+  isOnsiteOrder,
+  KULINER_FOOD_LABEL,
+  NGOJEK_LABEL,
+  parseNgojekLegs,
+} from "@/lib/order-channel";
+import { DRIVER_REWARD_POINTS_PER_ORDER } from "@/lib/order-flow";
+import {
+  DriverChannelBadge,
+  DriverOrderRouteLine,
+  driverCardBorderClass,
+} from "@/components/driver/driver-order-chrome";
 import { DRIVER_STATUS_LABEL } from "@/lib/driver";
 import type { DriverStatus, Order, OrderItem } from "@/types/database";
 import {
@@ -478,11 +487,15 @@ export function DriverCockpit() {
 
   async function pickupOrder() {
     if (!activeOrder) return;
-    const customerName = customerOf(activeOrder)?.name ?? "customer";
-    const orderCode = shortOrderId(activeOrder.id);
-    const ok = confirm(
-      `Konfirmasi pengambilan di toko:\n\nSebutkan ke kasir:\n• Nama: ${customerName}\n• ID: ${orderCode}\n\nSudah menerima paket dari restoran?`
-    );
+    const isRide = isNgojekOrder(activeOrder.delivery_address);
+    const customerName = customerOf(activeOrder)?.name ?? "penumpang";
+    const ok = isRide
+      ? confirm(
+          `Penumpang ${customerName} sudah naik?\n\nMulai perjalanan ke lokasi tujuan.`
+        )
+      : confirm(
+          `Konfirmasi pengambilan di toko:\n\nSebutkan ke kasir:\n• Nama: ${customerName}\n• ID: ${shortOrderId(activeOrder.id)}\n\nSudah menerima paket dari restoran?`
+        );
     if (!ok) return;
     setBusy(true);
     const res = await fetchWithDriverAuth("/api/driver/pickup", {
@@ -547,7 +560,6 @@ export function DriverCockpit() {
   const offerShop = incomingOffer ? merchantOf(incomingOffer) : undefined;
   const offerCustomer = incomingOffer ? customerOf(incomingOffer) : undefined;
   const offerIsNgojek = incomingOffer ? isNgojekOrder(incomingOffer.delivery_address) : false;
-  const offerNgojekLegs = incomingOffer ? parseNgojekLegs(incomingOffer.delivery_address) : null;
   const activeCustomer = activeOrder ? customerOf(activeOrder) : undefined;
   const orderTotal = (o: OrderRow) =>
     Number(o.total_product_amount) + Number(o.delivery_fee);
@@ -656,26 +668,54 @@ export function DriverCockpit() {
 
           {incomingOffer && !hasActive && (
             <div
-              className={`absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl border border-emerald-500/40 bg-slate-950/95 p-4 shadow-xl backdrop-blur`}
+              className={cn(
+                `absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl border bg-slate-950/95 p-4 shadow-xl backdrop-blur`,
+                driverCardBorderClass(offerIsNgojek)
+              )}
             >
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
-                Pesanan masuk
-              </p>
-              <p className="mt-1 text-lg font-bold text-white">
-                {offerIsNgojek ? "NGOJEK Ride" : (offerShop?.name ?? "Toko")}
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 space-y-1">
+                  <p
+                    className={cn(
+                      "text-[10px] font-semibold uppercase tracking-wider",
+                      offerIsNgojek ? "text-cyan-400" : "text-orange-400"
+                    )}
+                  >
+                    Order masuk
+                  </p>
+                  <DriverChannelBadge isRide={offerIsNgojek} />
+                  <p className="text-lg font-bold text-white">
+                    {offerIsNgojek ? NGOJEK_LABEL : (offerShop?.name ?? KULINER_FOOD_LABEL)}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full border px-2 py-0.5 text-[10px]",
+                    offerIsNgojek
+                      ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-200"
+                      : "border-orange-500/30 bg-orange-500/10 text-orange-200"
+                  )}
+                >
+                  {driverOrderStatusLabel(
+                    incomingOffer.delivery_address,
+                    incomingOffer.order_status
+                  )}
+                </span>
+              </div>
               {offerCustomer && (
-                <p className="mt-1 text-sm font-medium text-cyan-200">
-                  Customer: {offerCustomer.name}
+                <p className="mt-2 text-sm font-medium text-cyan-200">
+                  {offerIsNgojek ? "Penumpang" : "Customer"}: {offerCustomer.name}
                   {offerCustomer.phone ? ` · ${offerCustomer.phone}` : ""}
                 </p>
               )}
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                {offerIsNgojek && offerNgojekLegs
-                  ? `${offerNgojekLegs.pickup} → ${offerNgojekLegs.destination}`
-                  : incomingOffer.delivery_address}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-cyan-300">
+              <div className="mt-2">
+                <DriverOrderRouteLine
+                  isRide={offerIsNgojek}
+                  deliveryAddress={incomingOffer.delivery_address}
+                  merchantName={offerShop?.name}
+                />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-cyan-300">
                 {formatIdr(orderTotal(incomingOffer))}
                 <span className="ml-2 text-xs text-muted-foreground">
                   {offerIsNgojek ? "tarif ride" : "ongkir"}{" "}
@@ -720,10 +760,18 @@ export function DriverCockpit() {
                 handleUserGesture();
                 setOrderCardExpanded(true);
               }}
-              className={`absolute inset-x-4 ${orderCardBottom} z-20 flex w-auto items-center justify-between gap-3 rounded-2xl border border-sky-400/50 bg-slate-950/95 px-4 py-3 shadow-xl backdrop-blur`}
+              className={cn(
+                `absolute inset-x-4 ${orderCardBottom} z-20 flex w-auto items-center justify-between gap-3 rounded-2xl border bg-slate-950/95 px-4 py-3 shadow-xl backdrop-blur`,
+                activeIsNgojek ? "border-cyan-400/50" : "border-orange-400/50"
+              )}
             >
               <div className="min-w-0 text-left">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300">
+                <p
+                  className={cn(
+                    "text-[10px] font-semibold uppercase tracking-wider",
+                    activeIsNgojek ? "text-cyan-300" : "text-orange-300"
+                  )}
+                >
                   {navMode === "merchant"
                     ? activeIsNgojek
                       ? "Navigasi jemput"
@@ -733,11 +781,14 @@ export function DriverCockpit() {
                         ? "Navigasi tujuan"
                         : "Navigasi ke customer"
                       : activeIsNgojek
-                        ? "NGOJEK aktif"
-                        : "Pesanan aktif"}
+                        ? NGOJEK_LABEL
+                        : KULINER_FOOD_LABEL}
                 </p>
                 <p className="truncate text-sm font-semibold text-white">
-                  {navDestination?.label ?? activeCustomer?.name ?? shop?.name ?? "Pesanan"}
+                  {navDestination?.label ??
+                    (activeIsNgojek
+                      ? activeCustomer?.name ?? "Penumpang"
+                      : activeCustomer?.name ?? shop?.name ?? "Pesanan")}
                 </p>
               </div>
               <ChevronUp className="h-5 w-5 shrink-0 text-sky-300" />
@@ -746,14 +797,23 @@ export function DriverCockpit() {
 
           {activeOrder && orderCardExpanded && (
             <div
-              className={`absolute inset-x-4 ${orderCardBottom} z-20 max-h-[min(70dvh,520px)] overflow-y-auto rounded-2xl border border-cyan-500/30 bg-slate-950/95 p-4 shadow-xl backdrop-blur`}
+              className={cn(
+                `absolute inset-x-4 ${orderCardBottom} z-20 max-h-[min(70dvh,520px)] overflow-y-auto rounded-2xl border bg-slate-950/95 p-4 shadow-xl backdrop-blur`,
+                driverCardBorderClass(activeIsNgojek)
+              )}
             >
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-400">
-                    Pesanan aktif
+                <div className="space-y-1">
+                  <p
+                    className={cn(
+                      "text-[10px] font-semibold uppercase tracking-wider",
+                      activeIsNgojek ? "text-cyan-400" : "text-orange-400"
+                    )}
+                  >
+                    {activeIsNgojek ? "Ride aktif" : "Pesanan aktif"}
                   </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
+                  <DriverChannelBadge isRide={activeIsNgojek} />
+                  <p className="text-xs text-muted-foreground">
                     ID: <span className="font-mono text-cyan-200">{shortOrderId(activeOrder.id)}</span>
                   </p>
                 </div>
@@ -821,21 +881,34 @@ export function DriverCockpit() {
                 )}
               </div>
 
-              <p className="mt-2 text-xs text-emerald-200/90">
-                {ORDER_STATUS_LABEL[activeOrder.order_status]}
-              </p>
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                {activeOrder.delivery_address}
+              <p
+                className={cn(
+                  "mt-2 text-xs font-medium",
+                  activeIsNgojek ? "text-cyan-200/90" : "text-emerald-200/90"
+                )}
+              >
+                {driverOrderStatusLabel(
+                  activeOrder.delivery_address,
+                  activeOrder.order_status
+                )}
               </p>
 
-              {orderItems.length > 0 && (
+              {!activeIsNgojek && (
+                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                  {activeOrder.delivery_address}
+                </p>
+              )}
+
+              {!activeIsNgojek && orderItems.length > 0 && (
                 <ul className="mt-2 space-y-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">
                   {orderItems.map((item) => (
                     <li key={item.id} className="flex justify-between gap-2 text-white/90">
                       <span>
                         {item.quantity}× {item.product_name}
                       </span>
-                      <span className="text-muted-foreground">{formatIdr(Number(item.price) * item.quantity)}</span>
+                      <span className="text-muted-foreground">
+                        {formatIdr(Number(item.price) * item.quantity)}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -843,6 +916,9 @@ export function DriverCockpit() {
 
               <p className="mt-2 font-semibold text-cyan-300">
                 {formatIdr(orderTotal(activeOrder))}
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {activeIsNgojek ? "tarif ride" : "total"}
+                </span>
               </p>
 
               <div className="mt-3 flex flex-wrap gap-2">
@@ -888,52 +964,62 @@ export function DriverCockpit() {
                 </p>
               )}
 
-              {activeOrder.order_status === "ready_for_pickup" && (
+              {activeOrder.order_status === "ready_for_pickup" && activeIsNgojek && (
                 <>
-                  {activeIsNgojek ? (
-                    <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-200">
-                        Temui penumpang di titik jemput
-                      </p>
-                      <p className="mt-1 text-sm font-bold text-white">
-                        {activeCustomer?.name ?? "Customer"}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-orange-500/40 bg-orange-500/10 px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-200">
-                        Sebutkan ke kasir restoran
-                      </p>
-                      <p className="mt-1 text-sm font-bold text-white">
-                        Nama: {activeCustomer?.name ?? "—"}
-                      </p>
-                      <p className="text-sm font-mono text-orange-100">
-                        ID: {shortOrderId(activeOrder.id)}
-                      </p>
-                    </div>
-                  )}
-                  <Button
-                    className={cn(
-                      "mt-3 h-11 w-full rounded-xl font-semibold",
-                      activeIsNgojek ? "bg-emerald-500" : "bg-orange-500"
+                  <div className="mt-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
+                      Temui penumpang di titik jemput
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-white">
+                      {activeCustomer?.name ?? "Penumpang"}
+                    </p>
+                    {activeCustomer?.phone && (
+                      <a
+                        href={`tel:${activeCustomer.phone}`}
+                        className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-300 hover:underline"
+                      >
+                        <Phone className="h-3 w-3" />
+                        {activeCustomer.phone}
+                      </a>
                     )}
+                  </div>
+                  <Button
+                    className="mt-3 h-11 w-full rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 font-semibold text-slate-950"
                     disabled={busy}
                     onClick={() => {
                       handleUserGesture();
                       void pickupOrder();
                     }}
                   >
-                    {activeIsNgojek ? (
-                      <>
-                        <Bike className="mr-2 h-4 w-4" />
-                        Penumpang naik — mulai perjalanan
-                      </>
-                    ) : (
-                      <>
-                        <Package className="mr-2 h-4 w-4" />
-                        Sudah sebutkan — ambil pesanan
-                      </>
-                    )}
+                    <Bike className="mr-2 h-4 w-4" />
+                    Penumpang naik — mulai perjalanan
+                  </Button>
+                </>
+              )}
+
+              {activeOrder.order_status === "ready_for_pickup" && !activeIsNgojek && (
+                <>
+                  <div className="mt-3 rounded-xl border border-orange-500/40 bg-orange-500/10 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-200">
+                      Sebutkan ke kasir restoran
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-white">
+                      Nama: {activeCustomer?.name ?? "—"}
+                    </p>
+                    <p className="text-sm font-mono text-orange-100">
+                      ID: {shortOrderId(activeOrder.id)}
+                    </p>
+                  </div>
+                  <Button
+                    className="mt-3 h-11 w-full rounded-xl bg-orange-500 font-semibold"
+                    disabled={busy}
+                    onClick={() => {
+                      handleUserGesture();
+                      void pickupOrder();
+                    }}
+                  >
+                    <Package className="mr-2 h-4 w-4" />
+                    Sudah sebutkan — ambil pesanan
                   </Button>
                 </>
               )}

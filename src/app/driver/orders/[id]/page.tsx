@@ -8,11 +8,23 @@ import { useDriverProfile } from "@/hooks/use-driver-profile";
 import { useDriverLocation } from "@/hooks/use-driver-location";
 import { DriverRouteMap } from "@/components/driver/driver-route-map";
 import { Button } from "@/components/ui/button";
-import { formatIdr } from "@/lib/utils";
-import { ORDER_STATUS_LABEL } from "@/lib/order-flow";
+import { cn, formatIdr } from "@/lib/utils";
+import { DRIVER_REWARD_POINTS_PER_ORDER } from "@/lib/order-flow";
+import {
+  driverOrderStatusLabel,
+  isNgojekOrder,
+  KULINER_FOOD_LABEL,
+  NGOJEK_LABEL,
+  parseNgojekLegs,
+} from "@/lib/order-channel";
 import type { Order, OrderItem } from "@/types/database";
 import { pickOrderCustomer } from "@/lib/order-customer";
-import { CheckCircle, MapPin, Package, Phone, Store, User } from "lucide-react";
+import {
+  DriverChannelBadge,
+  DriverOrderRouteLine,
+  driverCardBorderClass,
+} from "@/components/driver/driver-order-chrome";
+import { Bike, CheckCircle, MapPin, Package, Phone, Store, User } from "lucide-react";
 
 export default function DriverOrderDetailPage() {
   const params = useParams();
@@ -30,7 +42,11 @@ export default function DriverOrderDetailPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  useDriverLocation(driver?.id, driver?.status, Boolean(driver && order?.order_status === "on_the_way"));
+  useDriverLocation(
+    driver?.id,
+    driver?.status,
+    Boolean(driver && order?.order_status === "on_the_way")
+  );
 
   useEffect(() => {
     if (!profileLoading && !driver) router.replace("/driver/setup");
@@ -89,10 +105,15 @@ export default function DriverOrderDetailPage() {
   const shop = Array.isArray(merchant) ? merchant[0] : merchant;
   const customer = order ? pickOrderCustomer(order.profiles) : undefined;
 
+  const isRide = order ? isNgojekOrder(order.delivery_address) : false;
+  const legs = order ? parseNgojekLegs(order.delivery_address) : null;
+  const pickupLat = isRide ? order?.pickup_lat : shop?.latitude;
+  const pickupLng = isRide ? order?.pickup_lng : shop?.longitude;
+
   const isMine = order?.driver_id === driver?.id;
-  const canAccept = order && !order.driver_id && ["paid", "preparing"].includes(order.order_status);
-  const total =
-    order ? Number(order.total_product_amount) + Number(order.delivery_fee) : 0;
+  const canAccept =
+    order && !order.driver_id && ["paid", "preparing", "ready_for_pickup"].includes(order.order_status);
+  const total = order ? Number(order.total_product_amount) + Number(order.delivery_fee) : 0;
 
   async function acceptJob() {
     setBusy(true);
@@ -111,6 +132,13 @@ export default function DriverOrderDetailPage() {
   }
 
   async function pickupOrder() {
+    const ok = isRide
+      ? confirm(
+          `Penumpang ${customer?.name ?? "penumpang"} sudah naik?\n\nMulai perjalanan ke lokasi tujuan.`
+        )
+      : confirm("Sudah menerima paket dari restoran?");
+    if (!ok) return;
+
     setBusy(true);
     const res = await fetchWithDriverAuth("/api/driver/pickup", {
       method: "POST",
@@ -120,7 +148,7 @@ export default function DriverOrderDetailPage() {
     setBusy(false);
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      alert(j.error ?? "Gagal ambil pesanan");
+      alert(j.error ?? (isRide ? "Gagal mulai perjalanan" : "Gagal ambil pesanan"));
       return;
     }
     router.refresh();
@@ -141,7 +169,11 @@ export default function DriverOrderDetailPage() {
     }
     const j = await res.json().catch(() => ({}));
     if (j.pointsAwarded) {
-      alert(`Pengantaran selesai! +${j.pointsAwarded} poin reward`);
+      alert(
+        isRide
+          ? `NGOJEK selesai! +${j.pointsAwarded} poin reward`
+          : `Pengantaran selesai! +${j.pointsAwarded} poin reward`
+      );
     }
     router.push("/driver");
   }
@@ -152,17 +184,20 @@ export default function DriverOrderDetailPage() {
 
   return (
     <main className="space-y-4 px-4 py-4">
-      <div>
-        <h1 className="text-xl font-bold text-white">{shop?.name ?? "Order"}</h1>
+      <div className={cn("glass-card space-y-2 border p-4", driverCardBorderClass(isRide))}>
+        <DriverChannelBadge isRide={isRide} />
+        <h1 className="text-xl font-bold text-white">
+          {isRide ? NGOJEK_LABEL : (shop?.name ?? KULINER_FOOD_LABEL)}
+        </h1>
         <p className="text-xs text-muted-foreground">
-          {ORDER_STATUS_LABEL[order.order_status] ?? order.order_status}
+          {driverOrderStatusLabel(order.delivery_address, order.order_status)}
         </p>
       </div>
 
-      {shop && (
+      {pickupLat != null && pickupLng != null && (
         <DriverRouteMap
-          merchantLat={shop.latitude}
-          merchantLng={shop.longitude}
+          merchantLat={pickupLat}
+          merchantLng={pickupLng}
           deliveryLat={order.delivery_lat}
           deliveryLng={order.delivery_lng}
           driverLat={driver?.current_lat}
@@ -175,7 +210,7 @@ export default function DriverOrderDetailPage() {
           <div className="flex items-start gap-2">
             <User className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
             <div>
-              <p className="font-medium text-white">Customer</p>
+              <p className="font-medium text-white">{isRide ? "Penumpang" : "Customer"}</p>
               <p className="text-sm font-semibold text-cyan-200">{customer.name}</p>
               {customer.phone && (
                 <a
@@ -191,60 +226,94 @@ export default function DriverOrderDetailPage() {
         </section>
       )}
 
-      <section className="glass-card space-y-2 p-4 text-sm">
-        <div className="flex items-start gap-2">
-          <Store className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
-          <div>
-            <p className="font-medium text-white">Ambil di toko</p>
-            <p className="text-xs text-muted-foreground">{shop?.address ?? "—"}</p>
-          </div>
-        </div>
-        <div className="flex items-start gap-2">
-          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
-          <div>
-            <p className="font-medium text-white">Antar ke</p>
-            <p className="text-xs text-muted-foreground">{order.delivery_address}</p>
-          </div>
-        </div>
+      <section className="glass-card space-y-3 p-4 text-sm">
+        {isRide ? (
+          <DriverOrderRouteLine
+            isRide
+            deliveryAddress={order.delivery_address}
+          />
+        ) : (
+          <>
+            <div className="flex items-start gap-2">
+              <Store className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+              <div>
+                <p className="font-medium text-white">Ambil di toko</p>
+                <p className="text-xs text-muted-foreground">{shop?.address ?? "—"}</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
+              <div>
+                <p className="font-medium text-white">Antar ke</p>
+                <p className="text-xs text-muted-foreground">{order.delivery_address}</p>
+              </div>
+            </div>
+          </>
+        )}
       </section>
 
+      {!isRide && items.length > 0 && (
+        <section className="glass-card p-4">
+          <p className="text-sm font-medium text-white">Item pesanan</p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {items.map((i) => (
+              <li key={i.id} className="flex justify-between text-muted-foreground">
+                <span>
+                  {i.quantity}× {i.product_name}
+                </span>
+                <span>{formatIdr(Number(i.price) * i.quantity)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="glass-card p-4">
-        <p className="text-sm font-medium text-white">Item</p>
-        <ul className="mt-2 space-y-1 text-sm">
-          {items.map((i) => (
-            <li key={i.id} className="flex justify-between text-muted-foreground">
-              <span>
-                {i.quantity}× {i.product_name}
-              </span>
-              <span>{formatIdr(Number(i.price) * i.quantity)}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-3 flex justify-between border-t border-white/10 pt-2 font-bold text-white">
-          <span>Total</span>
+        <div className="flex justify-between font-bold text-white">
+          <span>{isRide ? "Tarif ride" : "Total"}</span>
           <span className="text-cyan-300">{formatIdr(total)}</span>
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Ongkir: {formatIdr(Number(order.delivery_fee))}
-        </p>
+        {!isRide && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Ongkir: {formatIdr(Number(order.delivery_fee))}
+          </p>
+        )}
       </section>
 
       <div className="space-y-2 pb-4">
         {canAccept && (
           <Button
-            className="h-12 w-full rounded-2xl bg-emerald-600 font-semibold"
+            className={cn(
+              "h-12 w-full rounded-2xl font-semibold",
+              isRide ? "bg-cyan-600 hover:bg-cyan-500" : "bg-emerald-600 hover:bg-emerald-500"
+            )}
             disabled={busy || driver?.status === "offline"}
             onClick={acceptJob}
           >
-            Ambil order ini
+            {isRide ? "Terima order NGOJEK" : "Ambil order ini"}
           </Button>
         )}
-        {isMine && ["paid", "preparing"].includes(order.order_status) && (
+        {isMine && !isRide && ["paid", "preparing"].includes(order.order_status) && (
           <p className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-xs text-amber-100">
             Tunggu merchant menandai pesanan siap diambil
           </p>
         )}
-        {isMine && order.order_status === "ready_for_pickup" && (
+        {isMine && isRide && order.order_status === "ready_for_pickup" && (
+          <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-center text-xs text-cyan-100">
+            Temui penumpang di {legs?.pickup ?? "titik jemput"}
+          </div>
+        )}
+        {isMine && order.order_status === "ready_for_pickup" && isRide && (
+          <Button
+            className="h-12 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-emerald-500 font-semibold text-slate-950"
+            disabled={busy}
+            onClick={pickupOrder}
+          >
+            <Bike className="mr-2 h-4 w-4" />
+            Penumpang naik — mulai perjalanan
+          </Button>
+        )}
+        {isMine && order.order_status === "ready_for_pickup" && !isRide && (
           <Button
             className="h-12 w-full rounded-2xl bg-orange-500 font-semibold"
             disabled={busy}
@@ -261,7 +330,9 @@ export default function DriverOrderDetailPage() {
             onClick={completeDelivery}
           >
             <CheckCircle className="mr-2 h-4 w-4" />
-            Selesai antar (+100 poin)
+            {isRide
+              ? `Selesai NGOJEK (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`
+              : `Selesai antar (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`}
           </Button>
         )}
       </div>
