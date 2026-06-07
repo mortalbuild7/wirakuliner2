@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ShoppingBag, MapPin, Sparkles } from "lucide-react";
+import { Home, ShoppingBag, MapPin, Sparkles, User } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { CustomerModerationBanner } from "@/components/customer/customer-moderation-banner";
@@ -25,6 +27,20 @@ const NAV = [
 
 export function CustomerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [customerName, setCustomerName] = useState<string | null>(null);
+  const supabase = createClient();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("profiles")
+        .select("name")
+        .eq("id", user.id)
+        .maybeSingle()
+        .then(({ data }) => setCustomerName(data?.name?.trim() || null));
+    });
+  }, [supabase]);
 
   return (
     <div className="wira-mesh min-h-[100dvh]">
@@ -43,9 +59,15 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
             </div>
           </Link>
           <PoweredByDaffacell variant="hidden" />
-          <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-medium text-cyan-300">
-            3 km dari toko
-          </span>
+          {customerName ? (
+            <span
+              className="flex max-w-[9rem] items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-medium text-cyan-300 sm:max-w-[12rem]"
+              title={customerName}
+            >
+              <User className="h-3 w-3 shrink-0" />
+              <span className="truncate">{customerName}</span>
+            </span>
+          ) : null}
         </div>
       </header>
 

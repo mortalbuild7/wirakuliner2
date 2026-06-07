@@ -49,12 +49,30 @@ export function OrderTracker({ orderId }: { orderId: string }) {
     []
   );
 
+  const resolveDriverPos = useCallback(
+    (
+      pos?: { lat: number; lng: number } | null,
+      info?: DriverPublicInfo | null
+    ): { lat: number; lng: number } | null => {
+      if (pos?.lat != null && pos?.lng != null) return pos;
+      if (info?.lat != null && info?.lng != null) {
+        return { lat: info.lat, lng: info.lng };
+      }
+      return null;
+    },
+    []
+  );
+
   const loadOrder = useCallback(async () => {
     try {
       const cached = sessionStorage.getItem(`wira_track_${orderId}`);
       if (cached) {
         const parsed = JSON.parse(cached) as Order;
-        if (parsed?.id === orderId) applyOrder(parsed);
+        if (parsed?.id === orderId) {
+          setOrder(parsed);
+          setError(null);
+          setLoading(false);
+        }
       }
     } catch {
       /* ignore */
@@ -70,7 +88,8 @@ export function OrderTracker({ orderId }: { orderId: string }) {
     }
 
     if (res.ok && json.order) {
-      applyOrder(json.order, json.driverPos, json.driverInfo);
+      const pos = resolveDriverPos(json.driverPos, json.driverInfo);
+      applyOrder(json.order, pos, json.driverInfo);
       try {
         sessionStorage.setItem(`wira_track_${orderId}`, JSON.stringify(json.order));
       } catch {
@@ -95,7 +114,7 @@ export function OrderTracker({ orderId }: { orderId: string }) {
     setError(json.error ?? "Pesanan tidak ditemukan");
     setLoading(false);
     return false;
-  }, [applyOrder, orderId, supabase]);
+  }, [applyOrder, orderId, resolveDriverPos, supabase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,12 +185,10 @@ export function OrderTracker({ orderId }: { orderId: string }) {
     const pollDriver = async () => {
       const res = await fetch(`/api/orders/${orderId}`, { credentials: "include" });
       const json = (await res.json().catch(() => ({}))) as TrackResponse;
-      if (res.ok && json.driverPos) {
-        applyDriverPos(json.driverPos.lat, json.driverPos.lng);
-      }
-      if (res.ok && json.driverInfo) {
-        setDriverInfo(json.driverInfo);
-      }
+      if (!res.ok) return;
+      if (json.driverInfo) setDriverInfo(json.driverInfo);
+      const pos = resolveDriverPos(json.driverPos, json.driverInfo);
+      if (pos) applyDriverPos(pos.lat, pos.lng);
     };
 
     const driverChannel = supabase
@@ -189,14 +206,14 @@ export function OrderTracker({ orderId }: { orderId: string }) {
     void pollDriver();
     const timer = setInterval(() => {
       void pollDriver();
-    }, 5000);
+    }, 3000);
 
     return () => {
       cancelled = true;
       clearInterval(timer);
       supabase.removeChannel(driverChannel);
     };
-  }, [driverId, orderId, supabase, trackDriverLive]);
+  }, [driverId, orderId, resolveDriverPos, supabase, trackDriverLive]);
 
   if (loading) {
     return <p className="text-muted-foreground">Memuat pelacakan...</p>;
@@ -227,6 +244,9 @@ export function OrderTracker({ orderId }: { orderId: string }) {
     order.delivery_lat != null &&
     order.delivery_lng != null &&
     !["pending_payment", "cancelled"].includes(order.order_status);
+
+  const mapDriverLat = driverPos?.lat ?? driverInfo?.lat ?? null;
+  const mapDriverLng = driverPos?.lng ?? driverInfo?.lng ?? null;
 
   return (
     <div className="space-y-6">
@@ -274,10 +294,10 @@ export function OrderTracker({ orderId }: { orderId: string }) {
           <CustomerOrderTrackMap
             deliveryLat={order.delivery_lat}
             deliveryLng={order.delivery_lng}
-            driverLat={driverPos?.lat}
-            driverLng={driverPos?.lng}
+            driverLat={mapDriverLat}
+            driverLng={mapDriverLng}
           />
-          {!driverPos && (
+          {mapDriverLat == null && mapDriverLng == null && (
             <p className="px-3 py-2 text-xs text-muted-foreground">
               Menunggu lokasi GPS driver...
             </p>
