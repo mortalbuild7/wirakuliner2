@@ -46,12 +46,8 @@ export async function GET(
     !order.driver_id &&
     order.offered_driver_id === auth.driver.id &&
     ["paid", "preparing", "ready_for_pickup"].includes(order.order_status);
-  const isNego =
-    !order.driver_id &&
-    order.negotiation_status === "negotiating" &&
-    order.order_status === "pending_payment";
 
-  if (!isAssigned && !isPool && !isNego) {
+  if (!isAssigned && !isPool) {
     return secureJsonResponse({ error: "Pesanan tidak tersedia" }, { status: 403 });
   }
 

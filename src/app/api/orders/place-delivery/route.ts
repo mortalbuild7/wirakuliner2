@@ -1,12 +1,7 @@
-import {
-  deliveryZoneCenter,
-  distanceToZone,
-  FLAT_DELIVERY_FEE_IDR,
-  isWithinDeliveryZone,
-} from "@/lib/geo-config";
+import { deliveryZoneCenter, distanceToZone } from "@/lib/geo-config";
+import { calculateDeliveryFee } from "@/lib/delivery-fee";
 import { formatDineInAddress } from "@/lib/order-channel";
 import { notifyDriversNewOrder } from "@/lib/notify-drivers";
-import { startOrderNegotiation } from "@/lib/start-nego";
 import { isStoreOpen } from "@/lib/merchant-open";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -38,8 +33,6 @@ export async function POST(req: Request) {
     deliveryAddress?: string;
     deliveryLat?: number;
     deliveryLng?: number;
-    distanceKm?: number;
-    isOutsideRadius?: boolean;
     accuracyM?: number | null;
     dineIn?: boolean;
     skipPayment?: boolean;
@@ -121,23 +114,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const accuracyM = body.accuracyM ?? null;
   const distanceKm = dineIn
     ? 0
     : distanceToZone(deliveryLat, deliveryLng, zone!.lat, zone!.lng);
-
-  const withinZone = dineIn
-    ? true
-    : isWithinDeliveryZone(
-        deliveryLat,
-        deliveryLng,
-        zone!.lat,
-        zone!.lng,
-        accuracyM
-      );
-
-  const outside = !dineIn && !withinZone;
-  const deliveryFee = dineIn ? 0 : outside ? 0 : FLAT_DELIVERY_FEE_IDR;
+  const deliveryFee = dineIn ? 0 : calculateDeliveryFee(distanceKm);
   const skipPayment =
     body.skipPayment === true || process.env.NEXT_PUBLIC_PAYMENT_BYPASS === "true";
 
@@ -150,8 +130,8 @@ export async function POST(req: Request) {
       merchant_id: merchantId,
       total_product_amount: subtotal,
       delivery_fee: deliveryFee,
-      is_outside_radius: outside,
-      negotiation_status: outside ? "negotiating" : "none",
+      is_outside_radius: false,
+      negotiation_status: "none",
       order_status: "pending_payment",
       delivery_address: deliveryAddress,
       delivery_lat: deliveryLat,
@@ -187,45 +167,6 @@ export async function POST(req: Request) {
     );
   }
 
-  if (outside) {
-    const nego = await startOrderNegotiation(order.id, accuracyM);
-    if ("error" in nego) {
-      return secureJsonResponse({ error: nego.error }, { status: nego.status });
-    }
-
-    if (nego.corrected && nego.withinRadius) {
-      await admin
-        .from("orders")
-        .update({
-          is_outside_radius: false,
-          negotiation_status: "none",
-          delivery_fee: FLAT_DELIVERY_FEE_IDR,
-          order_status: "paid",
-          distance_km: distanceKm,
-        })
-        .eq("id", order.id);
-
-      await notifyDriversNewOrder(order.id);
-
-      return secureJsonResponse({
-        ok: true,
-        orderId: order.id,
-        paid: true,
-        outside: false,
-        driversNotified: true,
-      });
-    }
-
-    return secureJsonResponse({
-      ok: true,
-      orderId: order.id,
-      paid: false,
-      outside: true,
-      driversNotified: (nego.driversNotified ?? 0) > 0,
-      negotiationsCreated: nego.negotiationsCreated ?? 0,
-    });
-  }
-
   if (skipPayment) {
     const { error: payError } = await admin
       .from("orders")
@@ -248,7 +189,8 @@ export async function POST(req: Request) {
       ok: true,
       orderId: order.id,
       paid: true,
-      outside: false,
+      deliveryFee,
+      distanceKm,
       driversNotified: !("skipped" in notify && notify.skipped),
     });
   }
@@ -257,7 +199,8 @@ export async function POST(req: Request) {
     ok: true,
     orderId: order.id,
     paid: false,
-    outside: false,
+    deliveryFee,
+    distanceKm,
     needsPayment: true,
   });
 }

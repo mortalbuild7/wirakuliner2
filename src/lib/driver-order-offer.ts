@@ -29,7 +29,6 @@ export function offerSecondsLeft(offeredAt: string | null | undefined): number {
 export function orderNeedsOfferRotation(order: OfferableOrder): boolean {
   if (order.driver_id) return false;
   if (isOnsiteOrder(order.delivery_address)) return false;
-  if (order.negotiation_status === "negotiating") return false;
   return ["paid", "preparing", "ready_for_pickup"].includes(order.order_status);
 }
 

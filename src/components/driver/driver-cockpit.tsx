@@ -148,11 +148,7 @@ export function DriverCockpit() {
       setIncomingOffer(null);
       return;
     }
-    const pool = (json.incoming ?? []).filter((o) => {
-      if (isOnsiteOrder(o.delivery_address)) return false;
-      if (o.negotiation_status === "negotiating") return !dismissed.has(o.id);
-      return true;
-    });
+    const pool = (json.incoming ?? []).filter((o) => !isOnsiteOrder(o.delivery_address));
     setIncomingOffer(pool[0] ?? null);
     if (pool[0]?.offered_at) {
       setOfferCountdown(offerSecondsLeft(pool[0].offered_at));
@@ -230,12 +226,11 @@ export function DriverCockpit() {
 
   useEffect(() => {
     if (!driver?.id || !isOnline || hasActive) return;
-    const intervalMs = incomingOffer && incomingOffer.negotiation_status !== "negotiating" ? 3000 : 12_000;
     const timer = setInterval(() => {
       void loadPool();
-    }, intervalMs);
+    }, incomingOffer ? 3000 : 12_000);
     return () => clearInterval(timer);
-  }, [driver?.id, hasActive, isOnline, loadPool, incomingOffer?.id, incomingOffer?.negotiation_status]);
+  }, [driver?.id, hasActive, isOnline, loadPool, incomingOffer?.id]);
 
   useEffect(() => {
     if (!incomingOffer?.offered_at || hasActive) return;
@@ -362,10 +357,6 @@ export function DriverCockpit() {
   async function acceptOffer() {
     handleUserGesture();
     if (!incomingOffer || !driver) return;
-    if (incomingOffer.negotiation_status === "negotiating") {
-      router.push(`/driver/orders/${incomingOffer.id}`);
-      return;
-    }
     setBusy(true);
     const res = await fetchWithDriverAuth("/api/driver/accept-job", {
       method: "POST",
@@ -386,16 +377,6 @@ export function DriverCockpit() {
 
   async function rejectOffer() {
     if (!incomingOffer || !driver) return;
-
-    if (incomingOffer.negotiation_status === "negotiating") {
-      const next = new Set(dismissed);
-      next.add(incomingOffer.id);
-      setDismissed(next);
-      saveDismissed(driver.id, next);
-      setIncomingOffer(null);
-      void loadPool();
-      return;
-    }
 
     const res = await fetchWithDriverAuth("/api/driver/decline-offer", {
       method: "POST",
@@ -574,22 +555,10 @@ export function DriverCockpit() {
 
           {incomingOffer && !hasActive && (
             <div
-              className={`absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl p-4 shadow-xl backdrop-blur ${
-                incomingOffer.negotiation_status === "negotiating"
-                  ? "border border-amber-500/40 bg-slate-950/95"
-                  : "border border-emerald-500/40 bg-slate-950/95"
-              }`}
+              className={`absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl border border-emerald-500/40 bg-slate-950/95 p-4 shadow-xl backdrop-blur`}
             >
-              <p
-                className={`text-[10px] font-semibold uppercase tracking-wider ${
-                  incomingOffer.negotiation_status === "negotiating"
-                    ? "text-amber-400"
-                    : "text-emerald-400"
-                }`}
-              >
-                {incomingOffer.negotiation_status === "negotiating"
-                  ? "Nego ongkir (luar radius)"
-                  : "Pesanan masuk"}
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+                Pesanan masuk
               </p>
               <p className="mt-1 text-lg font-bold text-white">
                 {offerShop?.name ?? "Toko"}
@@ -609,7 +578,7 @@ export function DriverCockpit() {
                   ongkir {formatIdr(Number(incomingOffer.delivery_fee))}
                 </span>
               </p>
-              {incomingOffer.negotiation_status !== "negotiating" && offerCountdown > 0 && (
+              {offerCountdown > 0 && (
                 <p className="mt-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-100">
                   Waktu terima:{" "}
                   <span className="font-mono font-bold text-amber-300">{offerCountdown} detik</span>
@@ -634,9 +603,7 @@ export function DriverCockpit() {
                   disabled={busy}
                   onClick={acceptOffer}
                 >
-                  {incomingOffer.negotiation_status === "negotiating"
-                    ? "Nego ongkir"
-                    : "Terima"}
+                  Terima
                 </Button>
               </div>
             </div>

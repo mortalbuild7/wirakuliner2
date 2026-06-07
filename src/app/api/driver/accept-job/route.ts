@@ -62,27 +62,11 @@ export async function POST(req: Request) {
     );
   }
 
-  if (
-    order.negotiation_status !== "negotiating" &&
-    order.offered_driver_id &&
-    order.offered_driver_id !== auth.driver.id
-  ) {
+  if (order.offered_driver_id && order.offered_driver_id !== auth.driver.id) {
     return secureJsonResponse(
       { error: "Penawaran ini sedang ditawarkan ke driver lain" },
       { status: 409 }
     );
-  }
-
-  if (order.negotiation_status === "negotiating") {
-    const { data: nego } = await admin
-      .from("negotiations")
-      .select("id")
-      .eq("order_id", orderId)
-      .eq("driver_id", auth.driver.id)
-      .maybeSingle();
-    if (!nego) {
-      return secureJsonResponse({ error: "Anda tidak terlibat nego order ini" }, { status: 403 });
-    }
   }
 
   if (!order.driver_id) {

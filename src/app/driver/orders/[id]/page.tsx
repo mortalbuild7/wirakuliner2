@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchWithDriverAuth } from "@/lib/driver-native-session";
 import { useDriverProfile } from "@/hooks/use-driver-profile";
 import { useDriverLocation } from "@/hooks/use-driver-location";
-import { DriverNegotiation } from "@/components/driver/driver-negotiation";
 import { DriverRouteMap } from "@/components/driver/driver-route-map";
 import { Button } from "@/components/ui/button";
 import { formatIdr } from "@/lib/utils";
@@ -18,7 +17,7 @@ import { CheckCircle, MapPin, Package, Phone, Store, User } from "lucide-react";
 export default function DriverOrderDetailPage() {
   const params = useParams();
   const orderId = params.id as string;
-  const { driver, userId, loading: profileLoading } = useDriverProfile();
+  const { driver, loading: profileLoading } = useDriverProfile();
   const [order, setOrder] = useState<
     | (Order & {
         profiles?: { name: string; phone: string | null } | { name: string; phone: string | null }[];
@@ -91,7 +90,6 @@ export default function DriverOrderDetailPage() {
   const customer = order ? pickOrderCustomer(order.profiles) : undefined;
 
   const isMine = order?.driver_id === driver?.id;
-  const isNego = order?.negotiation_status === "negotiating";
   const canAccept = order && !order.driver_id && ["paid", "preparing"].includes(order.order_status);
   const total =
     order ? Number(order.total_product_amount) + Number(order.delivery_fee) : 0;
@@ -230,10 +228,6 @@ export default function DriverOrderDetailPage() {
           Ongkir: {formatIdr(Number(order.delivery_fee))}
         </p>
       </section>
-
-      {isNego && driver && userId && (
-        <DriverNegotiation orderId={orderId} driverId={driver.id} userId={userId} />
-      )}
 
       <div className="space-y-2 pb-4">
         {canAccept && (

@@ -38,7 +38,7 @@ export default function HomePage() {
           Antar makanan multi-toko, satu platform
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-          Dalam radius: ongkir flat Rp 12.000. Luar radius: nego tarif dengan driver via chat realtime.
+          Ongkir otomatis: Rp 10.000 (1–3 km), di atas 3 km +Rp 2.000/km.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-4">
           <Link href="/customer">
@@ -86,7 +86,7 @@ export default function HomePage() {
             <CardHeader>
               <Bike className="h-8 w-8 text-emerald-600" />
               <CardTitle className="text-lg">Driver</CardTitle>
-              <CardDescription>Terima order, nego ongkir & antar makanan</CardDescription>
+              <CardDescription>Terima order & antar makanan</CardDescription>
             </CardHeader>
             <CardContent>
               <Button variant="outline" className="w-full" asChild>

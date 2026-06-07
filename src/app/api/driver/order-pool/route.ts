@@ -63,21 +63,7 @@ export async function GET(req: Request) {
     (o) => !isOnsiteOrder(o.delivery_address) && !isOfferExpired(o.offered_at)
   );
 
-  const { data: negoPool } = await admin
-    .from("orders")
-    .select(orderSelect)
-    .is("driver_id", null)
-    .eq("negotiation_status", "negotiating")
-    .eq("is_outside_radius", true)
-    .eq("order_status", "pending_payment")
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  const negoIncoming = (negoPool ?? []).filter((o) => !isOnsiteOrder(o.delivery_address));
-
-  const incoming = incomingOffer
-    ? [incomingOffer, ...negoIncoming.filter((n) => n.id !== incomingOffer.id)]
-    : negoIncoming;
+  const incoming = incomingOffer ? [incomingOffer] : [];
 
   return secureJsonResponse({
     activeOrder: null,

@@ -17,8 +17,8 @@ export const JALAN_WIRA = {
   longitude: parseCoord(process.env.NEXT_PUBLIC_JALAN_WIRA_LNG, 106.727392),
 } as const;
 
+/** Batas tier tarif ongkir (lihat `delivery-fee.ts`). */
 export const DELIVERY_RADIUS_KM = 3;
-export const FLAT_DELIVERY_FEE_IDR = 12_000;
 /** Toleransi akurasi GPS (maks tambahan radius km) */
 export const MAX_GPS_TOLERANCE_KM = 1;
 

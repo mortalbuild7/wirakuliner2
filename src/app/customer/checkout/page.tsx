@@ -11,18 +11,16 @@ import { LocationPicker } from "@/components/maps/location-picker";
 import {
   deliveryZoneCenter,
   distanceToZone,
-  FLAT_DELIVERY_FEE_IDR,
-  isWithinDeliveryZone,
   JALAN_WIRA,
   type ZoneCenter,
 } from "@/lib/geo-config";
+import { calculateDeliveryFee, describeDeliveryFee } from "@/lib/delivery-fee";
 import { formatDineInAddress } from "@/lib/order-channel";
 import { isStoreOpen } from "@/lib/merchant-open";
 import { formatIdr } from "@/lib/utils";
 import { isPaymentBypassEnabled, runCheckoutPayment } from "@/lib/payment-flow";
 import type { CartItem } from "@/types/database";
-import { NegotiationChat } from "@/components/customer/negotiation-chat";
-import { CreditCard, MessageCircle } from "lucide-react";
+import { CreditCard } from "lucide-react";
 import { useSingleMerchantRealtime } from "@/hooks/use-merchant-realtime";
 
 function CheckoutForm() {
@@ -31,21 +29,16 @@ function CheckoutForm() {
   const dineIn = params.get("mode") === "dine_in";
   const [items, setItems] = useState<CartItem[]>([]);
   const [merchantName, setMerchantName] = useState("");
-  const [merchantLat, setMerchantLat] = useState<number | null>(null);
-  const [merchantLng, setMerchantLng] = useState<number | null>(null);
   const [zoneCenter, setZoneCenter] = useState<ZoneCenter | null>(null);
   const [address, setAddress] = useState("");
   const [lat, setLat] = useState(JALAN_WIRA.latitude);
   const [lng, setLng] = useState(JALAN_WIRA.longitude);
   const [merchantCoordsReady, setMerchantCoordsReady] = useState(false);
   const [distance, setDistance] = useState(0);
-  const [outside, setOutside] = useState(false);
   const [gpsAccuracyM, setGpsAccuracyM] = useState<number | null>(null);
   const [bestGpsAccuracyM, setBestGpsAccuracyM] = useState<number | null>(null);
-  const [negoStarting, setNegoStarting] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
-  const [orderId, setOrderId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [storeOpen, setStoreOpen] = useState(true);
@@ -70,8 +63,6 @@ function CheckoutForm() {
         .then(({ data }) => {
           if (data) {
             setMerchantName(data.name);
-            setMerchantLat(data.latitude);
-            setMerchantLng(data.longitude);
             const center = deliveryZoneCenter(
               data.latitude,
               data.longitude,
@@ -96,8 +87,6 @@ function CheckoutForm() {
 
   useSingleMerchantRealtime(merchantId ?? undefined, (m) => {
     setMerchantName(m.name);
-    setMerchantLat(m.latitude);
-    setMerchantLng(m.longitude);
     const center = deliveryZoneCenter(m.latitude, m.longitude, m.name);
     setZoneCenter(center);
     setMerchantCoordsReady(center != null);
@@ -105,32 +94,15 @@ function CheckoutForm() {
   });
 
   useEffect(() => {
-    if (dineIn) {
+    if (dineIn || !zoneCenter) {
       setDistance(0);
-      setOutside(false);
       return;
     }
-    if (!zoneCenter) {
-      setDistance(0);
-      setOutside(false);
-      return;
-    }
-    const d = distanceToZone(lat, lng, zoneCenter.lat, zoneCenter.lng);
-    setDistance(d);
-    const accuracyForZone = bestGpsAccuracyM ?? gpsAccuracyM;
-    setOutside(
-      !isWithinDeliveryZone(
-        lat,
-        lng,
-        zoneCenter.lat,
-        zoneCenter.lng,
-        accuracyForZone
-      )
-    );
-  }, [lat, lng, dineIn, gpsAccuracyM, bestGpsAccuracyM, zoneCenter]);
+    setDistance(distanceToZone(lat, lng, zoneCenter.lat, zoneCenter.lng));
+  }, [lat, lng, dineIn, zoneCenter]);
 
   const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
-  const deliveryFee = dineIn ? 0 : outside ? 0 : FLAT_DELIVERY_FEE_IDR;
+  const deliveryFee = dineIn ? 0 : calculateDeliveryFee(distance);
   const total = subtotal + deliveryFee;
 
   function handleLocationChange(newLat: number, newLng: number, accuracyM?: number) {
@@ -189,7 +161,6 @@ function CheckoutForm() {
     }
 
     setPlacing(true);
-    setNegoStarting(outside && !dineIn);
 
     try {
       const res = await fetch("/api/orders/place-delivery", {
@@ -208,8 +179,6 @@ function CheckoutForm() {
           deliveryAddress: deliveryAddr,
           deliveryLat: lat,
           deliveryLng: lng,
-          distanceKm: distance,
-          isOutsideRadius: outside,
           accuracyM: bestGpsAccuracyM ?? gpsAccuracyM,
           skipPayment: isPaymentBypassEnabled(),
         }),
@@ -219,9 +188,6 @@ function CheckoutForm() {
         error?: string;
         orderId?: string;
         paid?: boolean;
-        outside?: boolean;
-        driversNotified?: boolean;
-        negotiationsCreated?: number;
         needsPayment?: boolean;
       };
 
@@ -235,7 +201,6 @@ function CheckoutForm() {
         return;
       }
 
-      setOrderId(json.orderId);
       localStorage.removeItem(`wira_cart_${merchantId}`);
 
       if (json.paid) {
@@ -285,20 +250,10 @@ function CheckoutForm() {
         router.push(`/customer/orders/${json.orderId}`);
         return;
       }
-
-      if (json.outside) {
-        if (!json.driversNotified && (json.negotiationsCreated ?? 0) === 0) {
-          setPlaceError(
-            "Nego dimulai. Belum ada driver ONLINE — tunggu driver aktifkan status."
-          );
-        }
-        return;
-      }
     } catch (e) {
       setPlaceError(e instanceof Error ? e.message : "Gagal memproses pesanan");
     } finally {
       setPlacing(false);
-      setNegoStarting(false);
     }
   }
 
@@ -330,19 +285,18 @@ function CheckoutForm() {
         </section>
       ) : !merchantCoordsReady || !zoneCenter ? (
         <section className="glass-card p-4 text-sm text-muted-foreground">
-          Memuat lokasi toko untuk radius antar 3 km...
+          Memuat lokasi toko...
         </section>
       ) : (
         <section className="glass-card space-y-4 p-4">
           <p className="text-xs text-cyan-300/80">
-            Radius 3 km dihitung dari <strong className="text-white">{zoneCenter.name}</strong>
+            Jarak dihitung dari <strong className="text-white">{zoneCenter.name}</strong>
           </p>
           <LocationPicker
             latitude={lat}
             longitude={lng}
             onChange={handleLocationChange}
             distanceKm={distance}
-            withinRadius={!outside}
             accuracyM={gpsAccuracyM}
             zoneCenter={zoneCenter}
           />
@@ -368,22 +322,16 @@ function CheckoutForm() {
           </div>
           <div className="flex justify-between">
             <span>Ongkir</span>
-            <span>{outside ? "Nego" : formatIdr(deliveryFee)}</span>
+            <span>{formatIdr(deliveryFee)}</span>
           </div>
+          {!dineIn && distance > 0 && (
+            <p className="text-[11px] text-muted-foreground">{describeDeliveryFee(distance)}</p>
+          )}
           <div className="flex justify-between border-t border-white/10 pt-2 text-base font-bold text-white">
             <span>Total</span>
             <span className="text-cyan-300">{formatIdr(total)}</span>
           </div>
         </div>
-
-        {outside && !orderId && (
-          <Alert variant="warning" className="mt-4 border-amber-500/30 bg-amber-500/10">
-            <strong className="flex items-center gap-1">
-              <MessageCircle className="h-4 w-4" /> Luar radius
-            </strong>
-            <p className="mt-1 text-xs">Nego tarif dengan driver via chat sebelum bayar.</p>
-          </Alert>
-        )}
 
         {placeError && (
           <Alert variant="warning" className="mt-4 border-amber-500/30 bg-amber-500/10">
@@ -391,45 +339,34 @@ function CheckoutForm() {
           </Alert>
         )}
 
-        {!orderId && (
-          <Button
-            className="mt-4 h-12 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-orange-500 font-semibold text-slate-950"
-            onClick={() => void placeOrder()}
-            disabled={
-              !authReady ||
-              !storeOpen ||
-              !items.length ||
-              (!dineIn && !canPlaceDelivery) ||
-              placing ||
-              negoStarting
-            }
-          >
-            {!authReady ? (
-              "Memuat akun..."
-            ) : placing ? (
-              "Memproses pesanan..."
-            ) : dineIn ? (
-              <>
-                <CreditCard className="mr-2 h-4 w-4" /> Bayar & kirim ke dapur
-              </>
-            ) : outside ? (
-              <>{negoStarting ? "Menghubungi driver..." : "Mulai nego driver"}</>
-            ) : isPaymentBypassEnabled() ? (
-              <>Bayar (mode uji — tanpa Midtrans)</>
-            ) : (
-              <>
-                <CreditCard className="mr-2 h-4 w-4" /> Bayar (Midtrans)
-              </>
-            )}
-          </Button>
-        )}
+        <Button
+          className="mt-4 h-12 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-orange-500 font-semibold text-slate-950"
+          onClick={() => void placeOrder()}
+          disabled={
+            !authReady ||
+            !storeOpen ||
+            !items.length ||
+            (!dineIn && !canPlaceDelivery) ||
+            placing
+          }
+        >
+          {!authReady ? (
+            "Memuat akun..."
+          ) : placing ? (
+            "Memproses pesanan..."
+          ) : dineIn ? (
+            <>
+              <CreditCard className="mr-2 h-4 w-4" /> Bayar & kirim ke dapur
+            </>
+          ) : isPaymentBypassEnabled() ? (
+            <>Bayar (mode uji — tanpa Midtrans)</>
+          ) : (
+            <>
+              <CreditCard className="mr-2 h-4 w-4" /> Bayar (Midtrans)
+            </>
+          )}
+        </Button>
       </section>
-
-      {orderId && outside && userId && (
-        <section className="glass-card overflow-hidden p-2">
-          <NegotiationChat orderId={orderId} userId={userId} />
-        </section>
-      )}
     </main>
   );
 }

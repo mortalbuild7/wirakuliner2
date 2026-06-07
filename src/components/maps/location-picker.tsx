@@ -4,11 +4,12 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { Crosshair, MapPin, Radar } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DELIVERY_RADIUS_KM, type ZoneCenter } from "@/lib/geo-config";
 import {
-  DELIVERY_RADIUS_KM,
-  FLAT_DELIVERY_FEE_IDR,
-  type ZoneCenter,
-} from "@/lib/geo-config";
+  calculateDeliveryFee,
+  describeDeliveryFee,
+  isTier1Distance,
+} from "@/lib/delivery-fee";
 import { useMapLocation } from "@/hooks/use-map-location";
 import { formatIdr } from "@/lib/utils";
 
@@ -29,7 +30,6 @@ export function LocationPicker({
   longitude,
   onChange,
   distanceKm,
-  withinRadius,
   accuracyM,
   zoneCenter,
 }: {
@@ -37,12 +37,13 @@ export function LocationPicker({
   longitude: number;
   onChange: (lat: number, lng: number, accuracyM?: number) => void;
   distanceKm: number;
-  withinRadius: boolean;
   accuracyM?: number | null;
   zoneCenter: ZoneCenter;
 }) {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [manualPin, setManualPin] = useState(false);
+  const deliveryFee = calculateDeliveryFee(distanceKm);
+  const tier1 = isTier1Distance(distanceKm);
 
   const { fix, loading: gpsLoading, zoomLocked, bestAccuracy } = useMapLocation(true);
   const onChangeRef = useRef(onChange);
@@ -92,7 +93,7 @@ export function LocationPicker({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium text-cyan-300">
           <Radar className="h-4 w-4" />
-          GPS realtime · {DELIVERY_RADIUS_KM} km dari toko
+          GPS · jarak dari {zoneCenter.name}
         </div>
         <Button
           type="button"
@@ -106,6 +107,10 @@ export function LocationPicker({
           {gpsLoading ? "GPS..." : "Lokasi saya"}
         </Button>
       </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        Ongkir: Rp 10.000 (1–{DELIVERY_RADIUS_KM} km), di atas itu +Rp 2.000/km
+      </p>
 
       <LocationMapInner
         latitude={latitude}
@@ -133,13 +138,13 @@ export function LocationPicker({
 
       <div
         className={`flex items-center justify-between rounded-xl px-4 py-3 ${
-          withinRadius
+          tier1
             ? "border border-cyan-500/40 bg-cyan-500/10 glow-ring"
-            : "border border-amber-500/40 bg-amber-500/10"
+            : "border border-orange-500/40 bg-orange-500/10"
         }`}
       >
         <div className="flex items-center gap-2">
-          <MapPin className={`h-5 w-5 ${withinRadius ? "text-cyan-400" : "text-amber-400"}`} />
+          <MapPin className={`h-5 w-5 ${tier1 ? "text-cyan-400" : "text-orange-400"}`} />
           <div>
             <p className="text-xs text-muted-foreground">Jarak ke {zoneCenter.name}</p>
             <p className="text-lg font-bold tabular-nums">{distanceKm.toFixed(2)} km</p>
@@ -151,17 +156,10 @@ export function LocationPicker({
           </div>
         </div>
         <div className="text-right">
-          {withinRadius ? (
-            <>
-              <p className="text-xs text-cyan-300/80">Dalam radius</p>
-              <p className="font-semibold text-cyan-300">{formatIdr(FLAT_DELIVERY_FEE_IDR)}</p>
-            </>
-          ) : (
-            <>
-              <p className="text-xs text-amber-300/80">Luar radius</p>
-              <p className="text-sm font-medium text-amber-200">Nego driver</p>
-            </>
-          )}
+          <p className="text-xs text-muted-foreground">{describeDeliveryFee(distanceKm)}</p>
+          <p className={`font-semibold ${tier1 ? "text-cyan-300" : "text-orange-200"}`}>
+            {formatIdr(deliveryFee)}
+          </p>
         </div>
       </div>
     </div>

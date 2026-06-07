@@ -13,7 +13,6 @@ const STATUS_BADGE: Record<string, string> = {
   preparing: "Diproses toko",
   ready_for_pickup: "Siap diambil",
   on_the_way: "Dalam perjalanan",
-  negotiating: "Nego ongkir",
 };
 
 export function DriverJobCard({
@@ -31,11 +30,7 @@ export function DriverJobCard({
     : order.merchants?.name;
   const customer = pickOrderCustomer(order.profiles);
 
-  const label =
-    badge ??
-    (order.negotiation_status === "negotiating"
-      ? STATUS_BADGE.negotiating
-      : STATUS_BADGE[order.order_status] ?? order.order_status);
+  const label = badge ?? (STATUS_BADGE[order.order_status] ?? order.order_status);
 
   const total = Number(order.total_product_amount) + Number(order.delivery_fee);
 

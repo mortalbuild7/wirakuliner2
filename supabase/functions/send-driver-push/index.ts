@@ -1,6 +1,6 @@
 /**
  * WIRA Kuliner — Supabase Edge Function
- * FCM: nego luar radius, order delivery paid, siap diambil
+ * FCM: order delivery paid, siap diambil
  *
  * Deploy: supabase functions deploy send-driver-push
  */
@@ -20,7 +20,7 @@ interface OrderPayload {
 }
 
 interface WebhookBody {
-  type?: "negotiation" | "delivery_paid" | "ready_for_pickup";
+  type?: "delivery_paid" | "ready_for_pickup";
   record: OrderPayload;
 }
 
@@ -112,21 +112,15 @@ Deno.serve(async (req) => {
     const notifyType =
       "type" in body && body.type ? body.type : undefined;
 
-    const isNego =
-      record.is_outside_radius === true &&
-      record.negotiation_status === "negotiating";
-
     const isDeliveryPaid =
       (notifyType === "delivery_paid" || record.order_status === "paid") &&
-      !record.is_outside_radius &&
-      record.negotiation_status !== "negotiating" &&
       !isOnsite(record.delivery_address);
 
     const isReadyPickup =
       notifyType === "ready_for_pickup" ||
       record.order_status === "ready_for_pickup";
 
-    if (!isNego && !isDeliveryPaid && !isReadyPickup) {
+    if (!isDeliveryPaid && !isReadyPickup) {
       return new Response(JSON.stringify({ skipped: true }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -182,23 +176,13 @@ Deno.serve(async (req) => {
     for (const d of drivers ?? []) {
       if (!d.fcm_token) continue;
 
-      let title = "Order baru — WIRA Kuliner";
-      let bodyMsg = `Pesanan antar: ${record.delivery_address}`;
-      let dataType = "delivery_paid";
-
-      if (isNego) {
-        title = "Order Nego — WIRA Kuliner";
-        bodyMsg = `Pesanan di luar radius 3 km dari toko: ${record.delivery_address}`;
-        dataType = "negotiation";
-      }
-
       const r = await sendFcm(
         accessToken,
         projectId,
         d.fcm_token,
-        title,
-        bodyMsg,
-        { order_id: record.id, type: dataType }
+        "Order baru — WIRA Kuliner",
+        `Pesanan antar: ${record.delivery_address}`,
+        { order_id: record.id, type: "delivery_paid" }
       );
       results.push({ driver_id: d.id, result: r });
     }
