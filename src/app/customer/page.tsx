@@ -8,7 +8,7 @@ import { ProductMenuImage } from "@/components/customer/product-menu-image";
 import { StoreStatusBadge } from "@/components/customer/store-status-badge";
 import { buildMenuCoverMap, getMerchantEtalaseImage } from "@/lib/merchant-etalase";
 import { isStoreOpen } from "@/lib/merchant-open";
-import { Search, Zap, Eye } from "lucide-react";
+import { Search, Zap, Eye, Bike, ChevronRight } from "lucide-react";
 import type { Merchant } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { useMerchantListRealtime } from "@/hooks/use-merchant-realtime";
@@ -63,6 +63,27 @@ export default function CustomerHomePage() {
 
   return (
     <main className="px-4 py-4">
+      <Link
+        href="/customer/ngojek"
+        className="mb-5 block overflow-hidden rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-600/25 via-emerald-950/50 to-slate-950 p-4 transition hover:border-emerald-400/60"
+      >
+        <div className="flex items-center gap-3">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 shadow-lg shadow-emerald-500/30">
+            <Bike className="h-7 w-7 text-slate-950" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-300">
+              Ojek online
+            </p>
+            <h2 className="text-xl font-black text-white">NGOJEK</h2>
+            <p className="mt-0.5 text-xs text-emerald-100/75">
+              Jemput & antar — seperti GoRide
+            </p>
+          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-emerald-300" />
+        </div>
+      </Link>
+
       <section className="glass-card mb-5 overflow-hidden p-4">
         <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-cyan-400">
           <Zap className="h-3.5 w-3.5" /> Etalase WIRA

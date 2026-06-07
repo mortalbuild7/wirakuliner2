@@ -1,3 +1,4 @@
+import { isNgojekOrder } from "@/lib/order-channel";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -57,9 +58,11 @@ export async function GET(req: Request) {
     return secureJsonResponse({ error: error.message ?? "Gagal memuat pesanan" }, { status: 500 });
   }
 
+  const visibleOrders = (orders ?? []).filter((o) => !isNgojekOrder(o.delivery_address));
+
   return secureJsonResponse({
     merchantId: merchant.id,
     merchantName: merchant.name,
-    orders: orders ?? [],
+    orders: visibleOrders,
   });
 }

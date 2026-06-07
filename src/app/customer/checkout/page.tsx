@@ -281,6 +281,12 @@ function CheckoutForm() {
           setPlaceError(confirmJson.error ?? "Gagal mengonfirmasi pembayaran");
           return;
         }
+        void fetch("/api/orders/notify-drivers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ orderId: json.orderId }),
+        });
         try {
           sessionStorage.setItem(
             `wira_track_${json.orderId}`,

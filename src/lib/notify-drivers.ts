@@ -40,10 +40,14 @@ export async function notifyDriversNewOrder(orderId: string) {
 
   const type =
     order.order_status === "ready_for_pickup" ? "ready_for_pickup" : "delivery_paid";
-  return callDriverPush(type, {
+
+  // FCM bisa lambat (OAuth + loop) — jangan blokir penugasan driver di DB.
+  void callDriverPush(type, {
     ...order,
     offered_driver_id: offeredDriverId,
   });
+
+  return { offeredDriverId, pushed: true };
 }
 
 /** FCM ke driver yang sudah menerima order saat merchant tandai siap diambil. */

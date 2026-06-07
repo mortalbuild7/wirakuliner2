@@ -15,23 +15,29 @@ export function MapFitBounds({
   padding?: number;
 }) {
   const map = useMap();
-  const key = points.map((p) => p.join(",")).join("|");
+  const pointsKey = points.map((p) => p.join(",")).join("|");
 
   useEffect(() => {
     if (points.length === 0) return;
 
-    if (points.length === 1) {
-      map.setView(points[0], Math.min(maxZoom, 16), { animate: true });
-      return;
-    }
+    const run = () => {
+      if (points.length === 1) {
+        map.setView(points[0], Math.min(maxZoom, 16), { animate: false });
+        return;
+      }
 
-    const bounds = L.latLngBounds(points);
-    map.fitBounds(bounds, {
-      padding: L.point(padding, padding),
-      maxZoom,
-      animate: true,
-    });
-  }, [key, map, maxZoom, padding]);
+      const bounds = L.latLngBounds(points);
+      map.fitBounds(bounds, {
+        padding: L.point(padding, padding),
+        maxZoom,
+        animate: false,
+      });
+    };
+
+    run();
+    const t = window.setTimeout(run, 120);
+    return () => window.clearTimeout(t);
+  }, [pointsKey, map, maxZoom, padding, points]);
 
   return null;
 }

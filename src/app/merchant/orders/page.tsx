@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatIdr } from "@/lib/utils";
 import { ThermalReceipt } from "@/components/merchant/thermal-receipt";
 import { ReceiptShareStubs } from "@/components/merchant/receipt-share-stubs";
-import { channelLabel, isOnsiteOrder } from "@/lib/order-channel";
+import { channelLabel, isNgojekOrder, isOnsiteOrder } from "@/lib/order-channel";
 import { ORDER_STATUS_LABEL } from "@/lib/order-flow";
 import type { Order, OrderItem } from "@/types/database";
 import { pickOrderCustomer } from "@/lib/order-customer";
@@ -57,6 +57,7 @@ export default function MerchantOrdersPage() {
       const hasDelivery = rows.some(
         (o) =>
           !isOnsiteOrder(o.delivery_address) &&
+          !isNgojekOrder(o.delivery_address) &&
           ACTIVE_ORDER_STATUSES.includes(o.order_status)
       );
       if (hasDelivery) setTab("delivery");
@@ -77,6 +78,7 @@ export default function MerchantOrdersPage() {
           if (
             row.delivery_address &&
             !isOnsiteOrder(row.delivery_address) &&
+            !isNgojekOrder(row.delivery_address) &&
             row.order_status &&
             ACTIVE_ORDER_STATUSES.includes(row.order_status as Order["order_status"])
           ) {

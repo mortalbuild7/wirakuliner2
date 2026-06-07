@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { formatIdr } from "@/lib/utils";
-import { channelLabel } from "@/lib/order-channel";
+import { channelLabel, isNgojekOrder, parseNgojekLegs } from "@/lib/order-channel";
 import type { Order } from "@/types/database";
 import { pickOrderCustomer } from "@/lib/order-customer";
 import { MapPin, ChevronRight } from "lucide-react";
@@ -30,6 +30,9 @@ export function DriverJobCard({
     : order.merchants?.name;
   const customer = pickOrderCustomer(order.profiles);
 
+  const isRide = isNgojekOrder(order.delivery_address);
+  const legs = parseNgojekLegs(order.delivery_address);
+
   const label = badge ?? (STATUS_BADGE[order.order_status] ?? order.order_status);
 
   const total = Number(order.total_product_amount) + Number(order.delivery_fee);
@@ -41,7 +44,9 @@ export function DriverJobCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-white">{merchant ?? "Toko"}</p>
+          <p className="truncate font-semibold text-white">
+            {isRide ? "NGOJEK Ride" : (merchant ?? "Toko")}
+          </p>
           {customer && (
             <p className="mt-0.5 truncate text-xs font-medium text-cyan-200">
               Customer: {customer.name}
@@ -57,7 +62,11 @@ export function DriverJobCard({
       </div>
       <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
         <MapPin className="h-3 w-3 shrink-0" />
-        <span className="line-clamp-2">{order.delivery_address}</span>
+        <span className="line-clamp-2">
+          {isRide && legs
+            ? `${legs.pickup} → ${legs.destination}`
+            : order.delivery_address}
+        </span>
       </div>
       <div className="mt-3 flex items-center justify-between text-sm">
         <span className="font-medium text-cyan-300">{formatIdr(total)}</span>

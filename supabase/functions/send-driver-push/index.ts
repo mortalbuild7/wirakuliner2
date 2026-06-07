@@ -16,6 +16,7 @@ interface OrderPayload {
   negotiation_status?: string;
   delivery_address: string;
   driver_id?: string | null;
+  offered_driver_id?: string | null;
   merchants?: { name: string } | { name: string }[] | null;
 }
 
@@ -167,25 +168,39 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: drivers } = await supabase
-      .from("drivers")
-      .select("id, fcm_token, name")
-      .eq("status", "idle")
-      .not("fcm_token", "is", null);
+    const targets: { id: string; fcm_token: string; name: string }[] = [];
 
-    for (const d of drivers ?? []) {
-      if (!d.fcm_token) continue;
-
-      const r = await sendFcm(
-        accessToken,
-        projectId,
-        d.fcm_token,
-        "Order baru — WIRA Kuliner",
-        `Pesanan antar: ${record.delivery_address}`,
-        { order_id: record.id, type: "delivery_paid" }
-      );
-      results.push({ driver_id: d.id, result: r });
+    if (record.offered_driver_id) {
+      const { data: offered } = await supabase
+        .from("drivers")
+        .select("id, fcm_token, name")
+        .eq("id", record.offered_driver_id)
+        .maybeSingle();
+      if (offered?.fcm_token) targets.push(offered as { id: string; fcm_token: string; name: string });
+    } else {
+      const { data: drivers } = await supabase
+        .from("drivers")
+        .select("id, fcm_token, name")
+        .eq("status", "idle")
+        .not("fcm_token", "is", null);
+      for (const d of drivers ?? []) {
+        if (d.fcm_token) targets.push(d as { id: string; fcm_token: string; name: string });
+      }
     }
+
+    await Promise.all(
+      targets.map(async (d) => {
+        const r = await sendFcm(
+          accessToken,
+          projectId,
+          d.fcm_token,
+          "Order baru — WIRA Kuliner",
+          `Pesanan antar: ${record.delivery_address}`,
+          { order_id: record.id, type: "delivery_paid" }
+        );
+        results.push({ driver_id: d.id, result: r });
+      })
+    );
 
     return new Response(JSON.stringify({ sent: results.length, results }), {
       headers: { "Content-Type": "application/json" },

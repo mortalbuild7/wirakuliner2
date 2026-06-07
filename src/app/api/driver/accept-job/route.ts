@@ -1,6 +1,6 @@
 import { getAuthDriver } from "@/lib/driver-server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isOnsiteOrder } from "@/lib/order-channel";
+import { isNgojekOrder, isOnsiteOrder } from "@/lib/order-channel";
 import {
   enforceMethod,
   enforceRateLimit,
@@ -69,6 +69,8 @@ export async function POST(req: Request) {
     );
   }
 
+  const isRide = isNgojekOrder(order.delivery_address);
+
   if (!order.driver_id) {
     const { data: claimed, error } = await admin
       .from("orders")
@@ -76,6 +78,7 @@ export async function POST(req: Request) {
         driver_id: auth.driver.id,
         offered_driver_id: null,
         offered_at: null,
+        ...(isRide ? { order_status: "ready_for_pickup" } : {}),
       })
       .eq("id", orderId)
       .is("driver_id", null)

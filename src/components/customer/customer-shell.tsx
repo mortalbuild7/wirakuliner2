@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ShoppingBag, MapPin, Sparkles, User } from "lucide-react";
+import { Home, ShoppingBag, MapPin, Sparkles, User, Bike } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
@@ -11,6 +11,12 @@ import { CustomerModerationBanner } from "@/components/customer/customer-moderat
 
 const NAV = [
   { href: "/customer", label: "Jelajah", icon: Home, match: (p: string) => p === "/customer" },
+  {
+    href: "/customer/ngojek",
+    label: "NGOJEK",
+    icon: Bike,
+    match: (p: string) => p.startsWith("/customer/ngojek"),
+  },
   {
     href: "/customer/cart",
     label: "Keranjang",

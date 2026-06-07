@@ -1,4 +1,5 @@
 import { getAuthDriver } from "@/lib/driver-server";
+import { isNgojekOrder } from "@/lib/order-channel";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   enforceMethod,
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
   const { data: order } = await admin
     .from("orders")
-    .select("id, driver_id, order_status")
+    .select("id, driver_id, order_status, delivery_address")
     .eq("id", orderId)
     .single();
 
@@ -40,9 +41,18 @@ export async function POST(req: Request) {
     return secureJsonResponse({ error: "Bukan order Anda" }, { status: 403 });
   }
 
-  if (order.order_status !== "ready_for_pickup") {
+  const isRide = isNgojekOrder(order.delivery_address);
+  const allowedPickup = isRide
+    ? ["paid", "ready_for_pickup"]
+    : ["ready_for_pickup"];
+
+  if (!allowedPickup.includes(order.order_status)) {
     return secureJsonResponse(
-      { error: "Pesanan belum siap diambil merchant" },
+      {
+        error: isRide
+          ? "Ride belum siap dijemput"
+          : "Pesanan belum siap diambil merchant",
+      },
       { status: 400 }
     );
   }

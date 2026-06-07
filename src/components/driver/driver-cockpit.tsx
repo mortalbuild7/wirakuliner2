@@ -10,7 +10,7 @@ import { useDriverMapLocation } from "@/hooks/use-driver-map-location";
 import { DriverMapView } from "@/components/driver/driver-map-view";
 import { DriverStatusToggle } from "@/components/driver/driver-status-toggle";
 import { formatIdr } from "@/lib/utils";
-import { isOnsiteOrder } from "@/lib/order-channel";
+import { isNgojekOrder, isOnsiteOrder, parseNgojekLegs } from "@/lib/order-channel";
 import {
   DRIVER_REWARD_POINTS_PER_ORDER,
   ORDER_STATUS_LABEL,
@@ -125,7 +125,7 @@ export function DriverCockpit() {
     lastAlertOrderIdRef.current = null;
     const timer = window.setTimeout(() => {
       orderAlertsReadyRef.current = true;
-    }, 2000);
+    }, 800);
     return () => window.clearTimeout(timer);
   }, [driver?.id]);
 
@@ -189,34 +189,31 @@ export function DriverCockpit() {
     void loadPool();
     void loadStats();
 
+    const onOrderRow = (row: {
+      offered_driver_id?: string | null;
+      driver_id?: string | null;
+    }) => {
+      if (row.offered_driver_id === driver.id || row.driver_id === driver.id) {
+        void loadPool();
+        if (row.driver_id === driver.id) void loadStats();
+      }
+    };
+
     const ch = supabase
       .channel(`driver-cockpit-${driver.id}`)
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "orders",
-          filter: `offered_driver_id=eq.${driver.id}`,
-        },
-        () => {
-          void loadPool();
+        { event: "*", schema: "public", table: "orders" },
+        (payload) => {
+          const row = payload.new as
+            | { offered_driver_id?: string | null; driver_id?: string | null }
+            | undefined;
+          if (row) onOrderRow(row);
         }
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "orders",
-          filter: `driver_id=eq.${driver.id}`,
-        },
-        () => {
-          void loadPool();
-          void loadStats();
-        }
-      )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") void loadPool();
+      });
 
     return () => {
       supabase.removeChannel(ch);
@@ -227,13 +224,23 @@ export function DriverCockpit() {
     void loadPool();
   }, [loadPool, dismissed]);
 
-  /** APK WebView sering miss realtime — poll order pool saat online (idle atau aktif). */
+  /** APK WebView sering miss realtime — poll agresif saat online. */
   useEffect(() => {
     if (!driver?.id || !isOnline) return;
+    const ms = hasActive || incomingOffer ? 3000 : 1500;
     const timer = setInterval(() => {
       void loadPool();
-    }, 5000);
+    }, ms);
     return () => clearInterval(timer);
+  }, [driver?.id, isOnline, hasActive, incomingOffer, loadPool]);
+
+  useEffect(() => {
+    if (!driver?.id || !isOnline) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void loadPool();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [driver?.id, isOnline, loadPool]);
 
   useEffect(() => {
@@ -276,11 +283,28 @@ export function DriverCockpit() {
   }, [incomingOffer?.id, incomingOffer?.offered_at, hasActive]);
 
   const shop = activeOrder ? merchantOf(activeOrder) : undefined;
+  const activeIsNgojek = activeOrder ? isNgojekOrder(activeOrder.delivery_address) : false;
+  const ngojekLegs = activeOrder ? parseNgojekLegs(activeOrder.delivery_address) : null;
+
+  const pickupCoords = useMemo(() => {
+    if (!activeOrder || !activeIsNgojek) return null;
+    const lat = activeOrder.pickup_lat;
+    const lng = activeOrder.pickup_lng;
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return null;
+    }
+    return { lat, lng };
+  }, [activeOrder, activeIsNgojek]);
 
   const navDestination = useMemo(() => {
     if (!navMode || !activeOrder) return null;
-    if (navMode === "merchant" && shop?.latitude != null && shop?.longitude != null) {
-      return { lat: shop.latitude, lng: shop.longitude, label: shop.name ?? "Toko" };
+    if (navMode === "merchant") {
+      if (activeIsNgojek && pickupCoords) {
+        return { lat: pickupCoords.lat, lng: pickupCoords.lng, label: "Jemput penumpang" };
+      }
+      if (shop?.latitude != null && shop?.longitude != null) {
+        return { lat: shop.latitude, lng: shop.longitude, label: shop.name ?? "Toko" };
+      }
     }
     if (
       navMode === "customer" &&
@@ -315,8 +339,12 @@ export function DriverCockpit() {
 
     const message =
       navMode === "merchant"
-        ? "Sudah dekat restoran — ambil pesanan di toko"
-        : "Sudah dekat lokasi customer — selesaikan pengantaran";
+        ? activeIsNgojek
+          ? "Sudah dekat titik jemput — temui penumpang"
+          : "Sudah dekat restoran — ambil pesanan di toko"
+        : activeIsNgojek
+          ? "Sudah dekat tujuan — selesaikan perjalanan NGOJEK"
+          : "Sudah dekat lokasi customer — selesaikan pengantaran";
 
     setNavMode(null);
     setOrderCardExpanded(true);
@@ -326,13 +354,22 @@ export function DriverCockpit() {
   const mapProps = useMemo(() => {
     const order = activeOrder ?? incomingOffer;
     const shop = order ? merchantOf(order) : undefined;
+    const orderIsNgojek = order ? isNgojekOrder(order.delivery_address) : false;
+    const orderPickup =
+      orderIsNgojek &&
+      order?.pickup_lat != null &&
+      order?.pickup_lng != null &&
+      Number.isFinite(order.pickup_lat) &&
+      Number.isFinite(order.pickup_lng)
+        ? { lat: order.pickup_lat, lng: order.pickup_lng }
+        : null;
     const live = mapGps.fix;
     const driverLat = live?.lat ?? driver?.current_lat;
     const driverLng = live?.lng ?? driver?.current_lng;
     const navigating = navMode != null;
     return {
-      merchantLat: shop?.latitude,
-      merchantLng: shop?.longitude,
+      merchantLat: orderPickup?.lat ?? shop?.latitude,
+      merchantLng: orderPickup?.lng ?? shop?.longitude,
       deliveryLat: order?.delivery_lat,
       deliveryLng: order?.delivery_lng,
       driverLat,
@@ -509,6 +546,8 @@ export function DriverCockpit() {
 
   const offerShop = incomingOffer ? merchantOf(incomingOffer) : undefined;
   const offerCustomer = incomingOffer ? customerOf(incomingOffer) : undefined;
+  const offerIsNgojek = incomingOffer ? isNgojekOrder(incomingOffer.delivery_address) : false;
+  const offerNgojekLegs = incomingOffer ? parseNgojekLegs(incomingOffer.delivery_address) : null;
   const activeCustomer = activeOrder ? customerOf(activeOrder) : undefined;
   const orderTotal = (o: OrderRow) =>
     Number(o.total_product_amount) + Number(o.delivery_fee);
@@ -623,7 +662,7 @@ export function DriverCockpit() {
                 Pesanan masuk
               </p>
               <p className="mt-1 text-lg font-bold text-white">
-                {offerShop?.name ?? "Toko"}
+                {offerIsNgojek ? "NGOJEK Ride" : (offerShop?.name ?? "Toko")}
               </p>
               {offerCustomer && (
                 <p className="mt-1 text-sm font-medium text-cyan-200">
@@ -632,12 +671,15 @@ export function DriverCockpit() {
                 </p>
               )}
               <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                {incomingOffer.delivery_address}
+                {offerIsNgojek && offerNgojekLegs
+                  ? `${offerNgojekLegs.pickup} → ${offerNgojekLegs.destination}`
+                  : incomingOffer.delivery_address}
               </p>
               <p className="mt-2 text-sm font-semibold text-cyan-300">
                 {formatIdr(orderTotal(incomingOffer))}
                 <span className="ml-2 text-xs text-muted-foreground">
-                  ongkir {formatIdr(Number(incomingOffer.delivery_fee))}
+                  {offerIsNgojek ? "tarif ride" : "ongkir"}{" "}
+                  {formatIdr(Number(incomingOffer.delivery_fee))}
                 </span>
               </p>
               {offerCountdown > 0 && (
@@ -683,10 +725,16 @@ export function DriverCockpit() {
               <div className="min-w-0 text-left">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300">
                   {navMode === "merchant"
-                    ? "Navigasi ke toko"
+                    ? activeIsNgojek
+                      ? "Navigasi jemput"
+                      : "Navigasi ke toko"
                     : navMode === "customer"
-                      ? "Navigasi ke customer"
-                      : "Pesanan aktif"}
+                      ? activeIsNgojek
+                        ? "Navigasi tujuan"
+                        : "Navigasi ke customer"
+                      : activeIsNgojek
+                        ? "NGOJEK aktif"
+                        : "Pesanan aktif"}
                 </p>
                 <p className="truncate text-sm font-semibold text-white">
                   {navDestination?.label ?? activeCustomer?.name ?? shop?.name ?? "Pesanan"}
@@ -721,16 +769,39 @@ export function DriverCockpit() {
               </div>
 
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-orange-500/25 bg-orange-500/5 px-3 py-2">
-                  <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-orange-300">
-                    <Store className="h-3 w-3" />
-                    Restoran
-                  </p>
-                  <p className="mt-0.5 font-medium text-white">{shop?.name ?? "Toko"}</p>
-                  {shop?.address && (
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{shop.address}</p>
-                  )}
-                </div>
+                {activeIsNgojek ? (
+                  <>
+                    <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2">
+                      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                        <Bike className="h-3 w-3" />
+                        Jemput
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 text-sm font-medium text-white">
+                        {ngojekLegs?.pickup ?? "Titik jemput"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-3 py-2">
+                      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
+                        <MapPin className="h-3 w-3" />
+                        Tujuan
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 text-sm font-medium text-white">
+                        {ngojekLegs?.destination ?? "Lokasi tujuan"}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-orange-500/25 bg-orange-500/5 px-3 py-2">
+                    <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-orange-300">
+                      <Store className="h-3 w-3" />
+                      Restoran
+                    </p>
+                    <p className="mt-0.5 font-medium text-white">{shop?.name ?? "Toko"}</p>
+                    {shop?.address && (
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{shop.address}</p>
+                    )}
+                  </div>
+                )}
                 {activeCustomer && (
                   <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300/90">
@@ -775,8 +846,9 @@ export function DriverCockpit() {
               </p>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                {shop?.latitude != null &&
-                  shop.longitude != null &&
+                {(activeIsNgojek
+                  ? pickupCoords != null
+                  : shop?.latitude != null && shop.longitude != null) &&
                   ["paid", "preparing", "ready_for_pickup"].includes(
                     activeOrder.order_status
                   ) && (
@@ -787,20 +859,30 @@ export function DriverCockpit() {
                       className={cn(
                         "h-9 flex-1 rounded-xl",
                         navMode === "merchant"
-                          ? "border-orange-400/60 bg-orange-950/40 text-orange-100"
-                          : "border-orange-500/40 text-orange-200"
+                          ? activeIsNgojek
+                            ? "border-emerald-400/60 bg-emerald-950/40 text-emerald-100"
+                            : "border-orange-400/60 bg-orange-950/40 text-orange-100"
+                          : activeIsNgojek
+                            ? "border-emerald-500/40 text-emerald-200"
+                            : "border-orange-500/40 text-orange-200"
                       )}
                       onClick={() =>
                         navMode === "merchant" ? stopNavMode() : startNavMode("merchant")
                       }
                     >
                       <Navigation className="mr-1.5 h-3.5 w-3.5" />
-                      {navMode === "merchant" ? "Hentikan navigasi toko" : "Navigasi ke toko"}
+                      {navMode === "merchant"
+                        ? activeIsNgojek
+                          ? "Hentikan navigasi jemput"
+                          : "Hentikan navigasi toko"
+                        : activeIsNgojek
+                          ? "Navigasi jemput"
+                          : "Navigasi ke toko"}
                     </Button>
                   )}
               </div>
 
-              {["paid", "preparing"].includes(activeOrder.order_status) && (
+              {!activeIsNgojek && ["paid", "preparing"].includes(activeOrder.order_status) && (
                 <p className="mt-3 rounded-xl bg-amber-500/10 px-3 py-2 text-center text-xs text-amber-100">
                   Tunggu merchant menandai pesanan siap diambil
                 </p>
@@ -808,27 +890,50 @@ export function DriverCockpit() {
 
               {activeOrder.order_status === "ready_for_pickup" && (
                 <>
-                  <div className="mt-3 rounded-xl border border-orange-500/40 bg-orange-500/10 px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-200">
-                      Sebutkan ke kasir restoran
-                    </p>
-                    <p className="mt-1 text-sm font-bold text-white">
-                      Nama: {activeCustomer?.name ?? "—"}
-                    </p>
-                    <p className="text-sm font-mono text-orange-100">
-                      ID: {shortOrderId(activeOrder.id)}
-                    </p>
-                  </div>
+                  {activeIsNgojek ? (
+                    <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-200">
+                        Temui penumpang di titik jemput
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-white">
+                        {activeCustomer?.name ?? "Customer"}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-orange-500/40 bg-orange-500/10 px-3 py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-200">
+                        Sebutkan ke kasir restoran
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-white">
+                        Nama: {activeCustomer?.name ?? "—"}
+                      </p>
+                      <p className="text-sm font-mono text-orange-100">
+                        ID: {shortOrderId(activeOrder.id)}
+                      </p>
+                    </div>
+                  )}
                   <Button
-                    className="mt-3 h-11 w-full rounded-xl bg-orange-500 font-semibold"
+                    className={cn(
+                      "mt-3 h-11 w-full rounded-xl font-semibold",
+                      activeIsNgojek ? "bg-emerald-500" : "bg-orange-500"
+                    )}
                     disabled={busy}
                     onClick={() => {
                       handleUserGesture();
                       void pickupOrder();
                     }}
                   >
-                    <Package className="mr-2 h-4 w-4" />
-                    Sudah sebutkan — ambil pesanan
+                    {activeIsNgojek ? (
+                      <>
+                        <Bike className="mr-2 h-4 w-4" />
+                        Penumpang naik — mulai perjalanan
+                      </>
+                    ) : (
+                      <>
+                        <Package className="mr-2 h-4 w-4" />
+                        Sudah sebutkan — ambil pesanan
+                      </>
+                    )}
                   </Button>
                 </>
               )}
@@ -849,8 +954,12 @@ export function DriverCockpit() {
                   >
                     <MapPin className="mr-2 h-4 w-4" />
                     {navMode === "customer"
-                      ? "Hentikan navigasi customer"
-                      : "Navigasi ke customer"}
+                      ? activeIsNgojek
+                        ? "Hentikan navigasi tujuan"
+                        : "Hentikan navigasi customer"
+                      : activeIsNgojek
+                        ? "Navigasi ke tujuan"
+                        : "Navigasi ke customer"}
                   </Button>
                   <Button
                     className="mt-2 h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 font-semibold text-slate-950"
@@ -860,7 +969,9 @@ export function DriverCockpit() {
                       void completeOrder();
                     }}
                   >
-                    Selesai antar (+{DRIVER_REWARD_POINTS_PER_ORDER} poin)
+                    {activeIsNgojek
+                      ? `Selesai NGOJEK (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`
+                      : `Selesai antar (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`}
                   </Button>
                 </>
               )}

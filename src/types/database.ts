@@ -100,6 +100,8 @@ export interface Order {
   delivery_address: string;
   delivery_lat: number;
   delivery_lng: number;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
   distance_km: number | null;
   snap_token: string | null;
   payment_gateway?: string | null;
