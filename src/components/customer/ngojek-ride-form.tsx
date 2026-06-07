@@ -36,7 +36,7 @@ const DestinationMap = dynamic(
   }
 );
 
-export function NgojekRideForm() {
+export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -97,7 +97,7 @@ export function NgojekRideForm() {
 
   async function bookRide() {
     if (!userId) {
-      router.push(`/login?next=${encodeURIComponent("/customer/ngojek")}`);
+      router.push(`/login?next=${encodeURIComponent("/customer?tab=ngojek")}`);
       return;
     }
     if (!destAddress.trim()) {
@@ -174,26 +174,39 @@ export function NgojekRideForm() {
 
   return (
     <div className="space-y-5 pb-6">
-      <section className="overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600/30 via-emerald-950/40 to-slate-950 p-5">
-        <div className="flex items-start gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 shadow-lg shadow-emerald-500/30">
-            <Bike className="h-6 w-6 text-slate-950" />
-          </span>
-          <div>
-            <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">
-              <Sparkles className="h-3 w-3" /> WIRA Ride
-            </p>
-            <h1 className="text-2xl font-black tracking-tight text-white">NGOJEK</h1>
-            <p className="mt-1 text-xs text-emerald-100/80">
-              Ojek online — jemput di lokasi Anda, antar ke tujuan
-            </p>
+      {!embedded && (
+        <section className="overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600/30 via-emerald-950/40 to-slate-950 p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 shadow-lg shadow-emerald-500/30">
+              <Bike className="h-6 w-6 text-slate-950" />
+            </span>
+            <div>
+              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">
+                <Sparkles className="h-3 w-3" /> WIRA Ride
+              </p>
+              <h1 className="text-2xl font-black tracking-tight text-white">NGOJEK</h1>
+              <p className="mt-1 text-xs text-emerald-100/80">
+                Ojek online — jemput di lokasi Anda, antar ke tujuan
+              </p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
+
+      {embedded && (
+        <section className="glass-card border-emerald-500/20 p-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-emerald-300">
+            Ojek online WIRA
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Jemput di lokasi Anda, antar ke tujuan — seperti GoRide
+          </p>
+        </section>
+      )}
 
       {!userId && (
         <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-100">
-          <Link href={`/login?next=${encodeURIComponent("/customer/ngojek")}`} className="underline">
+          <Link href={`/login?next=${encodeURIComponent("/customer?tab=ngojek")}`} className="underline">
             Login
           </Link>{" "}
           untuk memesan NGOJEK

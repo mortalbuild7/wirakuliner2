@@ -3,19 +3,19 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ShoppingBag, MapPin, Sparkles, User, Bike } from "lucide-react";
+import { Home, ShoppingBag, MapPin, Sparkles, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { CustomerModerationBanner } from "@/components/customer/customer-moderation-banner";
+import { CustomerExploreTabsBar } from "@/components/customer/customer-explore-tabs-bar";
 
 const NAV = [
-  { href: "/customer", label: "Jelajah", icon: Home, match: (p: string) => p === "/customer" },
   {
-    href: "/customer/ngojek",
-    label: "NGOJEK",
-    icon: Bike,
-    match: (p: string) => p.startsWith("/customer/ngojek"),
+    href: "/customer",
+    label: "Jelajah",
+    icon: Home,
+    match: (p: string) => p === "/customer" || p.startsWith("/customer/ngojek"),
   },
   {
     href: "/customer/cart",
@@ -78,6 +78,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <CustomerModerationBanner />
+      <CustomerExploreTabsBar />
       <div className="safe-pb-nav mx-auto max-w-mobile">{children}</div>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 glass-panel pb-[env(safe-area-inset-bottom,0px)]">
