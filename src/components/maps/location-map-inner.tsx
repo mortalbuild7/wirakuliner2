@@ -1,6 +1,9 @@
 "use client";
 
-import { GpsLockMapInner } from "@/components/maps/gps-lock-map-inner";
+import {
+  GpsLockMapInner,
+  type ManualPickCenter,
+} from "@/components/maps/gps-lock-map-inner";
 
 export function LocationMapInner({
   latitude,
@@ -14,6 +17,8 @@ export function LocationMapInner({
   followGps = false,
   lockZoom = true,
   manualPickMode = false,
+  manualPickCenter = "hub",
+  showRadius = true,
   height = 220,
 }: {
   latitude: number;
@@ -27,6 +32,8 @@ export function LocationMapInner({
   followGps?: boolean;
   lockZoom?: boolean;
   manualPickMode?: boolean;
+  manualPickCenter?: ManualPickCenter;
+  showRadius?: boolean;
   height?: number;
 }) {
   return (
@@ -37,9 +44,11 @@ export function LocationMapInner({
       hubLat={hubLat}
       hubLng={hubLng}
       hubLabel={hubLabel}
+      showRadius={showRadius}
       followGps={followGps}
       lockZoom={lockZoom}
       manualPickMode={manualPickMode}
+      manualPickCenter={manualPickCenter}
       draggableUser
       onUserDrag={onLocationChange}
       onUserDragPreview={onLocationPreview}

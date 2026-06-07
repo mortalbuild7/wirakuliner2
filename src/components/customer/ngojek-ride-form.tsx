@@ -199,7 +199,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
             Ojek online WIRA
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Jemput di lokasi Anda, antar ke tujuan — seperti GoRide
+            Jemput di lokasi Anda, antar ke tujuan
           </p>
         </section>
       )}
@@ -284,9 +284,11 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
           hubLat={pickupLat}
           hubLng={pickupLng}
           hubLabel="J"
+          showRadius={false}
           followGps={false}
           lockZoom={false}
           manualPickMode
+          manualPickCenter="both"
           height={240}
         />
       </section>

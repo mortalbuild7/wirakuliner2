@@ -123,24 +123,49 @@ function MapTapPlacePin({
   return null;
 }
 
-/** Zoom out agar area sekitar toko terlihat saat pilih alamat orang lain. */
+export type ManualPickCenter = "hub" | "user" | "both";
+
+/** Atur zoom manual sekali saat mode pilih pin — jangan reset saat hub GPS berubah. */
 function MapManualPickView({
   hubLat,
   hubLng,
+  userLat,
+  userLng,
   active,
+  centerMode = "hub",
 }: {
   hubLat: number;
   hubLng: number;
+  userLat: number;
+  userLng: number;
   active: boolean;
+  centerMode?: ManualPickCenter;
 }) {
   const map = useMap();
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      initializedRef.current = false;
+      return;
+    }
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
     map.setMinZoom(12);
     map.setMaxZoom(19);
+
+    if (centerMode === "user") {
+      map.setView([userLat, userLng], 15, { animate: false });
+      return;
+    }
+    if (centerMode === "both") {
+      const bounds = L.latLngBounds([hubLat, hubLng], [userLat, userLng]);
+      map.fitBounds(bounds.pad(0.15), { padding: [48, 48], maxZoom: 16, animate: false });
+      return;
+    }
     map.setView([hubLat, hubLng], 15, { animate: false });
-  }, [active, hubLat, hubLng, map]);
+  }, [active, centerMode, hubLat, hubLng, userLat, userLng, map]);
 
   return null;
 }
@@ -164,6 +189,7 @@ export function GpsLockMapInner({
   followGps = true,
   lockZoom = true,
   manualPickMode = false,
+  manualPickCenter = "hub",
   draggableUser = false,
   onUserDrag,
   onUserDragPreview,
@@ -189,6 +215,8 @@ export function GpsLockMapInner({
   lockZoom?: boolean;
   /** Mode pilih titik antar manual: ketuk peta + geser pin, zoom bebas. */
   manualPickMode?: boolean;
+  /** Pusat peta awal saat manual pick (default hub / toko). */
+  manualPickCenter?: ManualPickCenter;
   draggableUser?: boolean;
   onUserDrag?: (lat: number, lng: number) => void;
   /** Preview ongkir saat drag — tidak update state parent (hindari re-render). */
@@ -256,7 +284,14 @@ export function GpsLockMapInner({
           lockZoom={lockZoom && !manualPickMode}
         />
         {manualPickMode && (
-          <MapManualPickView hubLat={hubLat} hubLng={hubLng} active={manualPickMode} />
+          <MapManualPickView
+            hubLat={hubLat}
+            hubLng={hubLng}
+            userLat={userLat}
+            userLng={userLng}
+            active={manualPickMode}
+            centerMode={manualPickCenter}
+          />
         )}
         {manualPickMode && onUserDrag && (
           <MapTapPlacePin enabled={manualPickMode} onPlace={onUserDrag} />
