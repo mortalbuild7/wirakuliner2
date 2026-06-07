@@ -119,8 +119,9 @@ function CheckoutForm() {
       setBestGpsAccuracyM(null);
       setAddress("");
       if (zoneCenter) {
-        setLat(zoneCenter.lat);
-        setLng(zoneCenter.lng);
+        // Geser pin sedikit dari titik toko agar tidak tertutup marker oranye
+        setLat(zoneCenter.lat + 0.004);
+        setLng(zoneCenter.lng + 0.003);
       }
       return;
     }

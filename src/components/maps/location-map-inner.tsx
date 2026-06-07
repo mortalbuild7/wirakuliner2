@@ -12,6 +12,7 @@ export function LocationMapInner({
   hubLabel = "W",
   followGps = false,
   lockZoom = true,
+  manualPickMode = false,
   height = 220,
 }: {
   latitude: number;
@@ -23,6 +24,7 @@ export function LocationMapInner({
   hubLabel?: string;
   followGps?: boolean;
   lockZoom?: boolean;
+  manualPickMode?: boolean;
   height?: number;
 }) {
   return (
@@ -35,6 +37,7 @@ export function LocationMapInner({
       hubLabel={hubLabel}
       followGps={followGps}
       lockZoom={lockZoom}
+      manualPickMode={manualPickMode}
       draggableUser
       onUserDrag={onLocationChange}
       height={height}

@@ -139,6 +139,7 @@ export function LocationPicker({
       </p>
 
       <LocationMapInner
+        key={isOtherAddress ? "pick-other" : "pick-self"}
         latitude={latitude}
         longitude={longitude}
         onLocationChange={handlePinDrag}
@@ -148,12 +149,13 @@ export function LocationPicker({
         hubLabel={zoneCenter.name.slice(0, 1)}
         followGps={followGps}
         lockZoom={followGps && zoomLocked}
+        manualPickMode={isOtherAddress}
         height={280}
       />
 
       <p className="text-center text-[11px] text-muted-foreground">
         {isOtherAddress
-          ? "Geser pin biru ke alamat penerima pesanan"
+          ? "Ketuk peta atau geser pin biru ke alamat penerima"
           : followGps && zoomLocked
             ? "Zoom dikunci · mengikuti GPS realtime"
             : "Geser pin biru untuk koreksi manual"}{" "}

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef } from "react";
-import { Circle, MapContainer, Marker, Polyline, TileLayer } from "react-leaflet";
+import { useEffect, useMemo, useRef } from "react";
+import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import { DELIVERY_RADIUS_KM } from "@/lib/geo-config";
 import { GPS_LOCK_ZOOM } from "@/lib/map-location";
@@ -42,25 +42,34 @@ const pointIcon = (color: string, label: string) =>
     iconAnchor: [16, 16],
   });
 
+function emitPinPosition(
+  markerRef: { current: L.Marker | null },
+  onMove: (lat: number, lng: number) => void
+) {
+  const m = markerRef.current;
+  if (!m) return;
+  const { lat, lng } = m.getLatLng();
+  onMove(lat, lng);
+}
+
 function DraggableUserPin({
   position,
-  onDragEnd,
+  onMove,
 }: {
   position: [number, number];
-  onDragEnd: (lat: number, lng: number) => void;
+  onMove: (lat: number, lng: number) => void;
 }) {
   const markerRef = useRef<L.Marker>(null);
   const eventHandlers = useMemo(
     () => ({
+      drag() {
+        emitPinPosition(markerRef, onMove);
+      },
       dragend() {
-        const m = markerRef.current;
-        if (m) {
-          const { lat, lng } = m.getLatLng();
-          onDragEnd(lat, lng);
-        }
+        emitPinPosition(markerRef, onMove);
       },
     }),
-    [onDragEnd]
+    [onMove]
   );
 
   return (
@@ -70,8 +79,55 @@ function DraggableUserPin({
       icon={userMarkerIcon()}
       ref={markerRef}
       eventHandlers={eventHandlers}
+      zIndexOffset={1000}
     />
   );
+}
+
+/** Ketuk peta untuk menempatkan pin (mode pilih alamat manual). */
+function MapTapPlacePin({
+  enabled,
+  onPlace,
+}: {
+  enabled: boolean;
+  onPlace: (lat: number, lng: number) => void;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!enabled) return;
+    function onClick(e: L.LeafletMouseEvent) {
+      onPlace(e.latlng.lat, e.latlng.lng);
+    }
+    map.on("click", onClick);
+    return () => {
+      map.off("click", onClick);
+    };
+  }, [enabled, map, onPlace]);
+
+  return null;
+}
+
+/** Zoom out agar area sekitar toko terlihat saat pilih alamat orang lain. */
+function MapManualPickView({
+  hubLat,
+  hubLng,
+  active,
+}: {
+  hubLat: number;
+  hubLng: number;
+  active: boolean;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!active) return;
+    map.setMinZoom(12);
+    map.setMaxZoom(19);
+    map.setView([hubLat, hubLng], 15, { animate: false });
+  }, [active, hubLat, hubLng, map]);
+
+  return null;
 }
 
 export type GpsLockMapPoint = {
@@ -91,6 +147,7 @@ export function GpsLockMapInner({
   showRadius = true,
   followGps = true,
   lockZoom = true,
+  manualPickMode = false,
   draggableUser = false,
   onUserDrag,
   extraPoints = [],
@@ -111,6 +168,8 @@ export function GpsLockMapInner({
   showRadius?: boolean;
   followGps?: boolean;
   lockZoom?: boolean;
+  /** Mode pilih titik antar manual: ketuk peta + geser pin, zoom bebas. */
+  manualPickMode?: boolean;
   draggableUser?: boolean;
   onUserDrag?: (lat: number, lng: number) => void;
   extraPoints?: GpsLockMapPoint[];
@@ -127,14 +186,15 @@ export function GpsLockMapInner({
   const radiusM = DELIVERY_RADIUS_KM * 1000;
   const navActive = navigationTarget != null;
   const zoom = navActive ? DRIVER_NAV_ZOOM : GPS_LOCK_ZOOM;
-  const interactionsLocked = followGps && lockZoom;
+  const interactionsLocked = !manualPickMode && followGps && lockZoom;
+  const mapMaxZoom = manualPickMode ? 19 : GPS_LOCK_ZOOM;
   const bearing = navActive
     ? bearingDegrees(userLat, userLng, navigationTarget.lat, navigationTarget.lng)
     : undefined;
   const activeRoute: [number, number][] | undefined = navActive
     ? navigationRouteLine && navigationRouteLine.length >= 2
       ? navigationRouteLine
-      : [userPos, [navigationTarget.lat, navigationTarget.lng]]
+      : undefined
     : routeLine;
   const driverIcon = userMarkerIcon(bearing);
 
@@ -148,12 +208,12 @@ export function GpsLockMapInner({
       <MapContainer
         center={userPos}
         zoom={zoom}
-        maxZoom={GPS_LOCK_ZOOM}
-        scrollWheelZoom={!interactionsLocked}
-        doubleClickZoom={!interactionsLocked}
-        touchZoom={!interactionsLocked}
-        boxZoom={!interactionsLocked}
-        keyboard={!interactionsLocked}
+        maxZoom={mapMaxZoom}
+        scrollWheelZoom={manualPickMode || !interactionsLocked}
+        doubleClickZoom={manualPickMode || !interactionsLocked}
+        touchZoom={manualPickMode || !interactionsLocked}
+        boxZoom={manualPickMode || !interactionsLocked}
+        keyboard={manualPickMode || !interactionsLocked}
         className={className}
         style={{ height: "100%", width: "100%" }}
       >
@@ -166,9 +226,15 @@ export function GpsLockMapInner({
           lat={userLat}
           lng={userLng}
           zoom={zoom}
-          follow={followGps}
-          lockZoom={lockZoom}
+          follow={followGps && !manualPickMode}
+          lockZoom={lockZoom && !manualPickMode}
         />
+        {manualPickMode && (
+          <MapManualPickView hubLat={hubLat} hubLng={hubLng} active={manualPickMode} />
+        )}
+        {manualPickMode && onUserDrag && (
+          <MapTapPlacePin enabled={manualPickMode} onPlace={onUserDrag} />
+        )}
         {showRadius && !navActive && (
           <Circle
             center={hubPos}
@@ -219,7 +285,7 @@ export function GpsLockMapInner({
           />
         ))}
         {draggableUser && onUserDrag ? (
-          <DraggableUserPin position={userPos} onDragEnd={onUserDrag} />
+          <DraggableUserPin position={userPos} onMove={onUserDrag} />
         ) : (
           <Marker position={userPos} icon={driverIcon} />
         )}

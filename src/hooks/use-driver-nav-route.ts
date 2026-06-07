@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchRoadRoute } from "@/lib/road-route";
 import { haversineMeters } from "@/lib/geo-distance";
 
-/** Polyline rute jalan driver → customer; di-refresh saat posisi driver berubah signifikan. */
+/** Polyline rute jalan driver → tujuan; di-refresh saat posisi berubah signifikan. */
 export function useDriverNavRoute(
   enabled: boolean,
   from: { lat: number; lng: number } | null,
@@ -12,27 +12,41 @@ export function useDriverNavRoute(
 ): [number, number][] | null {
   const [route, setRoute] = useState<[number, number][] | null>(null);
   const lastFetchFromRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastFetchToRef = useRef<{ lat: number; lng: number } | null>(null);
   const fetchingRef = useRef(false);
 
   useEffect(() => {
     if (!enabled || !from || !to) {
       setRoute(null);
       lastFetchFromRef.current = null;
+      lastFetchToRef.current = null;
       return;
     }
 
-    const prev = lastFetchFromRef.current;
+    const prevFrom = lastFetchFromRef.current;
+    const prevTo = lastFetchToRef.current;
+    const destChanged =
+      !prevTo ||
+      prevTo.lat !== to.lat ||
+      prevTo.lng !== to.lng ||
+      haversineMeters(prevTo.lat, prevTo.lng, to.lat, to.lng) > 5;
+
     const movedEnough =
-      !prev || haversineMeters(prev.lat, prev.lng, from.lat, from.lng) > 120;
+      !prevFrom ||
+      destChanged ||
+      haversineMeters(prevFrom.lat, prevFrom.lng, from.lat, from.lng) > 80;
 
     if (!movedEnough) return;
     if (fetchingRef.current) return;
 
     fetchingRef.current = true;
     lastFetchFromRef.current = from;
+    lastFetchToRef.current = to;
 
     void fetchRoadRoute(from, to)
-      .then((line) => setRoute(line))
+      .then((line) => {
+        if (line.length >= 2) setRoute(line);
+      })
       .finally(() => {
         fetchingRef.current = false;
       });
