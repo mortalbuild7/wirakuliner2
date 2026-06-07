@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert } from "@/components/ui/alert";
-import { LocationPicker } from "@/components/maps/location-picker";
+import {
+  LocationPicker,
+  type DeliveryDestinationMode,
+} from "@/components/maps/location-picker";
 import {
   deliveryZoneCenter,
   distanceToZone,
@@ -20,7 +23,7 @@ import { isStoreOpen } from "@/lib/merchant-open";
 import { formatIdr } from "@/lib/utils";
 import { isPaymentBypassEnabled, runCheckoutPayment } from "@/lib/payment-flow";
 import type { CartItem } from "@/types/database";
-import { CreditCard } from "lucide-react";
+import { CreditCard, MapPin, UserRound } from "lucide-react";
 import { useSingleMerchantRealtime } from "@/hooks/use-merchant-realtime";
 
 function CheckoutForm() {
@@ -30,6 +33,9 @@ function CheckoutForm() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [merchantName, setMerchantName] = useState("");
   const [zoneCenter, setZoneCenter] = useState<ZoneCenter | null>(null);
+  const [deliveryDestination, setDeliveryDestination] =
+    useState<DeliveryDestinationMode>("self");
+  const [recipientName, setRecipientName] = useState("");
   const [address, setAddress] = useState("");
   const [lat, setLat] = useState(JALAN_WIRA.latitude);
   const [lng, setLng] = useState(JALAN_WIRA.longitude);
@@ -105,9 +111,33 @@ function CheckoutForm() {
   const deliveryFee = dineIn ? 0 : calculateDeliveryFee(distance);
   const total = subtotal + deliveryFee;
 
+  function switchDeliveryDestination(mode: DeliveryDestinationMode) {
+    setDeliveryDestination(mode);
+    setPlaceError(null);
+    if (mode === "other") {
+      setGpsAccuracyM(null);
+      setBestGpsAccuracyM(null);
+      setAddress("");
+      if (zoneCenter) {
+        setLat(zoneCenter.lat);
+        setLng(zoneCenter.lng);
+      }
+      return;
+    }
+    setRecipientName("");
+    if (address.startsWith("Patokan GPS")) {
+      setAddress("");
+    }
+  }
+
   function handleLocationChange(newLat: number, newLng: number, accuracyM?: number) {
     setLat(newLat);
     setLng(newLng);
+    if (deliveryDestination === "other") {
+      setGpsAccuracyM(null);
+      setBestGpsAccuracyM(null);
+      return;
+    }
     if (accuracyM != null) {
       setGpsAccuracyM(accuracyM);
       setBestGpsAccuracyM((prev) =>
@@ -121,6 +151,15 @@ function CheckoutForm() {
 
   function deliveryAddressForOrder(): string {
     const trimmed = address.trim();
+    if (deliveryDestination === "other") {
+      if (!trimmed) return "";
+      const recipient = recipientName.trim();
+      const coords = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      if (recipient) {
+        return `[Untuk: ${recipient}] ${trimmed} (peta: ${coords})`;
+      }
+      return `[Antar ke alamat lain] ${trimmed} (peta: ${coords})`;
+    }
     if (trimmed) return trimmed;
     if (gpsAccuracyM != null) {
       return `GPS ${lat.toFixed(5)}, ${lng.toFixed(5)} (±${Math.round(gpsAccuracyM)} m)`;
@@ -128,9 +167,12 @@ function CheckoutForm() {
     return "";
   }
 
-  const canPlaceDelivery =
-    dineIn ||
-    (merchantCoordsReady && (Boolean(deliveryAddressForOrder()) || gpsAccuracyM != null));
+  const canPlaceDelivery = dineIn
+    ? true
+    : deliveryDestination === "other"
+      ? merchantCoordsReady && address.trim().length > 0
+      : merchantCoordsReady &&
+        (Boolean(deliveryAddressForOrder()) || gpsAccuracyM != null);
 
   async function placeOrder() {
     setPlaceError(null);
@@ -156,7 +198,11 @@ function CheckoutForm() {
       : deliveryAddressForOrder();
 
     if (!dineIn && !deliveryAddr) {
-      setPlaceError("Tunggu GPS atau isi alamat lengkap.");
+      setPlaceError(
+        deliveryDestination === "other"
+          ? "Isi alamat penerima dan pilih titik antar di peta."
+          : "Tunggu GPS atau isi alamat lengkap."
+      );
       return;
     }
 
@@ -289,6 +335,41 @@ function CheckoutForm() {
         </section>
       ) : (
         <section className="glass-card space-y-4 p-4">
+          <div>
+            <Label className="text-muted-foreground">Tujuan pengantaran</Label>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => switchDeliveryDestination("self")}
+                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-xs font-medium transition ${
+                  deliveryDestination === "self"
+                    ? "border-cyan-500/50 bg-cyan-500/15 text-cyan-100"
+                    : "border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10"
+                }`}
+              >
+                <MapPin className="h-4 w-4 shrink-0" />
+                Lokasi saya (GPS)
+              </button>
+              <button
+                type="button"
+                onClick={() => switchDeliveryDestination("other")}
+                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-xs font-medium transition ${
+                  deliveryDestination === "other"
+                    ? "border-orange-500/50 bg-orange-500/15 text-orange-100"
+                    : "border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10"
+                }`}
+              >
+                <UserRound className="h-4 w-4 shrink-0" />
+                Untuk orang lain
+              </button>
+            </div>
+            {deliveryDestination === "other" && (
+              <p className="mt-2 text-[11px] text-orange-200/90">
+                Pilih titik antar di peta — cocok untuk pesanan hadiah atau beliin orang lain.
+              </p>
+            )}
+          </div>
+
           <p className="text-xs text-cyan-300/80">
             Jarak dihitung dari <strong className="text-white">{zoneCenter.name}</strong>
           </p>
@@ -299,13 +380,32 @@ function CheckoutForm() {
             distanceKm={distance}
             accuracyM={gpsAccuracyM}
             zoneCenter={zoneCenter}
+            destinationMode={deliveryDestination}
           />
 
+          {deliveryDestination === "other" && (
+            <div>
+              <Label className="text-muted-foreground">Nama penerima (opsional)</Label>
+              <Input
+                className="mt-1.5 rounded-xl border-white/10 bg-white/5"
+                placeholder="Contoh: Budi / Ibu Siti"
+                value={recipientName}
+                onChange={(e) => setRecipientName(e.target.value)}
+              />
+            </div>
+          )}
+
           <div>
-            <Label className="text-muted-foreground">Alamat lengkap</Label>
+            <Label className="text-muted-foreground">
+              {deliveryDestination === "other" ? "Alamat penerima" : "Alamat lengkap"}
+            </Label>
             <Input
               className="mt-1.5 rounded-xl border-white/10 bg-white/5"
-              placeholder="No rumah, patokan, dll."
+              placeholder={
+                deliveryDestination === "other"
+                  ? "No rumah, RT/RW, patokan, nomor HP penerima"
+                  : "No rumah, patokan, dll."
+              }
               value={address}
               onChange={(e) => setAddress(e.target.value)}
             />

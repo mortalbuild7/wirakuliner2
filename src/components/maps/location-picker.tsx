@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
-import { Crosshair, MapPin, Radar } from "lucide-react";
+import { Crosshair, MapPin, Radar, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DELIVERY_RADIUS_KM, type ZoneCenter } from "@/lib/geo-config";
 import {
@@ -25,6 +25,8 @@ const LocationMapInner = dynamic(
   }
 );
 
+export type DeliveryDestinationMode = "self" | "other";
+
 export function LocationPicker({
   latitude,
   longitude,
@@ -32,6 +34,7 @@ export function LocationPicker({
   distanceKm,
   accuracyM,
   zoneCenter,
+  destinationMode = "self",
 }: {
   latitude: number;
   longitude: number;
@@ -39,21 +42,33 @@ export function LocationPicker({
   distanceKm: number;
   accuracyM?: number | null;
   zoneCenter: ZoneCenter;
+  destinationMode?: DeliveryDestinationMode;
 }) {
   const [gpsError, setGpsError] = useState<string | null>(null);
-  const [manualPin, setManualPin] = useState(false);
+  const [manualPin, setManualPin] = useState(destinationMode === "other");
   const deliveryFee = calculateDeliveryFee(distanceKm);
   const tier1 = isTier1Distance(distanceKm);
+  const isOtherAddress = destinationMode === "other";
 
-  const { fix, loading: gpsLoading, zoomLocked, bestAccuracy } = useMapLocation(true);
+  const { fix, loading: gpsLoading, zoomLocked, bestAccuracy } = useMapLocation(
+    !isOtherAddress
+  );
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
   useEffect(() => {
-    if (!fix || manualPin) return;
+    if (isOtherAddress) {
+      setManualPin(true);
+      return;
+    }
+    setManualPin(false);
+  }, [isOtherAddress]);
+
+  useEffect(() => {
+    if (!fix || manualPin || isOtherAddress) return;
     onChangeRef.current(fix.lat, fix.lng, bestAccuracy ?? fix.accuracy);
     setGpsError(null);
-  }, [fix, manualPin, bestAccuracy]);
+  }, [fix, manualPin, bestAccuracy, isOtherAddress]);
 
   function useMyLocation() {
     if (!navigator.geolocation) {
@@ -86,26 +101,37 @@ export function LocationPicker({
     ? accuracyM
     : (bestAccuracy ?? fix?.accuracy ?? accuracyM);
 
-  const followGps = !manualPin && fix != null;
+  const followGps = !isOtherAddress && !manualPin && fix != null;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium text-cyan-300">
-          <Radar className="h-4 w-4" />
-          GPS · jarak dari {zoneCenter.name}
+          {isOtherAddress ? (
+            <>
+              <UserRound className="h-4 w-4" />
+              Pilih lokasi penerima di peta
+            </>
+          ) : (
+            <>
+              <Radar className="h-4 w-4" />
+              GPS · jarak dari {zoneCenter.name}
+            </>
+          )}
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="shrink-0 border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"
-          onClick={useMyLocation}
-          disabled={gpsLoading}
-        >
-          <Crosshair className="mr-1 h-3.5 w-3.5" />
-          {gpsLoading ? "GPS..." : "Lokasi saya"}
-        </Button>
+        {!isOtherAddress && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0 border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"
+            onClick={useMyLocation}
+            disabled={gpsLoading}
+          >
+            <Crosshair className="mr-1 h-3.5 w-3.5" />
+            {gpsLoading ? "GPS..." : "Lokasi saya"}
+          </Button>
+        )}
       </div>
 
       <p className="text-[11px] text-muted-foreground">
@@ -126,9 +152,11 @@ export function LocationPicker({
       />
 
       <p className="text-center text-[11px] text-muted-foreground">
-        {followGps && zoomLocked
-          ? "Zoom dikunci · mengikuti GPS realtime"
-          : "Geser pin biru untuk koreksi manual"}{" "}
+        {isOtherAddress
+          ? "Geser pin biru ke alamat penerima pesanan"
+          : followGps && zoomLocked
+            ? "Zoom dikunci · mengikuti GPS realtime"
+            : "Geser pin biru untuk koreksi manual"}{" "}
         · titik oranye = {zoneCenter.name}
       </p>
 
@@ -148,9 +176,14 @@ export function LocationPicker({
           <div>
             <p className="text-xs text-muted-foreground">Jarak ke {zoneCenter.name}</p>
             <p className="text-lg font-bold tabular-nums">{distanceKm.toFixed(2)} km</p>
-            {displayAccuracy != null && displayAccuracy > 0 && (
+            {!isOtherAddress && displayAccuracy != null && displayAccuracy > 0 && (
               <p className="text-[10px] text-muted-foreground">
                 Akurasi GPS ±{Math.round(displayAccuracy)} m
+              </p>
+            )}
+            {isOtherAddress && (
+              <p className="text-[10px] text-muted-foreground">
+                Titik dipilih manual di peta
               </p>
             )}
           </div>
