@@ -2,6 +2,7 @@
 
 import { MapContainer, Marker, Polyline, TileLayer } from "react-leaflet";
 import L from "leaflet";
+import { driverMotorcycleIcon } from "@/lib/map-marker-icons";
 
 const merchantIcon = L.divIcon({
   className: "",
@@ -17,12 +18,7 @@ const customerIcon = L.divIcon({
   iconAnchor: [16, 16],
 });
 
-const driverIcon = L.divIcon({
-  className: "",
-  html: `<div class="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg ring-2 ring-emerald-300">D</div>`,
-  iconSize: [36, 36],
-  iconAnchor: [18, 18],
-});
+const driverIcon = driverMotorcycleIcon();
 
 export function DriverRouteMapInner({
   merchantLat,

@@ -104,6 +104,7 @@ export function DriverMapViewInner({
       navigationTargetColor={
         navigationTarget ? driverNavTargetColor(navigationTarget) : "#22d3ee"
       }
+      userMarkerKind="driver"
       className={`${className} z-0 min-h-[280px]`}
     />
   );

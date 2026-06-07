@@ -6,6 +6,7 @@ import L from "leaflet";
 import { DELIVERY_RADIUS_KM } from "@/lib/geo-config";
 import { GPS_LOCK_ZOOM } from "@/lib/map-location";
 import { bearingDegrees, DRIVER_NAV_ZOOM } from "@/lib/map-navigation";
+import { customerPickupIcon, driverMotorcycleIcon } from "@/lib/map-marker-icons";
 import { MapGpsFollow } from "@/components/maps/map-gps-follow";
 
 const hubIcon = (label: string) =>
@@ -16,24 +17,6 @@ const hubIcon = (label: string) =>
     iconAnchor: [16, 16],
   });
 
-function userMarkerIcon(bearingDeg?: number) {
-  const rotation = bearingDeg != null ? `transform:rotate(${bearingDeg}deg);` : "";
-  return L.divIcon({
-    className: "",
-    html: `<div style="display:flex;height:44px;width:44px;align-items:center;justify-content:center;${rotation}">
-      <div style="display:flex;height:40px;width:40px;align-items:center;justify-content:center;border-radius:9999px;background:#22d3ee;color:#fff;box-shadow:0 4px 16px rgba(34,211,238,.5);border:3px solid rgba(34,211,238,.6)">
-        ${
-          bearingDeg != null
-            ? `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3 18-3-5-3 5 3-18z"/></svg>`
-            : `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>`
-        }
-      </div>
-    </div>`,
-    iconSize: [44, 44],
-    iconAnchor: [22, 22],
-  });
-}
-
 const pointIcon = (color: string, label: string) =>
   L.divIcon({
     className: "",
@@ -41,6 +24,8 @@ const pointIcon = (color: string, label: string) =>
     iconSize: [32, 32],
     iconAnchor: [16, 16],
   });
+
+const PICKUP_PIN_ICON = customerPickupIcon();
 
 function emitPinPosition(
   markerRef: { current: L.Marker | null },
@@ -52,34 +37,62 @@ function emitPinPosition(
   onMove(lat, lng);
 }
 
+/**
+ * Pin draggable — update parent hanya di dragend agar tidak re-render saat diseret.
+ */
 function DraggableUserPin({
   position,
-  onMove,
+  onMoveEnd,
+  onMovePreview,
 }: {
   position: [number, number];
-  onMove: (lat: number, lng: number) => void;
+  onMoveEnd: (lat: number, lng: number) => void;
+  onMovePreview?: (lat: number, lng: number) => void;
 }) {
   const markerRef = useRef<L.Marker>(null);
+  const draggingRef = useRef(false);
+  const onMoveEndRef = useRef(onMoveEnd);
+  const onMovePreviewRef = useRef(onMovePreview);
+  onMoveEndRef.current = onMoveEnd;
+  onMovePreviewRef.current = onMovePreview;
+
+  useEffect(() => {
+    if (draggingRef.current) return;
+    const m = markerRef.current;
+    if (!m) return;
+    const [lat, lng] = position;
+    const cur = m.getLatLng();
+    if (Math.abs(cur.lat - lat) < 1e-8 && Math.abs(cur.lng - lng) < 1e-8) return;
+    m.setLatLng([lat, lng]);
+  }, [position]);
+
   const eventHandlers = useMemo(
     () => ({
+      dragstart() {
+        draggingRef.current = true;
+      },
       drag() {
-        emitPinPosition(markerRef, onMove);
+        if (!onMovePreviewRef.current) return;
+        emitPinPosition(markerRef, onMovePreviewRef.current);
       },
       dragend() {
-        emitPinPosition(markerRef, onMove);
+        draggingRef.current = false;
+        emitPinPosition(markerRef, (lat, lng) => onMoveEndRef.current(lat, lng));
       },
     }),
-    [onMove]
+    []
   );
 
   return (
     <Marker
       draggable
       position={position}
-      icon={userMarkerIcon()}
+      icon={PICKUP_PIN_ICON}
       ref={markerRef}
       eventHandlers={eventHandlers}
       zIndexOffset={1000}
+      autoPan
+      autoPanPadding={L.point(56, 56)}
     />
   );
 }
@@ -93,17 +106,19 @@ function MapTapPlacePin({
   onPlace: (lat: number, lng: number) => void;
 }) {
   const map = useMap();
+  const onPlaceRef = useRef(onPlace);
+  onPlaceRef.current = onPlace;
 
   useEffect(() => {
     if (!enabled) return;
     function onClick(e: L.LeafletMouseEvent) {
-      onPlace(e.latlng.lat, e.latlng.lng);
+      onPlaceRef.current(e.latlng.lat, e.latlng.lng);
     }
     map.on("click", onClick);
     return () => {
       map.off("click", onClick);
     };
-  }, [enabled, map, onPlace]);
+  }, [enabled, map]);
 
   return null;
 }
@@ -150,12 +165,14 @@ export function GpsLockMapInner({
   manualPickMode = false,
   draggableUser = false,
   onUserDrag,
+  onUserDragPreview,
   extraPoints = [],
   routeLine,
   navigationRouteLine,
   navigationTarget,
   navigationTargetLabel = "C",
   navigationTargetColor = "#22d3ee",
+  userMarkerKind = "customer",
   height,
   className = "h-full w-full",
 }: {
@@ -172,12 +189,16 @@ export function GpsLockMapInner({
   manualPickMode?: boolean;
   draggableUser?: boolean;
   onUserDrag?: (lat: number, lng: number) => void;
+  /** Preview ongkir saat drag — tidak update state parent (hindari re-render). */
+  onUserDragPreview?: (lat: number, lng: number) => void;
   extraPoints?: GpsLockMapPoint[];
   routeLine?: [number, number][];
   navigationRouteLine?: [number, number][];
   navigationTarget?: { lat: number; lng: number } | null;
   navigationTargetLabel?: string;
   navigationTargetColor?: string;
+  /** `driver` = ikon motor (APK driver), `customer` = pin biru checkout. */
+  userMarkerKind?: "customer" | "driver";
   height?: number | null;
   className?: string;
 }) {
@@ -196,7 +217,10 @@ export function GpsLockMapInner({
       ? navigationRouteLine
       : undefined
     : routeLine;
-  const driverIcon = userMarkerIcon(bearing);
+  const userIcon =
+    userMarkerKind === "driver"
+      ? driverMotorcycleIcon(bearing)
+      : customerPickupIcon(bearing);
 
   const wrapStyle = height != null ? { height } : undefined;
 
@@ -285,9 +309,13 @@ export function GpsLockMapInner({
           />
         ))}
         {draggableUser && onUserDrag ? (
-          <DraggableUserPin position={userPos} onMove={onUserDrag} />
+          <DraggableUserPin
+            position={userPos}
+            onMoveEnd={onUserDrag}
+            onMovePreview={onUserDragPreview}
+          />
         ) : (
-          <Marker position={userPos} icon={driverIcon} />
+          <Marker position={userPos} icon={userIcon} />
         )}
       </MapContainer>
     </div>

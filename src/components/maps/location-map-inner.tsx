@@ -6,6 +6,7 @@ export function LocationMapInner({
   latitude,
   longitude,
   onLocationChange,
+  onLocationPreview,
   accuracyM,
   hubLat,
   hubLng,
@@ -18,6 +19,7 @@ export function LocationMapInner({
   latitude: number;
   longitude: number;
   onLocationChange: (lat: number, lng: number) => void;
+  onLocationPreview?: (lat: number, lng: number) => void;
   accuracyM?: number | null;
   hubLat: number;
   hubLng: number;
@@ -40,6 +42,7 @@ export function LocationMapInner({
       manualPickMode={manualPickMode}
       draggableUser
       onUserDrag={onLocationChange}
+      onUserDragPreview={onLocationPreview}
       height={height}
     />
   );

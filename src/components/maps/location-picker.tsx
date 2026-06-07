@@ -1,10 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Crosshair, MapPin, Radar, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DELIVERY_RADIUS_KM, type ZoneCenter } from "@/lib/geo-config";
+import { DELIVERY_RADIUS_KM, distanceToZone, type ZoneCenter } from "@/lib/geo-config";
 import {
   calculateDeliveryFee,
   describeDeliveryFee,
@@ -44,11 +44,23 @@ export function LocationPicker({
   zoneCenter: ZoneCenter;
   destinationMode?: DeliveryDestinationMode;
 }) {
-  const [gpsError, setGpsError] = useState<string | null>(null);
-  const [manualPin, setManualPin] = useState(destinationMode === "other");
-  const deliveryFee = calculateDeliveryFee(distanceKm);
-  const tier1 = isTier1Distance(distanceKm);
   const isOtherAddress = destinationMode === "other";
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [manualPin, setManualPin] = useState(isOtherAddress);
+  const [dragPreview, setDragPreview] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
+  const displayDistance =
+    isOtherAddress && dragPreview
+      ? distanceToZone(
+          dragPreview.lat,
+          dragPreview.lng,
+          zoneCenter.lat,
+          zoneCenter.lng
+        )
+      : distanceKm;
+  const deliveryFee = calculateDeliveryFee(displayDistance);
+  const tier1 = isTier1Distance(displayDistance);
 
   const { fix, loading: gpsLoading, zoomLocked, bestAccuracy } = useMapLocation(
     !isOtherAddress
@@ -57,6 +69,7 @@ export function LocationPicker({
   onChangeRef.current = onChange;
 
   useEffect(() => {
+    setDragPreview(null);
     if (isOtherAddress) {
       setManualPin(true);
       return;
@@ -92,10 +105,19 @@ export function LocationPicker({
     );
   }
 
-  function handlePinDrag(lat: number, lng: number) {
+  const handlePinDragEnd = useCallback((lat: number, lng: number) => {
     setManualPin(true);
-    onChange(lat, lng);
-  }
+    setDragPreview(null);
+    onChangeRef.current(lat, lng);
+  }, []);
+
+  const handlePinDragPreview = useCallback(
+    (lat: number, lng: number) => {
+      if (!isOtherAddress) return;
+      setDragPreview({ lat, lng });
+    },
+    [isOtherAddress]
+  );
 
   const displayAccuracy = manualPin
     ? accuracyM
@@ -142,7 +164,8 @@ export function LocationPicker({
         key={isOtherAddress ? "pick-other" : "pick-self"}
         latitude={latitude}
         longitude={longitude}
-        onLocationChange={handlePinDrag}
+        onLocationChange={handlePinDragEnd}
+        onLocationPreview={isOtherAddress ? handlePinDragPreview : undefined}
         accuracyM={displayAccuracy}
         hubLat={zoneCenter.lat}
         hubLng={zoneCenter.lng}
@@ -177,7 +200,7 @@ export function LocationPicker({
           <MapPin className={`h-5 w-5 ${tier1 ? "text-cyan-400" : "text-orange-400"}`} />
           <div>
             <p className="text-xs text-muted-foreground">Jarak ke {zoneCenter.name}</p>
-            <p className="text-lg font-bold tabular-nums">{distanceKm.toFixed(2)} km</p>
+            <p className="text-lg font-bold tabular-nums">{displayDistance.toFixed(2)} km</p>
             {!isOtherAddress && displayAccuracy != null && displayAccuracy > 0 && (
               <p className="text-[10px] text-muted-foreground">
                 Akurasi GPS ±{Math.round(displayAccuracy)} m
@@ -191,7 +214,9 @@ export function LocationPicker({
           </div>
         </div>
         <div className="text-right">
-          <p className="text-xs text-muted-foreground">{describeDeliveryFee(distanceKm)}</p>
+          <p className="text-xs text-muted-foreground">
+            {describeDeliveryFee(displayDistance)}
+          </p>
           <p className={`font-semibold ${tier1 ? "text-cyan-300" : "text-orange-200"}`}>
             {formatIdr(deliveryFee)}
           </p>
