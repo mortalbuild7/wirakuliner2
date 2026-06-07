@@ -315,7 +315,11 @@ export function OrderTracker({ orderId }: { orderId: string }) {
         <div className="overflow-hidden rounded-lg border border-white/10">
           <p className="border-b border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white">
             {hasDriverOnMap
-              ? "Posisi driver"
+              ? isRide && order.order_status === "ready_for_pickup"
+                ? "Driver menuju jemput"
+                : isRide && order.order_status === "on_the_way"
+                  ? "Driver menuju tujuan"
+                  : "Posisi driver"
               : searchingDriver
                 ? isRide
                   ? "Rute NGOJEK"
@@ -329,6 +333,8 @@ export function OrderTracker({ orderId }: { orderId: string }) {
             pickupLng={hasPickupCoords ? pickupLng : null}
             driverLat={mapDriverLat}
             driverLng={mapDriverLng}
+            isRide={isRide}
+            orderStatus={order.order_status}
           />
           {!hasDriverOnMap && order.driver_id && (
             <p className="px-3 py-2 text-xs text-muted-foreground">
@@ -338,7 +344,7 @@ export function OrderTracker({ orderId }: { orderId: string }) {
           {searchingDriver && (
             <p className="px-3 py-2 text-xs text-amber-200/80">
               {isRide
-                ? "Hijau = jemput, biru = tujuan. Driver muncul setelah ditugaskan."
+                ? "Hijau = jemput, biru = tujuan. Garis biru = rute driver (sama seperti di app driver)."
                 : "Pin biru = alamat antar Anda. Driver akan muncul di peta setelah ditugaskan."}
             </p>
           )}

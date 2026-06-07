@@ -1,9 +1,15 @@
 import { formatGeocodeLabel, type GeocodeHit } from "@/lib/geocode";
 import {
+  geocodeCacheKey,
+  getGeocodeCache,
+  setGeocodeCache,
+} from "@/lib/geocode-cache";
+import {
   enforceMethod,
   enforceRateLimit,
   secureJsonResponse,
 } from "@/lib/security/enforce";
+import { RATE_LIMITS } from "@/lib/security/rate-limit";
 import { parseBoundedNumber, sanitizeText } from "@/lib/security/validate";
 
 const NOMINATIM = "https://nominatim.openstreetmap.org";
@@ -13,13 +19,23 @@ const USER_AGENT = "WIRAKuliner/1.0 (https://wirakuliner.web.id; contact@mortalb
 export async function GET(req: Request) {
   const methodBlock = enforceMethod(req, ["GET"]);
   if (methodBlock) return methodBlock;
-  const rl = enforceRateLimit(req, "geocode", { limit: 30, windowMs: 60_000 });
-  if (rl) return rl;
 
   const { searchParams } = new URL(req.url);
   const reverse = searchParams.get("reverse") === "1";
   const lat = parseBoundedNumber(Number(searchParams.get("lat")), -90, 90);
   const lng = parseBoundedNumber(Number(searchParams.get("lng")), -180, 180);
+  const q = sanitizeText(searchParams.get("q"), 200);
+  const nearLat = parseBoundedNumber(Number(searchParams.get("nearLat")), -90, 90);
+  const nearLng = parseBoundedNumber(Number(searchParams.get("nearLng")), -180, 180);
+
+  const cacheKey = geocodeCacheKey(reverse, q, lat, lng, nearLat, nearLng);
+  const cached = getGeocodeCache(cacheKey);
+  if (cached) {
+    return secureJsonResponse(cached);
+  }
+
+  const rl = enforceRateLimit(req, "geocode", RATE_LIMITS.geocode);
+  if (rl) return rl;
 
   if (reverse) {
     if (lat == null || lng == null) {
@@ -45,7 +61,9 @@ export async function GET(req: Request) {
     } | null;
 
     if (!data?.display_name) {
-      return secureJsonResponse({ results: [] });
+      const body = { results: [] };
+      setGeocodeCache(cacheKey, body);
+      return secureJsonResponse(body);
     }
 
     const hit: GeocodeHit = {
@@ -54,16 +72,14 @@ export async function GET(req: Request) {
       label: formatGeocodeLabel(data.display_name),
     };
 
-    return secureJsonResponse({ results: [hit] });
+    const body = { results: [hit] };
+    setGeocodeCache(cacheKey, body);
+    return secureJsonResponse(body);
   }
 
-  const q = sanitizeText(searchParams.get("q"), 200);
   if (!q || q.length < 3) {
     return secureJsonResponse({ error: "Alamat terlalu pendek" }, { status: 400 });
   }
-
-  const nearLat = parseBoundedNumber(Number(searchParams.get("nearLat")), -90, 90);
-  const nearLng = parseBoundedNumber(Number(searchParams.get("nearLng")), -180, 180);
 
   const url = new URL(`${NOMINATIM}/search`);
   url.searchParams.set("q", q);
@@ -101,5 +117,7 @@ export async function GET(req: Request) {
     }))
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
 
-  return secureJsonResponse({ results });
+  const body = { results };
+  setGeocodeCache(cacheKey, body);
+  return secureJsonResponse(body);
 }

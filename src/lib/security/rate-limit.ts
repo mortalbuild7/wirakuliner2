@@ -59,4 +59,6 @@ export const RATE_LIMITS = {
   /** Panel & API admin — lebih ketat */
   admin: { limit: 45, windowMs: 60_000 },
   adminWrite: { limit: 20, windowMs: 60_000 },
+  /** Pencarian alamat NGOJEK — lebih longgar, tetap dibatasi */
+  geocode: { limit: 100, windowMs: 60_000 },
 } as const;

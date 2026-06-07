@@ -60,7 +60,16 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
   const [mapFlyTrigger, setMapFlyTrigger] = useState(0);
 
   const skipForwardGeocodeRef = useRef(false);
+  /** Pin digeser/ketuk manual — jangan timpa koordinat dengan geocode teks. */
+  const destFromPinRef = useRef(false);
+  const forwardGeocodeGenRef = useRef(0);
   const reverseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastReverseCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastForwardQueryRef = useRef("");
+  const pickupGeoRef = useRef({ lat: pickupLat, lng: pickupLng });
+  pickupGeoRef.current = { lat: pickupLat, lng: pickupLng };
+
+  const REVERSE_MIN_KM = 0.025;
 
   const { fix: gpsFix, loading: gpsLoading } = useMapLocation(true);
 
@@ -93,6 +102,8 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
 
   const applyDestinationHit = useCallback(
     (hit: GeocodeHit) => {
+      forwardGeocodeGenRef.current += 1;
+      destFromPinRef.current = true;
       skipForwardGeocodeRef.current = true;
       setDestAddress(hit.label);
       applyDestinationCoords(hit.lat, hit.lng);
@@ -109,18 +120,23 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
         lng: String(lng),
       });
       const res = await fetch(`/api/geocode?${params.toString()}`);
+      if (res.status === 429) return;
       const json = (await res.json().catch(() => ({}))) as { results?: GeocodeHit[] };
       const hit = json.results?.[0];
       if (hit) {
+        destFromPinRef.current = true;
         skipForwardGeocodeRef.current = true;
         setDestAddress(hit.label);
+        lastReverseCoordsRef.current = { lat, lng };
       }
     } catch {
-      /* abaikan */
+      /* abaikan — koordinat pin tetap dipakai */
     }
   }, []);
 
   useEffect(() => {
+    if (destFromPinRef.current) return;
+
     if (skipForwardGeocodeRef.current) {
       skipForwardGeocodeRef.current = false;
       return;
@@ -129,24 +145,39 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
     const q = destAddress.trim();
     if (q.length < 3) {
       setDestSuggestions([]);
+      lastForwardQueryRef.current = "";
       return;
     }
 
+    if (q === lastForwardQueryRef.current) return;
+
+    const gen = ++forwardGeocodeGenRef.current;
+
     const timer = setTimeout(() => {
       void (async () => {
+        if (gen !== forwardGeocodeGenRef.current || destFromPinRef.current) return;
+
         setGeocodingDest(true);
         setPlaceError(null);
         try {
           const params = new URLSearchParams({ q });
-          params.set("nearLat", String(pickupLat));
-          params.set("nearLng", String(pickupLng));
+          params.set("nearLat", String(pickupGeoRef.current.lat));
+          params.set("nearLng", String(pickupGeoRef.current.lng));
           const res = await fetch(`/api/geocode?${params.toString()}`);
           const json = (await res.json().catch(() => ({}))) as {
             error?: string;
             results?: GeocodeHit[];
           };
+          if (gen !== forwardGeocodeGenRef.current || destFromPinRef.current) return;
+
           if (!res.ok) {
-            if (json.error) setPlaceError(json.error);
+            if (res.status === 429) {
+              setPlaceError(
+                "Pencarian sibuk — pin sudah di peta, geser pin atau coba lagi sebentar"
+              );
+            } else if (json.error) {
+              setPlaceError(json.error);
+            }
             setDestSuggestions([]);
             return;
           }
@@ -156,27 +187,43 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
             setPlaceError("Alamat tidak ditemukan — coba kata kunci lain atau geser pin");
             return;
           }
+          lastForwardQueryRef.current = q;
           applyDestinationCoords(results[0].lat, results[0].lng);
           setDestSuggestions(results.length > 1 ? results : []);
         } catch {
-          setPlaceError("Gagal mencari alamat. Periksa koneksi internet.");
+          if (gen === forwardGeocodeGenRef.current) {
+            setPlaceError("Gagal mencari alamat. Periksa koneksi internet.");
+          }
         } finally {
-          setGeocodingDest(false);
+          if (gen === forwardGeocodeGenRef.current) {
+            setGeocodingDest(false);
+          }
         }
       })();
-    }, 750);
+    }, 1000);
 
     return () => clearTimeout(timer);
-  }, [destAddress, pickupLat, pickupLng, applyDestinationCoords]);
+  }, [destAddress, applyDestinationCoords]);
 
   const handleDestMapChange = useCallback(
     (lat: number, lng: number) => {
+      forwardGeocodeGenRef.current += 1;
+      destFromPinRef.current = true;
+      skipForwardGeocodeRef.current = true;
       applyDestinationCoords(lat, lng, false);
       setDestSuggestions([]);
+      setGeocodingDest(false);
+      setPlaceError(null);
+
+      const last = lastReverseCoordsRef.current;
+      if (last && haversineKm(last.lat, last.lng, lat, lng) < REVERSE_MIN_KM) {
+        return;
+      }
+
       if (reverseTimerRef.current) clearTimeout(reverseTimerRef.current);
       reverseTimerRef.current = setTimeout(() => {
         void reverseGeocodeDest(lat, lng);
-      }, 500);
+      }, 1500);
     },
     [applyDestinationCoords, reverseGeocodeDest]
   );
@@ -263,6 +310,29 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
 
       if (json.needsPayment) {
         await runCheckoutPayment(orderId, json.rideFee ?? rideFee);
+        const confirmRes = await fetch("/api/orders/confirm-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ orderId }),
+        });
+        const confirmJson = (await confirmRes.json().catch(() => ({}))) as { error?: string };
+        if (!confirmRes.ok) {
+          setPlaceError(confirmJson.error ?? "Gagal mengonfirmasi pembayaran");
+          return;
+        }
+        try {
+          sessionStorage.setItem(
+            `wira_track_${orderId}`,
+            JSON.stringify({
+              id: orderId,
+              order_status: "paid",
+              delivery_address: `[NGOJEK] ${pickupAddress.trim() || "Lokasi jemput"} → ${destAddress.trim()}`,
+            })
+          );
+        } catch {
+          /* ignore */
+        }
         router.push(`/customer/orders/${orderId}`);
       }
     } catch {
@@ -374,6 +444,8 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
             <Input
               value={destAddress}
               onChange={(e) => {
+                destFromPinRef.current = false;
+                lastForwardQueryRef.current = "";
                 setPlaceError(null);
                 setDestAddress(e.target.value);
               }}

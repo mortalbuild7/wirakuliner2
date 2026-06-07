@@ -50,7 +50,45 @@ export async function fetchOsrmDrivingRoute(
   return straightLineFallback(from, to);
 }
 
-/** Client: ambil rute jalan lewat API app (proxy OSRM). */
+async function parseRouteResponse(res: Response): Promise<[number, number][] | null> {
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    coordinates?: [number, number][];
+    fallback?: boolean;
+  };
+  const coords = data.coordinates;
+  if (!coords || coords.length < 2) return null;
+  return coords;
+}
+
+/** Client customer: rute jalan lewat /api/road-route (session cookie). */
+export async function fetchCustomerRoadRoute(
+  from: RoutePoint,
+  to: RoutePoint
+): Promise<[number, number][]> {
+  const fallback = straightLineFallback(from, to);
+
+  try {
+    const params = new URLSearchParams({
+      fromLat: String(from.lat),
+      fromLng: String(from.lng),
+      toLat: String(to.lat),
+      toLng: String(to.lng),
+    });
+
+    const res = await fetch(`/api/road-route?${params}`, {
+      credentials: "include",
+      signal: AbortSignal.timeout(12_000),
+    });
+
+    const coords = await parseRouteResponse(res);
+    return coords ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Client driver: ambil rute jalan lewat API app (proxy OSRM). */
 export async function fetchRoadRoute(
   from: RoutePoint,
   to: RoutePoint
@@ -75,17 +113,8 @@ export async function fetchRoadRoute(
       });
     }
 
-    if (!res.ok) return fallback;
-
-    const data = (await res.json()) as {
-      coordinates?: [number, number][];
-      fallback?: boolean;
-    };
-
-    const coords = data.coordinates;
-    if (!coords || coords.length < 2) return fallback;
-
-    return coords;
+    const coords = await parseRouteResponse(res);
+    return coords ?? fallback;
   } catch {
     return fallback;
   }

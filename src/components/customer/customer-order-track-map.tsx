@@ -10,6 +10,8 @@ const Inner = dynamic(
   { ssr: false, loading: () => <div className="h-[300px] w-full animate-pulse bg-slate-900" /> }
 );
 
+import type { OrderStatus } from "@/types/database";
+
 type Props = {
   deliveryLat: number;
   deliveryLng: number;
@@ -17,6 +19,8 @@ type Props = {
   pickupLng?: number | null;
   driverLat?: number | null;
   driverLng?: number | null;
+  isRide?: boolean;
+  orderStatus?: OrderStatus;
   className?: string;
 };
 

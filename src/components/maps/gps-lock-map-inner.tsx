@@ -56,15 +56,17 @@ function DraggableUserPin({
   onMoveEndRef.current = onMoveEnd;
   onMovePreviewRef.current = onMovePreview;
 
+  const pinLat = position[0];
+  const pinLng = position[1];
+
   useEffect(() => {
     if (draggingRef.current) return;
     const m = markerRef.current;
     if (!m) return;
-    const [lat, lng] = position;
     const cur = m.getLatLng();
-    if (Math.abs(cur.lat - lat) < 1e-8 && Math.abs(cur.lng - lng) < 1e-8) return;
-    m.setLatLng([lat, lng]);
-  }, [position]);
+    if (Math.abs(cur.lat - pinLat) < 1e-6 && Math.abs(cur.lng - pinLng) < 1e-6) return;
+    m.setLatLng([pinLat, pinLng]);
+  }, [pinLat, pinLng]);
 
   const eventHandlers = useMemo(
     () => ({

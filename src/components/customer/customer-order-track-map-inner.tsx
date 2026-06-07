@@ -2,16 +2,28 @@
 
 import { useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Polyline } from "react-leaflet";
+import L from "leaflet";
 import { MapFitBounds } from "@/components/maps/map-fit-bounds";
 import {
   customerPickupIcon,
   driverMotorcycleIcon,
   ngojekPickupIcon,
 } from "@/lib/map-marker-icons";
+import { fetchCustomerRoadRoute } from "@/lib/road-route";
+import { useRoadRoute } from "@/hooks/use-road-route";
+import type { OrderStatus } from "@/types/database";
 
 const MAP_HEIGHT = "h-[300px]";
 
-/** Peta lacak pesanan: titik tujuan + posisi driver (motor). */
+const navTargetIcon = (label: string, color: string) =>
+  L.divIcon({
+    className: "",
+    html: `<div style="display:flex;height:32px;width:32px;align-items:center;justify-content:center;border-radius:9999px;background:${color};color:#fff;font-size:11px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.35)">${label}</div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+  });
+
+/** Peta lacak pesanan: titik jemput/tujuan + driver + rute jalan (sama seperti navigasi driver). */
 export function CustomerOrderTrackMapInner({
   deliveryLat,
   deliveryLng,
@@ -19,6 +31,8 @@ export function CustomerOrderTrackMapInner({
   pickupLng,
   driverLat,
   driverLng,
+  isRide = false,
+  orderStatus,
   className = `${MAP_HEIGHT} w-full`,
 }: {
   deliveryLat: number;
@@ -27,6 +41,8 @@ export function CustomerOrderTrackMapInner({
   pickupLng?: number | null;
   driverLat?: number | null;
   driverLng?: number | null;
+  isRide?: boolean;
+  orderStatus?: OrderStatus;
   className?: string;
 }) {
   const hasDriver =
@@ -41,23 +57,87 @@ export function CustomerOrderTrackMapInner({
     Number.isFinite(pickupLat) &&
     Number.isFinite(pickupLng);
 
+  const driverNavTarget = useMemo(() => {
+    if (!hasDriver) return null;
+    if (
+      isRide &&
+      orderStatus === "ready_for_pickup" &&
+      hasPickup
+    ) {
+      return {
+        lat: pickupLat!,
+        lng: pickupLng!,
+        label: "J",
+        color: "#10b981",
+      };
+    }
+    return {
+      lat: deliveryLat,
+      lng: deliveryLng,
+      label: isRide ? "T" : "C",
+      color: "#22d3ee",
+    };
+  }, [
+    hasDriver,
+    isRide,
+    orderStatus,
+    hasPickup,
+    pickupLat,
+    pickupLng,
+    deliveryLat,
+    deliveryLng,
+  ]);
+
+  const routeFrom = hasDriver
+    ? { lat: driverLat!, lng: driverLng! }
+    : null;
+  const routeTo = driverNavTarget
+    ? { lat: driverNavTarget.lat, lng: driverNavTarget.lng }
+    : null;
+
+  const navRouteLine = useRoadRoute(
+    Boolean(routeFrom && routeTo),
+    routeFrom,
+    routeTo,
+    fetchCustomerRoadRoute
+  );
+
+  const staticRideLine: [number, number][] | undefined =
+    isRide && hasPickup && !hasDriver
+      ? [
+          [pickupLat!, pickupLng!],
+          [deliveryLat, deliveryLng],
+        ]
+      : undefined;
+
   const fitPoints = useMemo((): [number, number][] => {
     const pts: [number, number][] = [[deliveryLat, deliveryLng]];
     if (hasPickup) pts.push([pickupLat!, pickupLng!]);
     if (hasDriver) pts.push([driverLat!, driverLng!]);
+    if (navRouteLine) {
+      for (const p of navRouteLine) pts.push(p);
+    }
     return pts;
-  }, [deliveryLat, deliveryLng, pickupLat, pickupLng, driverLat, driverLng, hasDriver, hasPickup]);
+  }, [
+    deliveryLat,
+    deliveryLng,
+    pickupLat,
+    pickupLng,
+    driverLat,
+    driverLng,
+    hasDriver,
+    hasPickup,
+    navRouteLine,
+  ]);
 
   const center: [number, number] = hasDriver
-    ? [(driverLat! + deliveryLat) / 2, (driverLng! + deliveryLng) / 2]
-    : [deliveryLat, deliveryLng];
+    ? [driverLat!, driverLng!]
+    : hasPickup
+      ? [(pickupLat! + deliveryLat) / 2, (pickupLng! + deliveryLng) / 2]
+      : [deliveryLat, deliveryLng];
 
-  const routeLine: [number, number][] | undefined = hasDriver
-    ? [
-        [driverLat!, driverLng!],
-        [deliveryLat, deliveryLng],
-      ]
-    : undefined;
+  const activeRoute = navRouteLine ?? staticRideLine;
+  const navActive = Boolean(navRouteLine && hasDriver);
 
   return (
     <MapContainer
@@ -74,7 +154,7 @@ export function CustomerOrderTrackMapInner({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         maxZoom={19}
       />
-      <MapFitBounds points={fitPoints} maxZoom={17} padding={56} />
+      <MapFitBounds points={fitPoints} maxZoom={navActive ? 17 : 16} padding={56} />
       {hasPickup && (
         <Marker position={[pickupLat!, pickupLng!]} icon={ngojekPickupIcon()} />
       )}
@@ -82,10 +162,20 @@ export function CustomerOrderTrackMapInner({
       {hasDriver && (
         <Marker position={[driverLat!, driverLng!]} icon={driverMotorcycleIcon()} />
       )}
-      {routeLine && (
+      {hasDriver && driverNavTarget && navActive && (
+        <Marker
+          position={[driverNavTarget.lat, driverNavTarget.lng]}
+          icon={navTargetIcon(driverNavTarget.label, driverNavTarget.color)}
+        />
+      )}
+      {activeRoute && activeRoute.length >= 2 && (
         <Polyline
-          positions={routeLine}
-          pathOptions={{ color: "#34d399", weight: 4, dashArray: "8 10" }}
+          positions={activeRoute}
+          pathOptions={{
+            color: navActive ? "#38bdf8" : "#34d399",
+            weight: navActive ? 5 : 4,
+            dashArray: navActive ? undefined : "8 10",
+          }}
         />
       )}
     </MapContainer>
