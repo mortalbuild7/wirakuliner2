@@ -8,7 +8,7 @@ import { ProductMenuImage } from "@/components/customer/product-menu-image";
 import { StoreStatusBadge } from "@/components/customer/store-status-badge";
 import { buildMenuCoverMap, getMerchantEtalaseImage } from "@/lib/merchant-etalase";
 import { isStoreOpen } from "@/lib/merchant-open";
-import { Search, Zap, Eye } from "lucide-react";
+import { Search, Eye } from "lucide-react";
 import type { Merchant } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { useMerchantListRealtime } from "@/hooks/use-merchant-realtime";
@@ -63,18 +63,6 @@ export function CustomerEtalaseView() {
 
   return (
     <div className="space-y-4">
-      <section className="glass-card overflow-hidden p-4">
-        <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-cyan-400">
-          <Zap className="h-3.5 w-3.5" /> Etalase WIRA
-        </p>
-        <h2 className="mt-1 text-2xl font-bold leading-tight text-white">
-          Toko <span className="text-emerald-300">buka</span> bisa dipesan
-        </h2>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Toko tutup — etalase hanya untuk dilihat
-        </p>
-      </section>
-
       <div className="relative">
         <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-400/70" />
         <Input
