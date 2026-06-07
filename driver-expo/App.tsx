@@ -403,7 +403,7 @@ export default function App() {
         }
 
         if (data.type === "WIRA_INCOMING_ORDER") {
-          Vibration.vibrate([0, 180, 100, 180, 100, 280]);
+          Vibration.vibrate([0, 220, 120, 220, 120, 220, 120, 400]);
           void playNativeIncomingOrderSound();
         }
 

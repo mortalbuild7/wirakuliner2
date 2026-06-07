@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, Package, ClipboardList, Store, Zap, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
+import { MerchantOrderAlert } from "@/components/merchant/merchant-order-alert";
 
 const NAV = [
   { href: "/merchant", label: "Home", icon: LayoutDashboard, exact: true },
@@ -86,6 +87,7 @@ export function MerchantShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
+        <MerchantOrderAlert />
         <div className="safe-pb-merchant flex-1">{children}</div>
         <PoweredByDaffacell variant="hidden" />
 

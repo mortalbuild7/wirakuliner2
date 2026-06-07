@@ -35,6 +35,7 @@ import {
   playDriverIncomingOrderSound,
   unlockDriverOrderAudio,
 } from "@/lib/driver-order-alert";
+import { isOrderAlertAudioUnlocked } from "@/lib/order-alert-sound";
 import { cn } from "@/lib/utils";
 import { useDriverNavRoute } from "@/hooks/use-driver-nav-route";
 import {
@@ -99,6 +100,7 @@ export function DriverCockpit() {
   const [orderCardExpanded, setOrderCardExpanded] = useState(true);
   const [arrivedNotice, setArrivedNotice] = useState<string | null>(null);
   const [offerCountdown, setOfferCountdown] = useState(0);
+  const [audioReady, setAudioReady] = useState(false);
   const router = useRouter();
   const supabase = createClient();
   const orderAlertsReadyRef = useRef(false);
@@ -134,6 +136,18 @@ export function DriverCockpit() {
     lastAlertOrderIdRef.current = incomingOffer.id;
     void playDriverIncomingOrderSound();
   }, [incomingOffer?.id, hasActive, isOnline]);
+
+  /** Ulangi suara peringatan selama penawaran masih aktif (30 detik). */
+  useEffect(() => {
+    if (!incomingOffer?.id || hasActive || !isOnline || offerCountdown <= 0) return;
+    if (!orderAlertsReadyRef.current) return;
+
+    const timer = window.setInterval(() => {
+      void playDriverIncomingOrderSound();
+    }, 12_000);
+
+    return () => window.clearInterval(timer);
+  }, [incomingOffer?.id, hasActive, isOnline, offerCountdown]);
 
   const loadPool = useCallback(async () => {
     if (!driver?.id) return;
@@ -341,8 +355,13 @@ export function DriverCockpit() {
     navRouteLine,
   ]);
 
+  useEffect(() => {
+    setAudioReady(isOrderAlertAudioUnlocked());
+  }, [driver?.id]);
+
   async function setStatus(next: DriverStatus) {
     if (!driver) return;
+    handleUserGesture();
     setStatusLoading(true);
     const res = await fetchWithDriverAuth("/api/driver/status", {
       method: "POST",
@@ -359,7 +378,13 @@ export function DriverCockpit() {
   }
 
   function handleUserGesture() {
-    void unlockDriverOrderAudio();
+    void unlockDriverOrderAudio().then(() => setAudioReady(isOrderAlertAudioUnlocked()));
+  }
+
+  async function enableDriverAudio() {
+    await unlockDriverOrderAudio();
+    await playDriverIncomingOrderSound();
+    setAudioReady(isOrderAlertAudioUnlocked());
   }
 
   function startNavMode(target: DriverNavTarget) {
@@ -494,6 +519,22 @@ export function DriverCockpit() {
 
   return (
     <div className="flex h-[100dvh] min-h-0 flex-col">
+      {!audioReady && (
+        <div className="shrink-0 border-b border-amber-500/50 bg-amber-600/95 px-3 py-2.5 text-amber-50">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium sm:text-sm">
+              Ketuk untuk aktifkan suara notifikasi order
+            </p>
+            <Button
+              size="sm"
+              className="shrink-0 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-50"
+              onClick={() => void enableDriverAudio()}
+            >
+              Aktifkan suara
+            </Button>
+          </div>
+        </div>
+      )}
       <header className="shrink-0 border-b border-white/10 glass-panel">
         <div className="flex items-center justify-between gap-2 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
           <div className="flex min-w-0 flex-1 items-center gap-2">
