@@ -1,9 +1,11 @@
 "use client";
 
 import type { ComponentType } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Package, ClipboardList, Store, Zap, BarChart3 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { MerchantOrderAlert } from "@/components/merchant/merchant-order-alert";
@@ -48,6 +50,22 @@ function NavLink({
 
 export function MerchantShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [merchantName, setMerchantName] = useState<string | null>(null);
+  const supabase = createClient();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("merchants")
+        .select("name")
+        .eq("owner_id", user.id)
+        .maybeSingle()
+        .then(({ data }) => setMerchantName(data?.name?.trim() || null));
+    });
+  }, [supabase]);
+
+  const storeTitle = merchantName || "Toko";
 
   const isActive = (href: string, exact: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
@@ -59,9 +77,11 @@ export function MerchantShell({ children }: { children: React.ReactNode }) {
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-600">
             <Store className="h-5 w-5 text-white" />
           </span>
-          <div>
-            <p className="font-bold text-white">Toko WIRA</p>
-            <p className="text-[10px] text-orange-300/80">Merchant Hub</p>
+          <div className="min-w-0">
+            <p className="truncate font-bold text-white" title={storeTitle}>
+              {storeTitle}
+            </p>
+            <p className="text-[10px] text-orange-300/80">Panel merchant</p>
           </div>
         </div>
         <nav className="flex flex-col gap-1 p-3">
@@ -78,11 +98,15 @@ export function MerchantShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-40 border-b border-white/10 glass-panel">
           <div className="flex items-center justify-between gap-3 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-6">
-            <div className="flex items-center gap-2 md:hidden">
-              <Store className="h-5 w-5 shrink-0 text-orange-400" />
-              <p className="font-bold">Toko — WIRA</p>
+            <div className="flex min-w-0 items-center gap-2">
+              <Store className="h-5 w-5 shrink-0 text-orange-400 md:hidden" />
+              <p
+                className="truncate font-bold text-white md:text-sm md:font-semibold md:text-white/90"
+                title={storeTitle}
+              >
+                {storeTitle}
+              </p>
             </div>
-            <p className="hidden text-sm font-semibold text-white/90 md:block">Merchant Hub</p>
             <PoweredByDaffacell variant="header" className="text-orange-300/50" />
           </div>
         </header>

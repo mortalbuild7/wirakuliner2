@@ -33,7 +33,9 @@ export default function MerchantDashboardPage() {
       )}
 
       <div className="glass-card mb-6 overflow-hidden p-5">
-        <h1 className="text-2xl font-bold text-white md:text-3xl">Merchant Hub</h1>
+        <h1 className="text-2xl font-bold text-white md:text-3xl">
+          {merchant?.name?.trim() || "Toko"}
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Kelola menu, kasir & pesanan masuk
         </p>
