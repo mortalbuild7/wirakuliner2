@@ -9,11 +9,17 @@ import { formatIdr } from "@/lib/utils";
 export type QrisPaymentData = {
   midtransOrderId: string;
   grossAmount: number;
-  qris: {
+  mode?: "qris" | "snap";
+  qris?: {
     qrString: string | null;
     qrUrl: string | null;
     acquirer?: string | null;
   };
+  snap?: {
+    token: string;
+    redirectUrl: string;
+  };
+  message?: string;
   orderId?: string | null;
 };
 
@@ -26,10 +32,13 @@ type Props = {
 
 export function QrisPaymentPanel({
   data,
-  title = "Scan QRIS untuk bayar",
+  title,
   onPaid,
   onCancel,
 }: Props) {
+  const isSnapMode = data.mode === "snap" && Boolean(data.snap?.redirectUrl);
+  const panelTitle =
+    title ?? (isSnapMode ? "Lanjutkan pembayaran" : "Scan QRIS untuk bayar");
   const [polling, setPolling] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,28 +76,58 @@ export function QrisPaymentPanel({
     return () => window.clearInterval(id);
   }, [polling, checkStatus]);
 
-  const qrImageSrc = data.qris.qrUrl
-    ? data.qris.qrUrl
-    : data.qris.qrString
-      ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(data.qris.qrString)}`
-      : null;
+  const isSnap = data.mode === "snap" && data.snap?.redirectUrl;
+
+  useEffect(() => {
+    if (!isSnap || !data.snap?.redirectUrl) return;
+    const opened = window.open(
+      data.snap.redirectUrl,
+      "_blank",
+      "noopener,noreferrer"
+    );
+    if (!opened) {
+      setError("Izinkan pop-up browser, lalu ketuk tombol bayar di bawah.");
+    }
+  }, [isSnap, data.snap?.redirectUrl]);
+  const qrImageSrc =
+    !isSnap && data.qris?.qrUrl
+      ? data.qris.qrUrl
+      : !isSnap && data.qris?.qrString
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(data.qris.qrString)}`
+        : null;
 
   return (
     <div className="glass-card space-y-4 p-4">
       <div className="flex items-center gap-2">
         <QrCode className="h-5 w-5 text-cyan-400" />
         <div>
-          <p className="text-sm font-semibold text-white">{title}</p>
+          <p className="text-sm font-semibold text-white">{panelTitle}</p>
           <p className="text-xs text-muted-foreground">
             {formatIdr(data.grossAmount)}
-            {data.qris.acquirer ? ` · ${data.qris.acquirer}` : ""}
+            {!isSnap && data.qris?.acquirer ? ` · ${data.qris.acquirer}` : ""}
           </p>
         </div>
       </div>
 
       {error && <Alert variant="destructive">{error}</Alert>}
 
-      {qrImageSrc ? (
+      {isSnap ? (
+        <div className="space-y-3 text-center">
+          <p className="text-sm text-muted-foreground">
+            Halaman pembayaran Midtrans terbuka di tab baru. Pilih QRIS, GoPay,
+            atau metode lain. Setelah bayar, status diperbarui otomatis di sini.
+          </p>
+          <Button
+            type="button"
+            className="w-full"
+            onClick={() => {
+              window.open(data.snap!.redirectUrl, "_blank", "noopener,noreferrer");
+            }}
+          >
+            Buka halaman pembayaran
+          </Button>
+        </div>
+      ) : qrImageSrc ? (
         <div className="flex justify-center rounded-2xl bg-white p-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -105,10 +144,12 @@ export function QrisPaymentPanel({
         </p>
       )}
 
-      <p className="text-center text-xs text-muted-foreground">
-        Buka aplikasi e-wallet / m-banking, pilih Scan QRIS, lalu bayar. Status
-        diperbarui otomatis setelah pembayaran berhasil.
-      </p>
+      {!isSnap && (
+        <p className="text-center text-xs text-muted-foreground">
+          Buka aplikasi e-wallet / m-banking, pilih Scan QRIS, lalu bayar. Status
+          diperbarui otomatis setelah pembayaran berhasil.
+        </p>
+      )}
 
       <div className="flex gap-2">
         <Button

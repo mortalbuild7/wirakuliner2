@@ -16,6 +16,16 @@ export async function POST(req: Request) {
   const rl = enforceRateLimit(req, "wallet-topup", RATE_LIMITS.apiWrite);
   if (rl) return rl;
 
+  if (process.env.NEXT_PUBLIC_PAYMENT_BYPASS !== "true") {
+    return secureJsonResponse(
+      {
+        error:
+          "Top up saldo memakai Midtrans. Gunakan halaman wallet dan tombol Bayar via Midtrans.",
+      },
+      { status: 400 }
+    );
+  }
+
   const parsed = await readJsonBody<{
     amount?: number;
     method?: string;

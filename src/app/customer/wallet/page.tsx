@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Smartphone, Building2, Wallet } from "lucide-react";
+import { ArrowLeft, CreditCard, Loader2, Smartphone, Building2, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,15 +22,15 @@ import {
 const PRESETS = [50_000, 100_000, 200_000, 500_000];
 
 type Tab = "topup" | "withdraw";
+type StubMethod = "ewallet" | "va_bank";
 
 export default function CustomerWalletPage() {
+  const bypass = isPaymentBypassEnabled();
   const [tab, setTab] = useState<Tab>("topup");
   const [balance, setBalance] = useState<number | null>(null);
   const [amount, setAmount] = useState("100000");
-  const [method, setMethod] = useState<"ewallet" | "va_bank" | "qris">(
-    isPaymentBypassEnabled() ? "ewallet" : "qris"
-  );
-  const [qrisPayment, setQrisPayment] = useState<QrisPaymentData | null>(null);
+  const [stubMethod, setStubMethod] = useState<StubMethod>("ewallet");
+  const [payment, setPayment] = useState<QrisPaymentData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -51,6 +51,7 @@ export default function CustomerWalletPage() {
     setLoading(true);
     setError(null);
     setSuccess(null);
+    setPayment(null);
 
     const nominal = Number(amount.replace(/\D/g, ""));
     if (!Number.isFinite(nominal) || nominal < 10_000) {
@@ -58,11 +59,16 @@ export default function CustomerWalletPage() {
       setLoading(false);
       return;
     }
+    if (nominal > 10_000_000) {
+      setError("Maksimal top up Rp 10.000.000");
+      setLoading(false);
+      return;
+    }
 
     try {
-      if (method === "qris" && !isPaymentBypassEnabled()) {
-        const qris = await createQrisPayment({ type: "topup", amount: nominal });
-        setQrisPayment(qris);
+      if (!bypass) {
+        const midtrans = await createQrisPayment({ type: "topup", amount: nominal });
+        setPayment(midtrans);
         return;
       }
 
@@ -72,7 +78,7 @@ export default function CustomerWalletPage() {
         credentials: "include",
         body: JSON.stringify({
           amount: nominal,
-          method: method === "va_bank" ? "va_bank" : "ewallet",
+          method: stubMethod,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {
@@ -132,6 +138,7 @@ export default function CustomerWalletPage() {
               setTab(t);
               setError(null);
               setSuccess(null);
+              setPayment(null);
             }}
             className={cn(
               "flex-1 rounded-xl py-2.5 text-sm font-medium transition",
@@ -146,120 +153,108 @@ export default function CustomerWalletPage() {
       </div>
 
       {tab === "withdraw" ? (
-        <WalletWithdrawPanel
-          balance={balance}
-          onBalanceChange={setBalance}
-        />
+        <WalletWithdrawPanel balance={balance} onBalanceChange={setBalance} />
       ) : (
         <>
-      {error && <Alert variant="destructive">{error}</Alert>}
-      {success && (
-        <Alert className="border-emerald-500/40 bg-emerald-500/10 text-emerald-100">
-          {success}
-        </Alert>
-      )}
-
-      <form onSubmit={topup} className="glass-card space-y-4 p-4">
-        <p className="text-sm font-medium text-white">Top up saldo</p>
-
-        <div className="flex flex-wrap gap-2">
-          {PRESETS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setAmount(String(p))}
-              className="rounded-full border border-white/15 px-3 py-1 text-xs text-white transition hover:border-amber-500/40"
-            >
-              {formatIdr(p)}
-            </button>
-          ))}
-        </div>
-
-        <div>
-          <Label htmlFor="topup-amount">Nominal (Rp)</Label>
-          <Input
-            id="topup-amount"
-            inputMode="numeric"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
-            placeholder="100000"
-            required
-          />
-        </div>
-
-        <div
-          className={`grid gap-2 ${isPaymentBypassEnabled() ? "grid-cols-2" : "grid-cols-3"}`}
-        >
-          {!isPaymentBypassEnabled() && (
-            <button
-              type="button"
-              onClick={() => setMethod("qris")}
-              className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs ${
-                method === "qris"
-                  ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200"
-                  : "border-white/10 text-muted-foreground"
-              }`}
-            >
-              <Wallet className="h-5 w-5" />
-              QRIS
-            </button>
+          {error && <Alert variant="destructive">{error}</Alert>}
+          {success && (
+            <Alert className="border-emerald-500/40 bg-emerald-500/10 text-emerald-100">
+              {success}
+            </Alert>
           )}
-          <button
-            type="button"
-            onClick={() => setMethod("ewallet")}
-            className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs ${
-              method === "ewallet"
-                ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200"
-                : "border-white/10 text-muted-foreground"
-            }`}
-          >
-            <Smartphone className="h-5 w-5" />
-            E-Wallet
-          </button>
-          <button
-            type="button"
-            onClick={() => setMethod("va_bank")}
-            className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs ${
-              method === "va_bank"
-                ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200"
-                : "border-white/10 text-muted-foreground"
-            }`}
-          >
-            <Building2 className="h-5 w-5" />
-            VA Bank
-          </button>
-        </div>
 
-        <Button type="submit" disabled={loading} className="w-full">
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Memproses...
-            </>
-          ) : (
-            "Top up sekarang"
+          <form onSubmit={topup} className="glass-card space-y-4 p-4">
+            <p className="text-sm font-medium text-white">Top up saldo</p>
+
+            <div className="flex flex-wrap gap-2">
+              {PRESETS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAmount(String(p))}
+                  className="rounded-full border border-white/15 px-3 py-1 text-xs text-white transition hover:border-amber-500/40"
+                >
+                  {formatIdr(p)}
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <Label htmlFor="topup-amount">Nominal (Rp)</Label>
+              <Input
+                id="topup-amount"
+                inputMode="numeric"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
+                placeholder="100000"
+                required
+              />
+            </div>
+
+            {bypass ? (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStubMethod("ewallet")}
+                  className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs ${
+                    stubMethod === "ewallet"
+                      ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200"
+                      : "border-white/10 text-muted-foreground"
+                  }`}
+                >
+                  <Smartphone className="h-5 w-5" />
+                  E-Wallet (uji)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStubMethod("va_bank")}
+                  className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs ${
+                    stubMethod === "va_bank"
+                      ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200"
+                      : "border-white/10 text-muted-foreground"
+                  }`}
+                >
+                  <Building2 className="h-5 w-5" />
+                  VA Bank (uji)
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-xs text-cyan-100">
+                Pembayaran via <strong>Midtrans</strong> — QRIS, GoPay, transfer
+                bank, dan metode lain sesuai kanal yang aktif di akun merchant Anda.
+                Saldo dikredit otomatis setelah pembayaran berhasil.
+              </div>
+            )}
+
+            <Button type="submit" disabled={loading || Boolean(payment)} className="w-full">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Memproses...
+                </>
+              ) : bypass ? (
+                "Top up sekarang (mode uji)"
+              ) : (
+                <>
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Bayar top up via Midtrans
+                </>
+              )}
+            </Button>
+          </form>
+
+          {payment && (
+            <QrisPaymentPanel
+              data={payment}
+              title="Top up saldo — Midtrans"
+              onPaid={async () => {
+                setPayment(null);
+                setSuccess("Top up berhasil — saldo telah diperbarui");
+                await loadBalance();
+              }}
+              onCancel={() => setPayment(null)}
+            />
           )}
-        </Button>
-
-        <p className="text-[10px] text-muted-foreground">
-          {isPaymentBypassEnabled()
-            ? "Top up langsung dikreditkan ke saldo (mode uji)."
-            : "QRIS Midtrans — saldo dikredit otomatis setelah pembayaran berhasil."}
-        </p>
-      </form>
-
-      {qrisPayment && (
-        <QrisPaymentPanel
-          data={qrisPayment}
-          title="Scan QRIS — top up saldo"
-          onPaid={async () => {
-            setQrisPayment(null);
-            setSuccess("Top up QRIS berhasil — saldo diperbarui");
-            await loadBalance();
-          }}
-          onCancel={() => setQrisPayment(null)}
-        />
-      )}
         </>
       )}
     </main>

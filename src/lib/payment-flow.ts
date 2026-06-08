@@ -12,6 +12,11 @@ export type CreateQrisParams = {
   merchantId?: string;
 };
 
+/** Buat pembayaran Midtrans (topup / ngojek / food) — QRIS inline atau Snap. */
+export async function createMidtransPayment(params: CreateQrisParams) {
+  return createQrisPayment(params);
+}
+
 export async function createQrisPayment(
   params: CreateQrisParams
 ): Promise<QrisPaymentData> {
@@ -29,17 +34,35 @@ export async function createQrisPayment(
 
   const json = (await res.json().catch(() => ({}))) as {
     error?: string;
+    mode?: "qris" | "snap";
     midtransOrderId?: string;
     grossAmount?: number;
     orderId?: string | null;
+    message?: string;
     qris?: QrisPaymentData["qris"];
+    snap?: QrisPaymentData["snap"];
   };
 
   if (!res.ok) {
     throw new Error(json.error ?? "Gagal membuat QRIS");
   }
 
-  if (!json.midtransOrderId || !json.qris) {
+  if (!json.midtransOrderId) {
+    throw new Error("Respons pembayaran tidak lengkap");
+  }
+
+  if (json.mode === "snap" && json.snap?.redirectUrl) {
+    return {
+      midtransOrderId: json.midtransOrderId,
+      grossAmount: json.grossAmount ?? params.amount,
+      orderId: json.orderId ?? params.orderId ?? null,
+      mode: "snap",
+      snap: json.snap,
+      message: json.message,
+    };
+  }
+
+  if (!json.qris) {
     throw new Error("Respons QRIS tidak lengkap");
   }
 
@@ -47,7 +70,9 @@ export async function createQrisPayment(
     midtransOrderId: json.midtransOrderId,
     grossAmount: json.grossAmount ?? params.amount,
     orderId: json.orderId ?? params.orderId ?? null,
+    mode: "qris",
     qris: json.qris,
+    message: json.message,
   };
 }
 

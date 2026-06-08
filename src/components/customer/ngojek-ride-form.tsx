@@ -392,8 +392,8 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
         });
         setQrisPayment(qris);
       }
-    } catch {
-      setPlaceError("Koneksi gagal. Coba lagi.");
+    } catch (e) {
+      setPlaceError(e instanceof Error ? e.message : "Koneksi gagal. Coba lagi.");
     } finally {
       setPlacing(false);
     }

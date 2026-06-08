@@ -3,7 +3,9 @@ import { isNgojekOrder } from "@/lib/order-channel";
 import {
   buildMidtransOrderId,
   chargeMidtransQris,
+  createMidtransSnap,
   isMidtransConfigured,
+  isMidtransPreferSnap,
   type MidtransPaymentType,
 } from "@/lib/midtrans";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -71,10 +73,12 @@ export async function POST(req: Request) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name")
+    .select("name, phone")
     .eq("id", user.id)
     .maybeSingle();
-  customerName = profile?.full_name ?? undefined;
+  customerName = profile?.name ?? undefined;
+  const customerPhone = profile?.phone ?? undefined;
+  const customerEmail = user.email ?? undefined;
 
   if (paymentType === "topup") {
     const amount = parseBoundedNumber(parsed.data.amount, 10_000, 10_000_000);
@@ -199,7 +203,43 @@ export async function POST(req: Request) {
     );
   }
 
+  const snapParams = {
+    orderId: midtransOrderId,
+    grossAmount,
+    customerName,
+    customerEmail,
+    customerPhone,
+  };
+
+  const respondSnap = async () => {
+    const snap = await createMidtransSnap(snapParams);
+    await admin
+      .from("payment_transactions")
+      .update({
+        qris_url: snap.redirectUrl,
+        midtrans_transaction_id: snap.token,
+      })
+      .eq("id", ptRow.id);
+
+    return secureJsonResponse({
+      ok: true,
+      mode: "snap",
+      midtransOrderId,
+      grossAmount,
+      paymentType,
+      orderId: paymentType === "topup" ? null : referenceId,
+      snap: {
+        token: snap.token,
+        redirectUrl: snap.redirectUrl,
+      },
+    });
+  };
+
   try {
+    if (isMidtransPreferSnap()) {
+      return await respondSnap();
+    }
+
     const charge = await chargeMidtransQris({
       orderId: midtransOrderId,
       grossAmount,
@@ -225,6 +265,7 @@ export async function POST(req: Request) {
 
     return secureJsonResponse({
       ok: true,
+      mode: "qris",
       midtransOrderId,
       grossAmount,
       paymentType,
@@ -237,13 +278,37 @@ export async function POST(req: Request) {
       },
     });
   } catch (e) {
+    const errMsg = e instanceof Error ? e.message : "";
+    const useSnapFallback =
+      errMsg.includes("belum diaktifkan") ||
+      errMsg.toLowerCase().includes("not activated");
+
+    if (useSnapFallback) {
+      try {
+        return await respondSnap();
+      } catch (snapErr) {
+        await admin
+          .from("payment_transactions")
+          .update({ status: "cancel" })
+          .eq("id", ptRow.id);
+
+        return secureJsonResponse(
+          {
+            error:
+              snapErr instanceof Error ? snapErr.message : "Gagal membuat pembayaran",
+          },
+          { status: 502 }
+        );
+      }
+    }
+
     await admin
       .from("payment_transactions")
       .update({ status: "cancel" })
       .eq("id", ptRow.id);
 
     return secureJsonResponse(
-      { error: e instanceof Error ? e.message : "Gagal membuat QRIS" },
+      { error: errMsg || "Gagal membuat QRIS" },
       { status: 502 }
     );
   }

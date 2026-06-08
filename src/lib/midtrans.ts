@@ -10,20 +10,69 @@ export function getPlatformCommissionRate(): number {
     : 0.1;
 }
 
+export function getMidtransServerKey(): string {
+  return process.env.MIDTRANS_SERVER_KEY?.trim() ?? "";
+}
+
 export function isMidtransConfigured(): boolean {
-  return Boolean(process.env.MIDTRANS_SERVER_KEY?.trim());
+  return Boolean(getMidtransServerKey());
+}
+
+export function isMidtransProduction(): boolean {
+  return process.env.MIDTRANS_IS_PRODUCTION === "true";
+}
+
+/** Langsung Snap (tanpa coba Core API QRIS) — dipakai jika QRIS Core belum diaktifkan di Midtrans. */
+export function isMidtransPreferSnap(): boolean {
+  return process.env.MIDTRANS_PREFER_SNAP === "true";
 }
 
 export function getMidtransBaseUrl(): string {
-  return process.env.MIDTRANS_IS_PRODUCTION === "true"
+  return isMidtransProduction()
     ? "https://api.midtrans.com"
     : "https://api.sandbox.midtrans.com";
 }
 
 export function midtransAuthHeader(): string {
-  const key = process.env.MIDTRANS_SERVER_KEY?.trim();
+  const key = getMidtransServerKey();
   if (!key) throw new Error("MIDTRANS_SERVER_KEY belum dikonfigurasi");
   return `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
+}
+
+function midtransStatusOk(statusCode: unknown): boolean {
+  const code = String(statusCode ?? "");
+  return code === "200" || code === "201";
+}
+
+/** Pesan error Midtrans yang lebih jelas untuk pengguna. */
+export function formatMidtransError(
+  statusCode: unknown,
+  statusMessage: unknown
+): string {
+  const code = String(statusCode ?? "");
+  const msg = String(statusMessage ?? "").trim();
+
+  if (code === "401" || msg.toLowerCase().includes("unknown merchant")) {
+    if (isMidtransProduction()) {
+      return "Server Key Midtrans tidak valid. Periksa MIDTRANS_SERVER_KEY di Vercel.";
+    }
+    return (
+      "Server Key tidak cocok dengan Sandbox. Gunakan kunci Sandbox di dashboard Midtrans, " +
+      "atau set MIDTRANS_IS_PRODUCTION=true jika memakai kunci Production."
+    );
+  }
+
+  if (code === "402" || msg.toLowerCase().includes("not activated")) {
+    return (
+      "Kanal QRIS belum diaktifkan di akun Midtrans Anda. " +
+      "Aktifkan GoPay QRIS di Settings → Configuration → Payment Methods, " +
+      "atau hubungi support@midtrans.com (Merchant ID: " +
+      (process.env.MIDTRANS_MERCHANT_ID ?? "—") +
+      ")."
+    );
+  }
+
+  return msg || "Gagal membuat QRIS Midtrans";
 }
 
 /** TOPUP-{32hex} atau ORDER-{32hex} — max 50 karakter Midtrans. */
@@ -54,6 +103,76 @@ export function parseMidtransOrderId(midtransOrderId: string): {
     };
   }
   return { kind: "order", referenceId: null };
+}
+
+export function getMidtransSnapBaseUrl(): string {
+  return isMidtransProduction()
+    ? "https://app.midtrans.com"
+    : "https://app.sandbox.midtrans.com";
+}
+
+export type SnapChargeResult = {
+  token: string;
+  redirectUrl: string;
+};
+
+/** Midtrans Snap — fallback jika Core API QRIS belum diaktifkan. */
+export async function createMidtransSnap(params: {
+  orderId: string;
+  grossAmount: number;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+}): Promise<SnapChargeResult> {
+  const body: Record<string, unknown> = {
+    transaction_details: {
+      order_id: params.orderId,
+      gross_amount: Math.round(params.grossAmount),
+    },
+    // Tanpa enabled_payments — tampilkan semua kanal yang sudah diaktifkan di dashboard Midtrans.
+  };
+
+  const customer: Record<string, string> = {};
+  if (params.customerName?.trim()) {
+    customer.first_name = params.customerName.trim().slice(0, 60);
+  }
+  if (params.customerEmail?.trim()) {
+    customer.email = params.customerEmail.trim().slice(0, 60);
+  }
+  if (params.customerPhone?.trim()) {
+    customer.phone = params.customerPhone.trim().slice(0, 20);
+  }
+  if (Object.keys(customer).length) {
+    body.customer_details = customer;
+  }
+
+  const res = await fetch(`${getMidtransSnapBaseUrl()}/snap/v1/transactions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: midtransAuthHeader(),
+    },
+    body: JSON.stringify(body),
+  });
+
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!res.ok) {
+    const rawMsg =
+      (json.error_messages as string[] | undefined)?.join(", ") ||
+      (json.status_message as string) ||
+      "Gagal membuat pembayaran Snap";
+    throw new Error(formatMidtransError(json.status_code, rawMsg));
+  }
+
+  const token = String(json.token ?? "");
+  const redirectUrl = String(json.redirect_url ?? "");
+  if (!token || !redirectUrl) {
+    throw new Error("Respons Snap Midtrans tidak lengkap");
+  }
+
+  return { token, redirectUrl };
 }
 
 export type QrisChargeResult = {
@@ -97,12 +216,12 @@ export async function chargeMidtransQris(params: {
 
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
-  if (!res.ok) {
-    const msg =
+  if (!res.ok || !midtransStatusOk(json.status_code)) {
+    const rawMsg =
       (json.status_message as string) ||
       (json.error_messages as string[] | undefined)?.join(", ") ||
       "Gagal membuat QRIS Midtrans";
-    throw new Error(msg);
+    throw new Error(formatMidtransError(json.status_code, rawMsg));
   }
 
   const actions = Array.isArray(json.actions) ? json.actions : [];
