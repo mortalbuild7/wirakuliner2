@@ -5,8 +5,18 @@ export type WalletOwnerType = "customer" | "driver" | "merchant";
 export type WalletTopupMethod = "ewallet" | "va_bank";
 export type WalletWithdrawMethod = "ewallet" | "va_bank";
 
-const MIN_WITHDRAW = 50_000;
-const MAX_WITHDRAW = 50_000_000;
+export const WALLET_WITHDRAW_MIN = 10_000;
+export const WALLET_WITHDRAW_MAX = 50_000_000;
+export const WALLET_WITHDRAW_PRESETS = [
+  10_000,
+  50_000,
+  100_000,
+  200_000,
+  500_000,
+] as const;
+
+const MIN_WITHDRAW = WALLET_WITHDRAW_MIN;
+const MAX_WITHDRAW = WALLET_WITHDRAW_MAX;
 
 type WalletRpcResult = string;
 
@@ -262,12 +272,16 @@ export async function withdrawWallet(
   return { withdrawalId: row.id as string, txId, balance: newBalance };
 }
 
-function formatWithdrawMin(): string {
+export function formatWalletWithdrawMin(): string {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(MIN_WITHDRAW);
+  }).format(WALLET_WITHDRAW_MIN);
+}
+
+function formatWithdrawMin(): string {
+  return formatWalletWithdrawMin();
 }
 
 export async function listWalletWithdrawals(

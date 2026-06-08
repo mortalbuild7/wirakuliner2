@@ -7,6 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert } from "@/components/ui/alert";
 import { formatIdr } from "@/lib/utils";
+import {
+  WALLET_WITHDRAW_MIN,
+  WALLET_WITHDRAW_PRESETS,
+  formatWalletWithdrawMin,
+} from "@/lib/wallet";
 
 type WithdrawRow = {
   id: string;
@@ -26,15 +31,13 @@ type Props = {
   className?: string;
 };
 
-const PRESETS = [50_000, 100_000, 200_000, 500_000];
-
 export function WalletWithdrawPanel({
   balance,
   onBalanceChange,
   driverMode = false,
   className,
 }: Props) {
-  const [amount, setAmount] = useState("100000");
+  const [amount, setAmount] = useState(String(WALLET_WITHDRAW_PRESETS[1]));
   const [method, setMethod] = useState<"ewallet" | "va_bank">("ewallet");
   const [destination, setDestination] = useState("");
   const [destinationName, setDestinationName] = useState("");
@@ -73,8 +76,8 @@ export function WalletWithdrawPanel({
     setSuccess(null);
 
     const nominal = Number(amount.replace(/\D/g, ""));
-    if (!Number.isFinite(nominal) || nominal < 50_000) {
-      setError("Minimal penarikan Rp 50.000");
+    if (!Number.isFinite(nominal) || nominal < WALLET_WITHDRAW_MIN) {
+      setError(`Minimal penarikan ${formatWalletWithdrawMin()}`);
       setLoading(false);
       return;
     }
@@ -161,7 +164,7 @@ export function WalletWithdrawPanel({
         {(!driverMode || expanded) && (
         <>
         <div className="flex flex-wrap gap-2">
-          {PRESETS.map((p) => (
+          {WALLET_WITHDRAW_PRESETS.map((p) => (
             <button
               key={p}
               type="button"
@@ -261,7 +264,7 @@ export function WalletWithdrawPanel({
         </Button>
 
         <p className="text-[10px] text-muted-foreground">
-          Minimal Rp 50.000. Dana diproses ke tujuan dalam 1×24 jam (mode uji: langsung dipotong
+          Minimal {formatWalletWithdrawMin()}. Dana diproses ke tujuan dalam 1×24 jam (mode uji: langsung dipotong
           dari saldo).
         </p>
         </>

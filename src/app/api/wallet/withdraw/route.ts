@@ -1,5 +1,10 @@
 import { resolveWalletOwner } from "@/lib/wallet-auth";
-import { withdrawWallet, type WalletWithdrawMethod } from "@/lib/wallet";
+import {
+  WALLET_WITHDRAW_MAX,
+  WALLET_WITHDRAW_MIN,
+  withdrawWallet,
+  type WalletWithdrawMethod,
+} from "@/lib/wallet";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   enforceMethod,
@@ -29,7 +34,11 @@ export async function POST(req: Request) {
   }>(req);
   if ("error" in parsed) return parsed.error;
 
-  const amount = parseBoundedNumber(parsed.data.amount, 50_000, 50_000_000);
+  const amount = parseBoundedNumber(
+    parsed.data.amount,
+    WALLET_WITHDRAW_MIN,
+    WALLET_WITHDRAW_MAX
+  );
   const method: WalletWithdrawMethod =
     parsed.data.method === "va_bank" ? "va_bank" : "ewallet";
   const destination = sanitizeText(parsed.data.destination, 80)?.trim() ?? "";
@@ -37,7 +46,9 @@ export async function POST(req: Request) {
 
   if (amount == null) {
     return secureJsonResponse(
-      { error: "Nominal penarikan antara Rp 50.000 – Rp 50.000.000" },
+      {
+        error: `Nominal penarikan antara Rp ${WALLET_WITHDRAW_MIN.toLocaleString("id-ID")} – Rp ${WALLET_WITHDRAW_MAX.toLocaleString("id-ID")}`,
+      },
       { status: 400 }
     );
   }
