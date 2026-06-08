@@ -13,7 +13,14 @@ import { Alert } from "@/components/ui/alert";
 import { haversineKm, JALAN_WIRA } from "@/lib/geo-config";
 import { calculateDeliveryFee, describeDeliveryFee } from "@/lib/delivery-fee";
 import { formatIdr } from "@/lib/utils";
-import { isPaymentBypassEnabled, runCheckoutPayment } from "@/lib/payment-flow";
+import {
+  createQrisPayment,
+  isPaymentBypassEnabled,
+} from "@/lib/payment-flow";
+import {
+  QrisPaymentPanel,
+  type QrisPaymentData,
+} from "@/components/payment/qris-payment-panel";
 import {
   PaymentMethodPicker,
   type PaymentMethodChoice,
@@ -61,6 +68,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodChoice>("gateway");
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [qrisPayment, setQrisPayment] = useState<QrisPaymentData | null>(null);
   const [areaAvailable, setAreaAvailable] = useState(true);
   const [areaMessage, setAreaMessage] = useState<string | null>(null);
   const [destSuggestions, setDestSuggestions] = useState<GeocodeHit[]>([]);
@@ -347,31 +355,42 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
       }
 
       if (json.needsPayment) {
-        await runCheckoutPayment(orderId, json.rideFee ?? rideFee);
-        const confirmRes = await fetch("/api/orders/confirm-payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ orderId }),
-        });
-        const confirmJson = (await confirmRes.json().catch(() => ({}))) as { error?: string };
-        if (!confirmRes.ok) {
-          setPlaceError(confirmJson.error ?? "Gagal mengonfirmasi pembayaran");
+        if (isPaymentBypassEnabled()) {
+          const confirmRes = await fetch("/api/orders/confirm-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ orderId }),
+          });
+          const confirmJson = (await confirmRes.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          if (!confirmRes.ok) {
+            setPlaceError(confirmJson.error ?? "Gagal mengonfirmasi pembayaran");
+            return;
+          }
+          try {
+            sessionStorage.setItem(
+              `wira_track_${orderId}`,
+              JSON.stringify({
+                id: orderId,
+                order_status: "paid",
+                delivery_address: `[NGOJEK] ${pickupAddress.trim() || "Lokasi jemput"} → ${destAddress.trim()}`,
+              })
+            );
+          } catch {
+            /* ignore */
+          }
+          router.push(`/customer/orders/${orderId}`);
           return;
         }
-        try {
-          sessionStorage.setItem(
-            `wira_track_${orderId}`,
-            JSON.stringify({
-              id: orderId,
-              order_status: "paid",
-              delivery_address: `[NGOJEK] ${pickupAddress.trim() || "Lokasi jemput"} → ${destAddress.trim()}`,
-            })
-          );
-        } catch {
-          /* ignore */
-        }
-        router.push(`/customer/orders/${orderId}`);
+
+        const qris = await createQrisPayment({
+          type: "ngojek",
+          amount: json.rideFee ?? rideFee,
+          orderId,
+        });
+        setQrisPayment(qris);
       }
     } catch {
       setPlaceError("Koneksi gagal. Coba lagi.");
@@ -582,6 +601,31 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
           </>
         )}
       </Button>
+
+      {qrisPayment && (
+        <QrisPaymentPanel
+          data={qrisPayment}
+          title="Scan QRIS — pembayaran NGOJEK"
+          onPaid={() => {
+            const oid = qrisPayment.orderId;
+            if (!oid) return;
+            try {
+              sessionStorage.setItem(
+                `wira_track_${oid}`,
+                JSON.stringify({
+                  id: oid,
+                  order_status: "paid",
+                  delivery_address: `[NGOJEK] ${pickupAddress.trim() || "Lokasi jemput"} → ${destAddress.trim()}`,
+                })
+              );
+            } catch {
+              /* ignore */
+            }
+            router.push(`/customer/orders/${oid}`);
+          }}
+          onCancel={() => setQrisPayment(null)}
+        />
+      )}
 
       {isPaymentBypassEnabled() && (
         <p className="text-center text-[10px] text-amber-300/80">

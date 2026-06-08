@@ -18,6 +18,7 @@ async function applyWalletTx(
   txType:
     | "topup_ewallet"
     | "topup_va"
+    | "topup_qris"
     | "order_payment"
     | "order_earning"
     | "withdraw_ewallet"
@@ -163,6 +164,44 @@ export async function distributeWalletEarnings(
   }
 
   return { distributed: true };
+}
+
+/** Kredit bagian driver dari pembayaran QRIS Midtrans setelah order selesai. */
+export async function distributeMidtransDriverShare(
+  admin: SupabaseClient,
+  orderId: string,
+  driverId: string
+): Promise<{ distributed: boolean; amount: number }> {
+  const { data: pt } = await admin
+    .from("payment_transactions")
+    .select(
+      "id, payment_type, driver_share, driver_share_paid, status, platform_fee"
+    )
+    .eq("order_id", orderId)
+    .eq("status", "settlement")
+    .maybeSingle();
+
+  if (!pt || pt.driver_share_paid || Number(pt.driver_share ?? 0) <= 0) {
+    return { distributed: false, amount: 0 };
+  }
+
+  const amount = Number(pt.driver_share);
+  const note =
+    pt.payment_type === "ngojek"
+      ? `Pendapatan NGOJEK QRIS (neto setelah komisi ${Number(pt.platform_fee ?? 0)})`
+      : "Ongkos kirim kuliner QRIS";
+
+  await applyWalletTx(admin, "driver", driverId, amount, "order_earning", {
+    orderId,
+    note,
+  });
+
+  await admin
+    .from("payment_transactions")
+    .update({ driver_share_paid: true })
+    .eq("id", pt.id);
+
+  return { distributed: true, amount };
 }
 
 export async function withdrawWallet(

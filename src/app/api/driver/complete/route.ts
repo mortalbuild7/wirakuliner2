@@ -1,6 +1,9 @@
 import { getAuthDriver } from "@/lib/driver-server";
 import { DRIVER_REWARD_POINTS_PER_ORDER } from "@/lib/order-flow";
-import { distributeWalletEarnings } from "@/lib/wallet";
+import {
+  distributeMidtransDriverShare,
+  distributeWalletEarnings,
+} from "@/lib/wallet";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   enforceMethod,
@@ -61,6 +64,14 @@ export async function POST(req: Request) {
   try {
     const dist = await distributeWalletEarnings(admin, orderId);
     walletCredited = dist.distributed;
+    if (!walletCredited) {
+      const midtransDist = await distributeMidtransDriverShare(
+        admin,
+        orderId,
+        auth.driver.id
+      );
+      walletCredited = midtransDist.distributed;
+    }
   } catch {
     /* earnings best-effort; order tetap selesai */
   }

@@ -10,6 +10,14 @@ import { Alert } from "@/components/ui/alert";
 import { formatIdr } from "@/lib/utils";
 import { WalletWithdrawPanel } from "@/components/wallet/wallet-withdraw-panel";
 import { cn } from "@/lib/utils";
+import {
+  createQrisPayment,
+  isPaymentBypassEnabled,
+} from "@/lib/payment-flow";
+import {
+  QrisPaymentPanel,
+  type QrisPaymentData,
+} from "@/components/payment/qris-payment-panel";
 
 const PRESETS = [50_000, 100_000, 200_000, 500_000];
 
@@ -19,7 +27,10 @@ export default function CustomerWalletPage() {
   const [tab, setTab] = useState<Tab>("topup");
   const [balance, setBalance] = useState<number | null>(null);
   const [amount, setAmount] = useState("100000");
-  const [method, setMethod] = useState<"ewallet" | "va_bank">("ewallet");
+  const [method, setMethod] = useState<"ewallet" | "va_bank" | "qris">(
+    isPaymentBypassEnabled() ? "ewallet" : "qris"
+  );
+  const [qrisPayment, setQrisPayment] = useState<QrisPaymentData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -49,11 +60,20 @@ export default function CustomerWalletPage() {
     }
 
     try {
+      if (method === "qris" && !isPaymentBypassEnabled()) {
+        const qris = await createQrisPayment({ type: "topup", amount: nominal });
+        setQrisPayment(qris);
+        return;
+      }
+
       const res = await fetch("/api/wallet/topup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ amount: nominal, method }),
+        body: JSON.stringify({
+          amount: nominal,
+          method: method === "va_bank" ? "va_bank" : "ewallet",
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -67,8 +87,8 @@ export default function CustomerWalletPage() {
       setSuccess(json.message ?? "Top up berhasil");
       if (typeof json.balance === "number") setBalance(json.balance);
       else await loadBalance();
-    } catch {
-      setError("Koneksi gagal");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Koneksi gagal");
     } finally {
       setLoading(false);
     }
@@ -167,7 +187,23 @@ export default function CustomerWalletPage() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div
+          className={`grid gap-2 ${isPaymentBypassEnabled() ? "grid-cols-2" : "grid-cols-3"}`}
+        >
+          {!isPaymentBypassEnabled() && (
+            <button
+              type="button"
+              onClick={() => setMethod("qris")}
+              className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs ${
+                method === "qris"
+                  ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200"
+                  : "border-white/10 text-muted-foreground"
+              }`}
+            >
+              <Wallet className="h-5 w-5" />
+              QRIS
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setMethod("ewallet")}
@@ -206,10 +242,24 @@ export default function CustomerWalletPage() {
         </Button>
 
         <p className="text-[10px] text-muted-foreground">
-          Top up langsung dikreditkan ke saldo (mode uji). Integrasi Midtrans dapat diaktifkan
-          saat go-live.
+          {isPaymentBypassEnabled()
+            ? "Top up langsung dikreditkan ke saldo (mode uji)."
+            : "QRIS Midtrans — saldo dikredit otomatis setelah pembayaran berhasil."}
         </p>
       </form>
+
+      {qrisPayment && (
+        <QrisPaymentPanel
+          data={qrisPayment}
+          title="Scan QRIS — top up saldo"
+          onPaid={async () => {
+            setQrisPayment(null);
+            setSuccess("Top up QRIS berhasil — saldo diperbarui");
+            await loadBalance();
+          }}
+          onCancel={() => setQrisPayment(null)}
+        />
+      )}
         </>
       )}
     </main>

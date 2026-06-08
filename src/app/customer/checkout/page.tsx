@@ -21,7 +21,14 @@ import { calculateDeliveryFee, describeDeliveryFee } from "@/lib/delivery-fee";
 import { formatDineInAddress } from "@/lib/order-channel";
 import { isStoreOpen } from "@/lib/merchant-open";
 import { formatIdr } from "@/lib/utils";
-import { isPaymentBypassEnabled, runCheckoutPayment } from "@/lib/payment-flow";
+import {
+  createQrisPayment,
+  isPaymentBypassEnabled,
+} from "@/lib/payment-flow";
+import {
+  QrisPaymentPanel,
+  type QrisPaymentData,
+} from "@/components/payment/qris-payment-panel";
 import {
   PaymentMethodPicker,
   type PaymentMethodChoice,
@@ -54,6 +61,7 @@ function CheckoutForm() {
   const [storeOpen, setStoreOpen] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodChoice>("gateway");
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [qrisPayment, setQrisPayment] = useState<QrisPaymentData | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
@@ -289,38 +297,50 @@ function CheckoutForm() {
       }
 
       if (json.needsPayment) {
-        await runCheckoutPayment(json.orderId, total);
-        const confirmRes = await fetch("/api/orders/confirm-payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ orderId: json.orderId }),
-        });
-        const confirmJson = (await confirmRes.json().catch(() => ({}))) as { error?: string };
-        if (!confirmRes.ok) {
-          setPlaceError(confirmJson.error ?? "Gagal mengonfirmasi pembayaran");
+        if (isPaymentBypassEnabled()) {
+          const confirmRes = await fetch("/api/orders/confirm-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ orderId: json.orderId }),
+          });
+          const confirmJson = (await confirmRes.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          if (!confirmRes.ok) {
+            setPlaceError(confirmJson.error ?? "Gagal mengonfirmasi pembayaran");
+            return;
+          }
+          void fetch("/api/orders/notify-drivers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ orderId: json.orderId }),
+          });
+          try {
+            sessionStorage.setItem(
+              `wira_track_${json.orderId}`,
+              JSON.stringify({
+                id: json.orderId,
+                order_status: "paid",
+                merchant_id: merchantId,
+                delivery_address: deliveryAddr,
+              })
+            );
+          } catch {
+            /* ignore */
+          }
+          router.push(`/customer/orders/${json.orderId}`);
           return;
         }
-        void fetch("/api/orders/notify-drivers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ orderId: json.orderId }),
+
+        const qris = await createQrisPayment({
+          type: "food",
+          amount: total,
+          orderId: json.orderId,
+          merchantId: merchantId ?? undefined,
         });
-        try {
-          sessionStorage.setItem(
-            `wira_track_${json.orderId}`,
-            JSON.stringify({
-              id: json.orderId,
-              order_status: "paid",
-              merchant_id: merchantId,
-              delivery_address: deliveryAddr,
-            })
-          );
-        } catch {
-          /* ignore */
-        }
-        router.push(`/customer/orders/${json.orderId}`);
+        setQrisPayment(qris);
         return;
       }
     } catch (e) {
@@ -508,6 +528,34 @@ function CheckoutForm() {
           )}
         </Button>
       </section>
+
+      {qrisPayment && (
+        <QrisPaymentPanel
+          data={qrisPayment}
+          title="Scan QRIS — pembayaran kuliner"
+          onPaid={() => {
+            const oid = qrisPayment.orderId;
+            if (!oid) return;
+            try {
+              sessionStorage.setItem(
+                `wira_track_${oid}`,
+                JSON.stringify({
+                  id: oid,
+                  order_status: "paid",
+                  merchant_id: merchantId,
+                  delivery_address: dineIn
+                    ? formatDineInAddress(merchantName)
+                    : address,
+                })
+              );
+            } catch {
+              /* ignore */
+            }
+            router.push(`/customer/orders/${oid}`);
+          }}
+          onCancel={() => setQrisPayment(null)}
+        />
+      )}
     </main>
   );
 }
