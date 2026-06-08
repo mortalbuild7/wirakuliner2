@@ -12,7 +12,7 @@ import { isValidUuid } from "@/lib/security/validate";
 export async function GET(req: Request) {
   const methodBlock = enforceMethod(req, ["GET"]);
   if (methodBlock) return methodBlock;
-  const rl = enforceRateLimit(req, "payment-status", RATE_LIMITS.api);
+  const rl = enforceRateLimit(req, "payment-status", RATE_LIMITS.paymentStatus);
   if (rl) return rl;
 
   const url = new URL(req.url);

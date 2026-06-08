@@ -61,4 +61,6 @@ export const RATE_LIMITS = {
   adminWrite: { limit: 20, windowMs: 60_000 },
   /** Pencarian alamat NGOJEK — lebih longgar, tetap dibatasi */
   geocode: { limit: 100, windowMs: 60_000 },
+  /** Polling status pembayaran QRIS — longgar agar tidak 429 saat menunggu bayar */
+  paymentStatus: { limit: 120, windowMs: 60_000 },
 } as const;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Building2, Loader2, Smartphone, ArrowDownToLine } from "lucide-react";
+import { Building2, ChevronDown, Loader2, Smartphone, ArrowDownToLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +42,7 @@ export function WalletWithdrawPanel({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [history, setHistory] = useState<WithdrawRow[]>([]);
+  const [expanded, setExpanded] = useState(false);
 
   const baseFetch = useCallback(
     async (url: string, init?: RequestInit) => {
@@ -129,17 +130,36 @@ export function WalletWithdrawPanel({
       )}
 
       <form onSubmit={withdraw} className="glass-card space-y-4 p-4">
-        <p className="flex items-center gap-2 text-sm font-medium text-white">
-          <ArrowDownToLine className="h-4 w-4 text-amber-400" />
-          Tarik saldo
-        </p>
+        {driverMode ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left text-sm font-medium text-white"
+            aria-expanded={expanded}
+          >
+            <span className="flex items-center gap-2">
+              <ArrowDownToLine className="h-4 w-4 text-amber-400" />
+              Tarik saldo
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
+            />
+          </button>
+        ) : (
+          <p className="flex items-center gap-2 text-sm font-medium text-white">
+            <ArrowDownToLine className="h-4 w-4 text-amber-400" />
+            Tarik saldo
+          </p>
+        )}
 
-        {balance != null && (
+        {(!driverMode || expanded) && balance != null && (
           <p className="text-xs text-muted-foreground">
             Saldo tersedia: <span className="text-white">{formatIdr(balance)}</span>
           </p>
         )}
 
+        {(!driverMode || expanded) && (
+        <>
         <div className="flex flex-wrap gap-2">
           {PRESETS.map((p) => (
             <button
@@ -244,9 +264,11 @@ export function WalletWithdrawPanel({
           Minimal Rp 50.000. Dana diproses ke tujuan dalam 1×24 jam (mode uji: langsung dipotong
           dari saldo).
         </p>
+        </>
+        )}
       </form>
 
-      {history.length > 0 && (
+      {(!driverMode || expanded) && history.length > 0 && (
         <section className="glass-card mt-4 p-4">
           <p className="text-sm font-medium text-white">Riwayat penarikan</p>
           <ul className="mt-3 space-y-2">

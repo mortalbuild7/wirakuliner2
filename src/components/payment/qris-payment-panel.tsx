@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -30,6 +30,8 @@ type Props = {
   onCancel?: () => void;
 };
 
+const POLL_INTERVAL_MS = 6_000;
+
 export function QrisPaymentPanel({
   data,
   title,
@@ -41,8 +43,10 @@ export function QrisPaymentPanel({
     title ?? (isSnapMode ? "Lanjutkan pembayaran" : "Scan QRIS untuk bayar");
   const [polling, setPolling] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const onPaidRef = useRef(onPaid);
+  onPaidRef.current = onPaid;
 
-  const checkStatus = useCallback(async () => {
+  const checkStatus = useCallback(async (): Promise<boolean> => {
     const params = new URLSearchParams({
       midtransOrderId: data.midtransOrderId,
     });
@@ -55,25 +59,45 @@ export function QrisPaymentPanel({
       paid?: boolean;
       error?: string;
     };
+
+    if (res.status === 429) {
+      // Jangan tampilkan error — tunggu interval berikutnya (rate limit sementara)
+      return false;
+    }
+
     if (!res.ok) {
       setError(json.error ?? "Gagal cek status pembayaran");
       return false;
     }
+
     if (json.paid) {
       setPolling(false);
-      onPaid();
+      onPaidRef.current();
       return true;
     }
     return false;
-  }, [data.midtransOrderId, data.orderId, onPaid]);
+  }, [data.midtransOrderId, data.orderId]);
 
   useEffect(() => {
     if (!polling) return;
-    const id = window.setInterval(() => {
-      void checkStatus();
-    }, 4000);
-    void checkStatus();
-    return () => window.clearInterval(id);
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = async () => {
+      if (cancelled) return;
+      await checkStatus();
+      if (!cancelled) {
+        timer = setTimeout(tick, POLL_INTERVAL_MS);
+      }
+    };
+
+    void tick();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [polling, checkStatus]);
 
   const isSnap = data.mode === "snap" && data.snap?.redirectUrl;
@@ -89,6 +113,7 @@ export function QrisPaymentPanel({
       setError("Izinkan pop-up browser, lalu ketuk tombol bayar di bawah.");
     }
   }, [isSnap, data.snap?.redirectUrl]);
+
   const qrImageSrc =
     !isSnap && data.qris?.qrUrl
       ? data.qris.qrUrl
