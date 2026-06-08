@@ -250,7 +250,8 @@ export async function middleware(request: NextRequest) {
   if (
     requiredRole === SUPER_ADMIN_DB_ROLE &&
     pathname.startsWith("/admin") &&
-    !pathname.startsWith("/admin/mfa-verify")
+    !pathname.startsWith("/admin/mfa-verify") &&
+    !pathname.startsWith("/admin/mfa-setup")
   ) {
     const needMfa = await requiresMfaStepUp(supabase);
     if (needMfa) {

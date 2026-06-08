@@ -15,11 +15,13 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = (await headers()).get("x-pathname") ?? "";
-  const isMfaStepUp = pathname.startsWith("/admin/mfa-verify");
+  const isMfaFlow =
+    pathname.startsWith("/admin/mfa-verify") ||
+    pathname.startsWith("/admin/mfa-setup");
 
   await assertSuperAdminPage();
 
-  if (isMfaStepUp) {
+  if (isMfaFlow) {
     return <div className="min-h-screen bg-background">{children}</div>;
   }
 

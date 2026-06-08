@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ import {
   Lock,
   Gauge,
   Database,
+  KeyRound,
 } from "lucide-react";
 
 type Protection = {
@@ -190,6 +192,23 @@ export default function AdminSecurityPage() {
           <p className="mt-4 text-xs text-muted-foreground">
             Permintaan berlebih mendapat respons 429 (Terlalu banyak permintaan).
           </p>
+        </section>
+
+        <section className="rounded-xl border bg-card p-5 shadow-sm lg:col-span-2">
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <KeyRound className="h-5 w-5 text-violet-600" />
+            Multi-Factor Authentication (TOTP)
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Wajibkan kode dari Google Authenticator / Authy setiap kali masuk panel admin.
+            Aktifkan TOTP di Supabase Dashboard terlebih dahulu, lalu daftarkan perangkat di sini.
+          </p>
+          <Button asChild className="mt-4 gap-2">
+            <Link href="/admin/mfa-setup">
+              <ShieldCheck className="h-4 w-4" />
+              Setup / Kelola MFA
+            </Link>
+          </Button>
         </section>
 
         <section className="rounded-xl border bg-card p-5 shadow-sm lg:col-span-2">
