@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { ORDER_STATUS_LABEL } from "@/lib/order-flow";
 import { isNgojekOrder, isOnsiteOrder, parseNgojekLegs } from "@/lib/order-channel";
+import { OrderRatingPanel } from "@/components/ratings/order-rating-panel";
+import type { RatingTargetType } from "@/lib/ratings";
 import { CustomerOrderTrackMap } from "@/components/customer/customer-order-track-map";
 import Image from "next/image";
 import { Bike, Loader2, MapPin, Package, Phone, Search, Truck, User, Utensils } from "lucide-react";
@@ -365,6 +367,18 @@ export function OrderTracker({ orderId }: { orderId: string }) {
           </div>
         ))}
       </div>
+      {order.order_status === "delivered" && (
+        <OrderRatingPanel
+          orderId={orderId}
+          rateableTargets={(() => {
+            const targets: RatingTargetType[] = [];
+            if (!isRide) targets.push("merchant");
+            if (order.driver_id) targets.push("driver");
+            return targets;
+          })()}
+        />
+      )}
+
       {driverInfo && order.driver_id && !["pending_payment", "cancelled"].includes(order.order_status) && (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
           <p className="text-sm font-medium text-emerald-200">Driver Anda</p>

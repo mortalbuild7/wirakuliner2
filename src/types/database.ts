@@ -45,6 +45,8 @@ export interface Merchant {
   approved_by?: string | null;
   rejection_note?: string | null;
   service_city_id?: string | null;
+  rating_avg?: number;
+  rating_count?: number;
 }
 
 export interface Product {
@@ -71,6 +73,21 @@ export interface Driver {
   reward_points?: number;
   service_city_id?: string | null;
   created_at?: string;
+  rating_avg?: number;
+  rating_count?: number;
+}
+
+export type RatingTargetType = "driver" | "merchant";
+
+export interface OrderRating {
+  id: string;
+  order_id: string;
+  customer_id: string;
+  target_type: RatingTargetType;
+  target_id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
 }
 
 export type DriverPublicInfo = Pick<

@@ -54,6 +54,7 @@ import {
 } from "@/lib/driver-map-nav";
 import { offerSecondsLeft } from "@/lib/driver-order-offer";
 import { WalletWithdrawPanel } from "@/components/wallet/wallet-withdraw-panel";
+import { ReceivedReviewsPanel } from "@/components/ratings/received-reviews-panel";
 
 type Tab = "map" | "profile";
 
@@ -1126,6 +1127,14 @@ export function DriverCockpit() {
               Bergabung:{" "}
               <strong className="text-white">{formatJoinDate(driver.created_at)}</strong>
             </p>
+            {(driver.rating_count ?? 0) > 0 && (
+              <p className="mt-2 text-xs text-amber-200/90">
+                Rating:{" "}
+                <strong className="text-white">
+                  {Number(driver.rating_avg ?? 0).toFixed(1)} ★ ({driver.rating_count})
+                </strong>
+              </p>
+            )}
           </section>
 
           <section className="glass-card flex min-w-0 items-center justify-between gap-3 p-4">
@@ -1156,6 +1165,8 @@ export function DriverCockpit() {
             onBalanceChange={setWalletBalance}
             driverMode
           />
+
+          <ReceivedReviewsPanel driverMode />
 
           <section className="glass-card space-y-3 p-4">
             <p className="text-sm font-medium text-white">Ketersediaan</p>

@@ -9,6 +9,7 @@ import type { Merchant } from "@/types/database";
 import { Package, ClipboardList, TrendingUp, Zap, BarChart3, Wallet } from "lucide-react";
 import { formatIdr } from "@/lib/utils";
 import { WalletWithdrawPanel } from "@/components/wallet/wallet-withdraw-panel";
+import { ReceivedReviewsPanel } from "@/components/ratings/received-reviews-panel";
 
 export default function MerchantDashboardPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
@@ -50,6 +51,14 @@ export default function MerchantDashboardPage() {
             <p className="mt-2 text-sm text-muted-foreground">
               Kelola menu, kasir & pesanan masuk
             </p>
+            {(merchant?.rating_count ?? 0) > 0 && (
+              <p className="mt-1 text-xs text-amber-200/90">
+                Rating toko:{" "}
+                <strong className="text-white">
+                  {Number(merchant?.rating_avg ?? 0).toFixed(1)} ★ ({merchant?.rating_count})
+                </strong>
+              </p>
+            )}
           </div>
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
             <p className="flex items-center gap-2 text-xs text-amber-200/80">
@@ -68,6 +77,8 @@ export default function MerchantDashboardPage() {
         balance={walletBalance}
         onBalanceChange={setWalletBalance}
       />
+
+      <ReceivedReviewsPanel className="mb-6" />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
         <Link href="/merchant/pos" className="group">
