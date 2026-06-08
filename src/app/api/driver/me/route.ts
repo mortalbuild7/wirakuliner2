@@ -31,6 +31,7 @@ export async function GET(req: Request) {
       current_lng: driver.current_lng,
       reward_points: driver.reward_points,
       photo_url: driver.photo_url ?? null,
+      created_at: driver.created_at ?? null,
     },
   });
 }

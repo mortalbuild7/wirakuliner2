@@ -75,7 +75,7 @@ function useDriverProfileImpl(): DriverProfileValue {
       const { data, error } = await supabase
         .from("drivers")
         .select(
-          "id,profile_id,name,phone,vehicle_plate,photo_url,status,current_lat,current_lng,fcm_token,reward_points"
+          "id,profile_id,name,phone,vehicle_plate,photo_url,status,current_lat,current_lng,fcm_token,reward_points,created_at"
         )
         .eq("profile_id", uid)
         .maybeSingle();

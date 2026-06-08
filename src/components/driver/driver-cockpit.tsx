@@ -66,6 +66,17 @@ function shortOrderId(id: string) {
   return id.replace(/-/g, "").slice(0, 8).toUpperCase();
 }
 
+function formatJoinDate(iso: string | undefined | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 function pickOne<T>(v: T | T[] | null | undefined): T | undefined {
   if (v == null) return undefined;
   return Array.isArray(v) ? v[0] : v;
@@ -1110,16 +1121,23 @@ export function DriverCockpit() {
               Status:{" "}
               <strong className="text-white">{DRIVER_STATUS_LABEL[driver.status]}</strong>
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Bergabung:{" "}
+              <strong className="text-white">{formatJoinDate(driver.created_at)}</strong>
+            </p>
           </section>
 
-          <section className="grid grid-cols-3 gap-3">
-            <div className="glass-card p-4 text-center">
-              <Wallet className="mx-auto h-5 w-5 text-amber-400" />
-              <p className="mt-2 text-lg font-bold text-white">
-                {walletBalance == null ? "—" : formatIdr(walletBalance)}
-              </p>
-              <p className="text-[10px] text-muted-foreground">Saldo</p>
+          <section className="glass-card flex min-w-0 items-center justify-between gap-3 p-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <Wallet className="h-5 w-5 shrink-0 text-amber-400" />
+              <p className="text-xs text-muted-foreground">Saldo</p>
             </div>
+            <p className="shrink-0 text-sm font-bold tabular-nums text-white">
+              {walletBalance == null ? "—" : formatIdr(walletBalance)}
+            </p>
+          </section>
+
+          <section className="grid grid-cols-2 gap-3">
             <div className="glass-card p-4 text-center">
               <Package className="mx-auto h-5 w-5 text-emerald-400" />
               <p className="mt-2 text-2xl font-bold text-white">{todayCount}</p>
