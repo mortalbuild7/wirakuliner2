@@ -8,10 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert } from "@/components/ui/alert";
 import { formatIdr } from "@/lib/utils";
+import { WalletWithdrawPanel } from "@/components/wallet/wallet-withdraw-panel";
+import { cn } from "@/lib/utils";
 
 const PRESETS = [50_000, 100_000, 200_000, 500_000];
 
+type Tab = "topup" | "withdraw";
+
 export default function CustomerWalletPage() {
+  const [tab, setTab] = useState<Tab>("topup");
   const [balance, setBalance] = useState<number | null>(null);
   const [amount, setAmount] = useState("100000");
   const [method, setMethod] = useState<"ewallet" | "va_bank">("ewallet");
@@ -80,7 +85,7 @@ export default function CustomerWalletPage() {
         </Link>
         <div>
           <h1 className="text-xl font-bold text-white">Saldo WIRA</h1>
-          <p className="text-xs text-muted-foreground">Top up & bayar pesanan</p>
+          <p className="text-xs text-muted-foreground">Top up, tarik & bayar pesanan</p>
         </div>
       </div>
 
@@ -98,6 +103,35 @@ export default function CustomerWalletPage() {
         </div>
       </section>
 
+      <div className="flex gap-2 rounded-2xl border border-white/10 p-1">
+        {(["topup", "withdraw"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => {
+              setTab(t);
+              setError(null);
+              setSuccess(null);
+            }}
+            className={cn(
+              "flex-1 rounded-xl py-2.5 text-sm font-medium transition",
+              tab === t
+                ? "bg-amber-500/25 text-amber-200"
+                : "text-muted-foreground hover:text-white"
+            )}
+          >
+            {t === "topup" ? "Top up" : "Tarik saldo"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "withdraw" ? (
+        <WalletWithdrawPanel
+          balance={balance}
+          onBalanceChange={setBalance}
+        />
+      ) : (
+        <>
       {error && <Alert variant="destructive">{error}</Alert>}
       {success && (
         <Alert className="border-emerald-500/40 bg-emerald-500/10 text-emerald-100">
@@ -176,6 +210,8 @@ export default function CustomerWalletPage() {
           saat go-live.
         </p>
       </form>
+        </>
+      )}
     </main>
   );
 }

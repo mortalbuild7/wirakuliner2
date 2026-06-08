@@ -3,6 +3,10 @@ import { isNgojekOrder } from "@/lib/order-channel";
 
 export type WalletOwnerType = "customer" | "driver" | "merchant";
 export type WalletTopupMethod = "ewallet" | "va_bank";
+export type WalletWithdrawMethod = "ewallet" | "va_bank";
+
+const MIN_WITHDRAW = 50_000;
+const MAX_WITHDRAW = 50_000_000;
 
 type WalletRpcResult = string;
 
@@ -16,6 +20,8 @@ async function applyWalletTx(
     | "topup_va"
     | "order_payment"
     | "order_earning"
+    | "withdraw_ewallet"
+    | "withdraw_va"
     | "adjustment",
   opts?: { orderId?: string; topupRef?: string; note?: string }
 ): Promise<string> {
@@ -157,4 +163,87 @@ export async function distributeWalletEarnings(
   }
 
   return { distributed: true };
+}
+
+export async function withdrawWallet(
+  admin: SupabaseClient,
+  ownerType: WalletOwnerType,
+  ownerId: string,
+  amount: number,
+  method: WalletWithdrawMethod,
+  destination: string,
+  destinationName?: string | null
+): Promise<{ withdrawalId: string; txId: string; balance: number }> {
+  if (amount < MIN_WITHDRAW) {
+    throw new Error(`Minimal penarikan ${formatWithdrawMin()}`);
+  }
+  if (amount > MAX_WITHDRAW) {
+    throw new Error("Maksimal penarikan Rp 50.000.000");
+  }
+
+  const balance = await getWalletBalance(admin, ownerType, ownerId);
+  if (balance < amount) {
+    throw new Error("Saldo tidak mencukupi");
+  }
+
+  const txType = method === "ewallet" ? "withdraw_ewallet" : "withdraw_va";
+  const ref = `WD_${method.toUpperCase()}_${Date.now()}`;
+  const destLabel = destinationName?.trim() || destination;
+
+  const txId = await applyWalletTx(admin, ownerType, ownerId, -amount, txType, {
+    topupRef: ref,
+    note:
+      method === "ewallet"
+        ? `Tarik ke E-Wallet: ${destLabel}`
+        : `Tarik ke rekening: ${destLabel}`,
+  });
+
+  const { data: row, error } = await admin
+    .from("wallet_withdrawals")
+    .insert({
+      owner_type: ownerType,
+      owner_id: ownerId,
+      wallet_tx_id: txId,
+      amount,
+      method,
+      destination,
+      destination_name: destinationName?.trim() || null,
+      status: "completed",
+      processed_at: new Date().toISOString(),
+      note: "Penarikan diproses (mode uji)",
+    })
+    .select("id")
+    .single();
+
+  if (error || !row) {
+    throw new Error(error?.message ?? "Gagal mencatat penarikan");
+  }
+
+  const newBalance = await getWalletBalance(admin, ownerType, ownerId);
+  return { withdrawalId: row.id as string, txId, balance: newBalance };
+}
+
+function formatWithdrawMin(): string {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+  }).format(MIN_WITHDRAW);
+}
+
+export async function listWalletWithdrawals(
+  admin: SupabaseClient,
+  ownerType: WalletOwnerType,
+  ownerId: string,
+  limit = 20
+) {
+  const { data } = await admin
+    .from("wallet_withdrawals")
+    .select("id, amount, method, destination, destination_name, status, created_at")
+    .eq("owner_type", ownerType)
+    .eq("owner_id", ownerId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  return data ?? [];
 }

@@ -8,6 +8,7 @@ import { StoreOpenToggle } from "@/components/merchant/store-open-toggle";
 import type { Merchant } from "@/types/database";
 import { Package, ClipboardList, TrendingUp, Zap, BarChart3, Wallet } from "lucide-react";
 import { formatIdr } from "@/lib/utils";
+import { WalletWithdrawPanel } from "@/components/wallet/wallet-withdraw-panel";
 
 export default function MerchantDashboardPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
@@ -61,6 +62,12 @@ export default function MerchantDashboardPage() {
           </div>
         </div>
       </div>
+
+      <WalletWithdrawPanel
+        className="mb-6"
+        balance={walletBalance}
+        onBalanceChange={setWalletBalance}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
         <Link href="/merchant/pos" className="group">

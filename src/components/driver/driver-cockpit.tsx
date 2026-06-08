@@ -53,6 +53,7 @@ import {
   type DriverNavTarget,
 } from "@/lib/driver-map-nav";
 import { offerSecondsLeft } from "@/lib/driver-order-offer";
+import { WalletWithdrawPanel } from "@/components/wallet/wallet-withdraw-panel";
 
 type Tab = "map" | "profile";
 
@@ -1149,6 +1150,12 @@ export function DriverCockpit() {
               <p className="text-[10px] text-muted-foreground">Poin reward</p>
             </div>
           </section>
+
+          <WalletWithdrawPanel
+            balance={walletBalance}
+            onBalanceChange={setWalletBalance}
+            driverMode
+          />
 
           <section className="glass-card space-y-3 p-4">
             <p className="text-sm font-medium text-white">Ketersediaan</p>
