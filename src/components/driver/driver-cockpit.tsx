@@ -37,6 +37,7 @@ import {
   Phone,
   Store,
   User,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DriverHeaderControls } from "@/components/driver/driver-header-controls";
@@ -104,6 +105,7 @@ export function DriverCockpit() {
   const [activeOrder, setActiveOrder] = useState<OrderRow | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<OrderRow | null>(null);
   const [todayCount, setTodayCount] = useState(0);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [navMode, setNavMode] = useState<DriverNavTarget | null>(null);
   const [orderCardExpanded, setOrderCardExpanded] = useState(true);
@@ -193,10 +195,22 @@ export function DriverCockpit() {
     setTodayCount(count ?? 0);
   }, [driver?.id, supabase]);
 
+  const loadWallet = useCallback(async () => {
+    try {
+      const res = await fetchWithDriverAuth("/api/wallet/me");
+      if (!res.ok) return;
+      const json = (await res.json()) as { balance?: number };
+      if (typeof json.balance === "number") setWalletBalance(json.balance);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     if (!driver?.id) return;
     void loadPool();
     void loadStats();
+    void loadWallet();
 
     const onOrderRow = (row: {
       offered_driver_id?: string | null;
@@ -533,6 +547,7 @@ export function DriverCockpit() {
     setActiveOrder(null);
     await refresh();
     await loadStats();
+    await loadWallet();
     await loadPool();
     setTab("map");
   }
@@ -1097,14 +1112,21 @@ export function DriverCockpit() {
             </p>
           </section>
 
-          <section className="grid grid-cols-2 gap-3">
+          <section className="grid grid-cols-3 gap-3">
+            <div className="glass-card p-4 text-center">
+              <Wallet className="mx-auto h-5 w-5 text-amber-400" />
+              <p className="mt-2 text-lg font-bold text-white">
+                {walletBalance == null ? "—" : formatIdr(walletBalance)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Saldo</p>
+            </div>
             <div className="glass-card p-4 text-center">
               <Package className="mx-auto h-5 w-5 text-emerald-400" />
               <p className="mt-2 text-2xl font-bold text-white">{todayCount}</p>
               <p className="text-[10px] text-muted-foreground">Selesai hari ini</p>
             </div>
             <div className="glass-card p-4 text-center">
-              <Award className="mx-auto h-5 w-5 text-amber-400" />
+              <Award className="mx-auto h-5 w-5 text-cyan-400" />
               <p className="mt-2 text-2xl font-bold text-white">{driver.reward_points ?? 0}</p>
               <p className="text-[10px] text-muted-foreground">Poin reward</p>
             </div>

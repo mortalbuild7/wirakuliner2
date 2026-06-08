@@ -1,5 +1,6 @@
 import { getAuthDriver } from "@/lib/driver-server";
 import { DRIVER_REWARD_POINTS_PER_ORDER } from "@/lib/order-flow";
+import { distributeWalletEarnings } from "@/lib/wallet";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   enforceMethod,
@@ -56,6 +57,14 @@ export async function POST(req: Request) {
     return secureJsonResponse({ error: orderErr.message }, { status: 500 });
   }
 
+  let walletCredited = false;
+  try {
+    const dist = await distributeWalletEarnings(admin, orderId);
+    walletCredited = dist.distributed;
+  } catch {
+    /* earnings best-effort; order tetap selesai */
+  }
+
   let pointsAwarded = 0;
   const { data: existing } = await admin
     .from("driver_point_transactions")
@@ -89,5 +98,5 @@ export async function POST(req: Request) {
     await admin.from("drivers").update({ status: "idle" }).eq("id", auth.driver.id);
   }
 
-  return secureJsonResponse({ ok: true, pointsAwarded });
+  return secureJsonResponse({ ok: true, pointsAwarded, walletCredited });
 }

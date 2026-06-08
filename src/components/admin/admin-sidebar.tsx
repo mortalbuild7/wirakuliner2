@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   LogOut,
+  MapPin,
   Shield,
   Store,
   Truck,
@@ -20,6 +21,7 @@ const NAV = [
   { href: "/admin", label: "Analytics", icon: BarChart3, exact: true },
   { href: "/admin/merchants", label: "Merchants", icon: Store },
   { href: "/admin/drivers", label: "Drivers", icon: Truck },
+  { href: "/admin/cities", label: "Kota Layanan", icon: MapPin },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/reports", label: "Laporan", icon: FileText },
   { href: "/admin/miscellaneous", label: "Miscellaneous", icon: Settings2 },

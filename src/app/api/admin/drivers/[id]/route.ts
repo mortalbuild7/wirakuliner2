@@ -4,10 +4,64 @@ import { deleteAuthUser } from "@/lib/admin-delete-ops";
 import {
   enforceMethod,
   enforceRateLimit,
+  readJsonBody,
   secureJsonResponse,
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
 import { isValidUuid } from "@/lib/security/validate";
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const methodBlock = enforceMethod(req, ["PATCH"]);
+  if (methodBlock) return methodBlock;
+  const rl = enforceRateLimit(req, "admin-driver-patch", RATE_LIMITS.adminWrite);
+  if (rl) return rl;
+
+  const auth = await requireAdmin();
+  if ("error" in auth) {
+    return secureJsonResponse({ error: auth.error }, { status: auth.status });
+  }
+
+  const { id } = await params;
+  if (!isValidUuid(id)) {
+    return secureJsonResponse({ error: "ID driver tidak valid" }, { status: 400 });
+  }
+
+  const parsed = await readJsonBody<{ service_city_id?: string }>(req);
+  if ("error" in parsed) return parsed.error;
+
+  const serviceCityId = isValidUuid(parsed.data.service_city_id)
+    ? parsed.data.service_city_id
+    : null;
+  if (!serviceCityId) {
+    return secureJsonResponse({ error: "Kota layanan wajib diisi" }, { status: 400 });
+  }
+
+  const admin = createAdminClient();
+  const { data: city } = await admin
+    .from("service_cities")
+    .select("id")
+    .eq("id", serviceCityId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!city) {
+    return secureJsonResponse({ error: "Kota layanan tidak valid" }, { status: 400 });
+  }
+
+  const { error } = await admin
+    .from("drivers")
+    .update({ service_city_id: serviceCityId })
+    .eq("id", id);
+
+  if (error) {
+    return secureJsonResponse({ error: error.message }, { status: 500 });
+  }
+
+  return secureJsonResponse({ ok: true });
+}
 
 export async function DELETE(
   _req: Request,

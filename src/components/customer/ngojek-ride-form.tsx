@@ -14,6 +14,10 @@ import { haversineKm, JALAN_WIRA } from "@/lib/geo-config";
 import { calculateDeliveryFee, describeDeliveryFee } from "@/lib/delivery-fee";
 import { formatIdr } from "@/lib/utils";
 import { isPaymentBypassEnabled, runCheckoutPayment } from "@/lib/payment-flow";
+import {
+  PaymentMethodPicker,
+  type PaymentMethodChoice,
+} from "@/components/wallet/payment-method-picker";
 import { useMapLocation } from "@/hooks/use-map-location";
 import {
   Bike,
@@ -55,6 +59,10 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
 
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodChoice>("gateway");
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [areaAvailable, setAreaAvailable] = useState(true);
+  const [areaMessage, setAreaMessage] = useState<string | null>(null);
   const [destSuggestions, setDestSuggestions] = useState<GeocodeHit[]>([]);
   const [geocodingDest, setGeocodingDest] = useState(false);
   const [mapFlyTrigger, setMapFlyTrigger] = useState(0);
@@ -79,6 +87,35 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
       setAuthReady(true);
     });
   }, [supabase]);
+
+  useEffect(() => {
+    if (!userId) return;
+    fetch("/api/wallet/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { balance?: number } | null) => {
+        if (j && typeof j.balance === "number") setWalletBalance(j.balance);
+      })
+      .catch(() => {});
+  }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams({
+      lat: String(pickupLat),
+      lng: String(pickupLng),
+    });
+    fetch(`/api/service-area/check?${params}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { available?: boolean; message?: string } | null) => {
+        if (cancelled || !j) return;
+        setAreaAvailable(j.available !== false);
+        setAreaMessage(j.available === false ? (j.message ?? null) : null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pickupLat, pickupLng]);
 
   useEffect(() => {
     if (!gpsFix) return;
@@ -281,6 +318,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
           destinationLat: destLat,
           destinationLng: destLng,
           skipPayment: isPaymentBypassEnabled(),
+          paymentMethod: paymentMethod === "wallet" ? "wallet" : "gateway",
         }),
       });
 
@@ -507,9 +545,29 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
         </div>
       </section>
 
+      {!areaAvailable && areaMessage && (
+        <Alert variant="warning" className="border-amber-500/30 bg-amber-500/10">
+          {areaMessage}
+        </Alert>
+      )}
+
+      {userId && (
+        <PaymentMethodPicker
+          value={paymentMethod}
+          onChange={setPaymentMethod}
+          walletBalance={walletBalance}
+          total={rideFee}
+          disabled={placing}
+        />
+      )}
+
+      {placeError && (
+        <Alert variant="destructive">{placeError}</Alert>
+      )}
+
       <Button
         className="h-12 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-400 text-base font-bold text-slate-950 shadow-lg shadow-emerald-500/25 hover:from-emerald-400 hover:to-green-300"
-        disabled={placing || !destAddress.trim()}
+        disabled={placing || !destAddress.trim() || !areaAvailable}
         onClick={() => void bookRide()}
       >
         {placing ? (

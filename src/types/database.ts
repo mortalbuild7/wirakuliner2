@@ -44,6 +44,7 @@ export interface Merchant {
   approved_at?: string | null;
   approved_by?: string | null;
   rejection_note?: string | null;
+  service_city_id?: string | null;
 }
 
 export interface Product {
@@ -68,6 +69,7 @@ export interface Driver {
   current_lng: number | null;
   fcm_token: string | null;
   reward_points?: number;
+  service_city_id?: string | null;
 }
 
 export type DriverPublicInfo = Pick<

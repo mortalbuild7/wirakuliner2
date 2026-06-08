@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { CustomerModerationBanner } from "@/components/customer/customer-moderation-banner";
+import { WalletBalanceBadge } from "@/components/wallet/wallet-balance-badge";
 
 const NAV = [
   {
@@ -67,15 +68,18 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
             </div>
           </Link>
           <PoweredByDaffacell variant="hidden" />
-          {customerName ? (
-            <span
-              className="flex max-w-[9rem] items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-medium text-cyan-300 sm:max-w-[12rem]"
-              title={customerName}
-            >
-              <User className="h-3 w-3 shrink-0" />
-              <span className="truncate">{customerName}</span>
-            </span>
-          ) : null}
+          <div className="flex items-center gap-2">
+            <WalletBalanceBadge href="/customer/wallet" />
+            {customerName ? (
+              <span
+                className="flex max-w-[9rem] items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-medium text-cyan-300 sm:max-w-[12rem]"
+                title={customerName}
+              >
+                <User className="h-3 w-3 shrink-0" />
+                <span className="truncate">{customerName}</span>
+              </span>
+            ) : null}
+          </div>
         </div>
       </header>
 

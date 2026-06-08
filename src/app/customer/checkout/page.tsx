@@ -22,6 +22,10 @@ import { formatDineInAddress } from "@/lib/order-channel";
 import { isStoreOpen } from "@/lib/merchant-open";
 import { formatIdr } from "@/lib/utils";
 import { isPaymentBypassEnabled, runCheckoutPayment } from "@/lib/payment-flow";
+import {
+  PaymentMethodPicker,
+  type PaymentMethodChoice,
+} from "@/components/wallet/payment-method-picker";
 import type { CartItem } from "@/types/database";
 import { CreditCard, MapPin, UserRound } from "lucide-react";
 import { useSingleMerchantRealtime } from "@/hooks/use-merchant-realtime";
@@ -48,6 +52,8 @@ function CheckoutForm() {
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [storeOpen, setStoreOpen] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodChoice>("gateway");
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
@@ -56,6 +62,19 @@ function CheckoutForm() {
       setUserId(data.session?.user?.id ?? null);
       setAuthReady(true);
     });
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!userId) return;
+    fetch("/api/wallet/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { balance?: number } | null) => {
+        if (j && typeof j.balance === "number") setWalletBalance(j.balance);
+      })
+      .catch(() => {});
+  }, [userId]);
+
+  useEffect(() => {
     if (merchantId) {
       const cart = JSON.parse(
         localStorage.getItem(`wira_cart_${merchantId}`) ?? "[]"
@@ -228,6 +247,7 @@ function CheckoutForm() {
           deliveryLng: lng,
           accuracyM: bestGpsAccuracyM ?? gpsAccuracyM,
           skipPayment: isPaymentBypassEnabled(),
+          paymentMethod: paymentMethod === "wallet" ? "wallet" : "gateway",
         }),
       });
 
@@ -446,6 +466,18 @@ function CheckoutForm() {
           </Alert>
         )}
 
+        {userId && (
+          <div className="mt-4">
+            <PaymentMethodPicker
+              value={paymentMethod}
+              onChange={setPaymentMethod}
+              walletBalance={walletBalance}
+              total={total}
+              disabled={placing}
+            />
+          </div>
+        )}
+
         <Button
           className="mt-4 h-12 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-orange-500 font-semibold text-slate-950"
           onClick={() => void placeOrder()}
@@ -465,6 +497,8 @@ function CheckoutForm() {
             <>
               <CreditCard className="mr-2 h-4 w-4" /> Bayar & kirim ke dapur
             </>
+          ) : paymentMethod === "wallet" ? (
+            <>Bayar dengan saldo</>
           ) : isPaymentBypassEnabled() ? (
             <>Bayar (mode uji — tanpa Midtrans)</>
           ) : (

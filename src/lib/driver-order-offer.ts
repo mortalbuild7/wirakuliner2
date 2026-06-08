@@ -13,6 +13,7 @@ export type OfferableOrder = {
   order_status: string;
   delivery_address: string;
   negotiation_status: string;
+  service_city_id?: string | null;
 };
 
 export function isOfferExpired(offeredAt: string | null | undefined): boolean {
@@ -67,17 +68,24 @@ async function getDriversWithPendingOffer(
 async function pickNextDriver(
   admin: SupabaseClient,
   skipIds: string[],
-  excludeOrderId?: string
+  excludeOrderId?: string,
+  serviceCityId?: string | null
 ): Promise<string | null> {
   const skip = new Set(skipIds);
   const busy = await getBusyDriverIds(admin);
   const pendingOffer = await getDriversWithPendingOffer(admin, excludeOrderId);
 
-  const { data: drivers } = await admin
+  let query = admin
     .from("drivers")
-    .select("id, status, updated_at")
+    .select("id, status, updated_at, service_city_id")
     .eq("status", "idle")
     .order("updated_at", { ascending: true });
+
+  if (serviceCityId) {
+    query = query.eq("service_city_id", serviceCityId);
+  }
+
+  const { data: drivers } = await query;
 
   for (const d of drivers ?? []) {
     if (skip.has(d.id)) continue;
@@ -116,10 +124,20 @@ export async function rotateOfferForOrder(
     return order.offered_driver_id;
   }
 
-  let nextDriver = await pickNextDriver(admin, skipIds, order.id);
+  let nextDriver = await pickNextDriver(
+    admin,
+    skipIds,
+    order.id,
+    order.service_city_id
+  );
   if (!nextDriver && skipIds.length > 0) {
     skipIds = [];
-    nextDriver = await pickNextDriver(admin, skipIds, order.id);
+    nextDriver = await pickNextDriver(
+      admin,
+      skipIds,
+      order.id,
+      order.service_city_id
+    );
   }
 
   await admin
@@ -140,7 +158,7 @@ export async function processAllPendingOffers(admin: SupabaseClient): Promise<vo
   const { data: orders } = await admin
     .from("orders")
     .select(
-      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status"
+      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id"
     )
     .is("driver_id", null)
     .in("order_status", ["paid", "preparing", "ready_for_pickup"]);
@@ -158,7 +176,7 @@ export async function assignDriverOffer(orderId: string): Promise<string | null>
   const { data: order } = await admin
     .from("orders")
     .select(
-      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status"
+      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id"
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -176,7 +194,7 @@ export async function declineDriverOffer(
   const { data: order } = await admin
     .from("orders")
     .select(
-      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status"
+      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id"
     )
     .eq("id", orderId)
     .maybeSingle();

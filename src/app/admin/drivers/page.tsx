@@ -15,8 +15,14 @@ import {
 import Image from "next/image";
 import { Bike, Loader2 } from "lucide-react";
 
+type ServiceCity = {
+  id: string;
+  name: string;
+};
+
 type DriverRow = Driver & {
   profiles: { email: string | null } | null;
+  service_cities?: { name: string } | { name: string }[] | null;
 };
 
 const EMPTY_FORM = {
@@ -25,6 +31,7 @@ const EMPTY_FORM = {
   plate: "",
   email: "",
   password: "",
+  service_city_id: "",
 };
 
 export default function AdminDriversPage() {
@@ -35,13 +42,24 @@ export default function AdminDriversPage() {
   const [listLoading, setListLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [cities, setCities] = useState<ServiceCity[]>([]);
   const supabase = createClient();
+
+  const loadCities = useCallback(async () => {
+    const res = await fetch("/api/admin/cities", { credentials: "include" });
+    const json = (await res.json().catch(() => ({}))) as { cities?: ServiceCity[] };
+    const list = json.cities ?? [];
+    setCities(list);
+    if (list.length) {
+      setForm((f) => (f.service_city_id ? f : { ...f, service_city_id: list[0].id }));
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setListLoading(true);
     const { data, error: loadErr } = await supabase
       .from("drivers")
-      .select("*, profiles(email)")
+      .select("*, profiles(email), service_cities(name)")
       .order("created_at", { ascending: false });
 
     if (loadErr) {
@@ -54,7 +72,24 @@ export default function AdminDriversPage() {
 
   useEffect(() => {
     load();
-  }, [load]);
+    void loadCities();
+  }, [load, loadCities]);
+
+  async function updateDriverCity(driverId: string, serviceCityId: string) {
+    const res = await fetch(`/api/admin/drivers/${driverId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ service_city_id: serviceCityId }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setError(body.error ?? "Gagal mengubah kota driver");
+      return;
+    }
+    setSuccess("Kota driver diperbarui");
+    load();
+  }
 
   async function deleteDriver(id: string, name: string) {
     if (
@@ -95,6 +130,7 @@ export default function AdminDriversPage() {
         vehicle_plate: form.plate.trim() || undefined,
         email: form.email.trim(),
         password: form.password,
+        service_city_id: form.service_city_id,
       }),
     });
 
@@ -214,6 +250,26 @@ export default function AdminDriversPage() {
               required
             />
           </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="driver-city">Kota layanan</Label>
+            <select
+              id="driver-city"
+              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={form.service_city_id}
+              onChange={(e) => setForm({ ...form, service_city_id: e.target.value })}
+              required
+            >
+              <option value="">Pilih kota...</option>
+              {cities.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Driver hanya menerima order di kota ini. Kelola kota di menu Kota Layanan.
+            </p>
+          </div>
           <DriverPhotoPicker
             value={photoDraft}
             onChange={setPhotoDraft}
@@ -268,7 +324,28 @@ export default function AdminDriversPage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   Email: {d.profiles?.email ?? "—"} · Status:{" "}
                   <span className="capitalize">{d.status}</span>
+                  {" · "}
+                  Kota:{" "}
+                  {Array.isArray(d.service_cities)
+                    ? d.service_cities[0]?.name
+                    : d.service_cities?.name ?? "Belum diatur"}
                 </p>
+                {cities.length > 0 && (
+                  <select
+                    className="mt-2 flex h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    value={
+                      (d as Driver & { service_city_id?: string }).service_city_id ?? ""
+                    }
+                    onChange={(e) => void updateDriverCity(d.id, e.target.value)}
+                  >
+                    <option value="">Ubah kota...</option>
+                    {cities.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <p className="mt-1 text-xs">
                   Akun:{" "}
                   {d.profile_id ? (

@@ -6,10 +6,12 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { StoreOpenToggle } from "@/components/merchant/store-open-toggle";
 import type { Merchant } from "@/types/database";
-import { Package, ClipboardList, TrendingUp, Zap, BarChart3 } from "lucide-react";
+import { Package, ClipboardList, TrendingUp, Zap, BarChart3, Wallet } from "lucide-react";
+import { formatIdr } from "@/lib/utils";
 
 export default function MerchantDashboardPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -21,8 +23,14 @@ export default function MerchantDashboardPage() {
         .eq("owner_id", user.id)
         .maybeSingle()
         .then(({ data }) => setMerchant(data));
+      fetch("/api/wallet/me", { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { balance?: number } | null) => {
+          if (j && typeof j.balance === "number") setWalletBalance(j.balance);
+        })
+        .catch(() => {});
     });
-  }, []);
+  }, [supabase]);
 
   return (
     <main className="p-4 md:p-6">
@@ -33,12 +41,25 @@ export default function MerchantDashboardPage() {
       )}
 
       <div className="glass-card mb-6 overflow-hidden p-5">
-        <h1 className="text-2xl font-bold text-white md:text-3xl">
-          {merchant?.name?.trim() || "Toko"}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Kelola menu, kasir & pesanan masuk
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white md:text-3xl">
+              {merchant?.name?.trim() || "Toko"}
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Kelola menu, kasir & pesanan masuk
+            </p>
+          </div>
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <p className="flex items-center gap-2 text-xs text-amber-200/80">
+              <Wallet className="h-4 w-4" />
+              Saldo toko
+            </p>
+            <p className="mt-1 text-xl font-bold text-white">
+              {walletBalance == null ? "—" : formatIdr(walletBalance)}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">

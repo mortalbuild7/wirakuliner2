@@ -2,6 +2,11 @@ import { haversineKm } from "@/lib/geo-config";
 import { calculateDeliveryFee } from "@/lib/delivery-fee";
 import { formatNgojekAddress } from "@/lib/order-channel";
 import { notifyDriversNewOrder } from "@/lib/notify-drivers";
+import {
+  checkServiceAvailability,
+  SERVICE_UNAVAILABLE_MSG,
+} from "@/lib/service-area";
+import { debitCustomerForOrder } from "@/lib/wallet";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -52,6 +57,7 @@ export async function POST(req: Request) {
     destinationLat?: number;
     destinationLng?: number;
     skipPayment?: boolean;
+    paymentMethod?: string;
   }>(req);
   if ("error" in parsed) return parsed.error;
 
@@ -98,6 +104,15 @@ export async function POST(req: Request) {
   }
 
   const admin = createAdminClient();
+
+  const serviceArea = await checkServiceAvailability(admin, pickupLat, pickupLng);
+  if (!serviceArea.available) {
+    return secureJsonResponse(
+      { error: serviceArea.message ?? SERVICE_UNAVAILABLE_MSG },
+      { status: 403 }
+    );
+  }
+
   const hubMerchantId = await resolveHubMerchantId(admin);
   if (!hubMerchantId) {
     return secureJsonResponse(
@@ -107,8 +122,10 @@ export async function POST(req: Request) {
   }
 
   const deliveryAddress = formatNgojekAddress(pickupAddress, destinationAddress);
+  const useWallet = body.paymentMethod === "wallet";
   const skipPayment =
-    body.skipPayment === true || process.env.NEXT_PUBLIC_PAYMENT_BYPASS === "true";
+    !useWallet &&
+    (body.skipPayment === true || process.env.NEXT_PUBLIC_PAYMENT_BYPASS === "true");
 
   const { data: order, error: orderError } = await admin
     .from("orders")
@@ -126,7 +143,9 @@ export async function POST(req: Request) {
       pickup_lat: pickupLat,
       pickup_lng: pickupLng,
       distance_km: distanceKm,
-      payment_gateway: skipPayment ? "test_bypass" : "midtrans",
+      service_city_id: serviceArea.cityId,
+      payment_method: useWallet ? "wallet" : "gateway",
+      payment_gateway: useWallet ? "wallet" : skipPayment ? "test_bypass" : "midtrans",
     })
     .select("id")
     .single();
@@ -152,6 +171,44 @@ export async function POST(req: Request) {
       { error: itemsError.message ?? "Gagal menyimpan detail ride" },
       { status: 500 }
     );
+  }
+
+  if (useWallet) {
+    try {
+      await debitCustomerForOrder(admin, user.id, rideFee, order.id);
+    } catch (e) {
+      await admin.from("orders").delete().eq("id", order.id);
+      return secureJsonResponse(
+        { error: e instanceof Error ? e.message : "Gagal membayar dengan saldo" },
+        { status: 400 }
+      );
+    }
+
+    const { error: payError } = await admin
+      .from("orders")
+      .update({
+        order_status: "paid",
+        snap_token: `WALLET_${order.id}`,
+      })
+      .eq("id", order.id);
+
+    if (payError) {
+      return secureJsonResponse(
+        { error: payError.message ?? "Gagal mengonfirmasi pembayaran saldo" },
+        { status: 500 }
+      );
+    }
+
+    const notify = await notifyDriversNewOrder(order.id);
+    return secureJsonResponse({
+      ok: true,
+      orderId: order.id,
+      paid: true,
+      rideFee,
+      distanceKm,
+      paymentMethod: "wallet",
+      driversNotified: !("skipped" in notify && notify.skipped),
+    });
   }
 
   if (skipPayment) {

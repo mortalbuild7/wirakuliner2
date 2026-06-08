@@ -7,7 +7,7 @@ import {
   secureJsonResponse,
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
-import { sanitizeEmail, sanitizeText } from "@/lib/security/validate";
+import { isValidUuid, sanitizeEmail, sanitizeText } from "@/lib/security/validate";
 
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
@@ -26,6 +26,7 @@ export async function POST(req: Request) {
     vehicle_plate?: string;
     email?: string;
     password?: string;
+    service_city_id?: string;
   }>(req);
 
   if ("error" in parsed) return parsed.error;
@@ -49,7 +50,25 @@ export async function POST(req: Request) {
     );
   }
 
+  const serviceCityId = isValidUuid(parsed.data.service_city_id)
+    ? parsed.data.service_city_id
+    : null;
+  if (!serviceCityId) {
+    return secureJsonResponse({ error: "Kota layanan driver wajib dipilih" }, { status: 400 });
+  }
+
   const admin = createAdminClient();
+
+  const { data: city } = await admin
+    .from("service_cities")
+    .select("id")
+    .eq("id", serviceCityId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!city) {
+    return secureJsonResponse({ error: "Kota layanan tidak valid" }, { status: 400 });
+  }
 
   const { data: phoneUsed } = await admin
     .from("drivers")
@@ -94,6 +113,7 @@ export async function POST(req: Request) {
       name,
       phone,
       vehicle_plate: vehiclePlate,
+      service_city_id: serviceCityId,
       status: "offline",
     })
     .select("id")
