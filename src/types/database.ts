@@ -70,6 +70,7 @@ export interface Driver {
   fcm_token: string | null;
   reward_points?: number;
   service_city_id?: string | null;
+  created_at?: string;
 }
 
 export type DriverPublicInfo = Pick<

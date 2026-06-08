@@ -25,6 +25,17 @@ type DriverRow = Driver & {
   service_cities?: { name: string } | { name: string }[] | null;
 };
 
+function formatJoinDate(iso: string | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 const EMPTY_FORM = {
   name: "",
   phone: "",
@@ -329,6 +340,12 @@ export default function AdminDriversPage() {
                   {Array.isArray(d.service_cities)
                     ? d.service_cities[0]?.name
                     : d.service_cities?.name ?? "Belum diatur"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Bergabung:{" "}
+                  <span className="font-medium text-foreground">
+                    {formatJoinDate(d.created_at)}
+                  </span>
                 </p>
                 {cities.length > 0 && (
                   <select

@@ -13,6 +13,8 @@ import type { Order, OrderItem } from "@/types/database";
 import { pickOrderCustomer } from "@/lib/order-customer";
 import { cn } from "@/lib/utils";
 import { printThermalReceipt } from "@/lib/print";
+import { MerchantOrdersNotification } from "@/components/merchant/merchant-orders-notification";
+import { useMerchantOrderAlertContext } from "@/contexts/merchant-order-alert-context";
 
 type Tab = "onsite" | "delivery";
 
@@ -38,6 +40,7 @@ export default function MerchantOrdersPage() {
   const merchantIdRef = useRef<string | null>(null);
   const initialTabSet = useRef(false);
   const supabase = createClient();
+  const { flashDetail } = useMerchantOrderAlertContext();
 
   const load = async () => {
     const res = await fetch("/api/merchant/orders", { credentials: "include" });
@@ -156,6 +159,10 @@ export default function MerchantOrdersPage() {
       <h1 className="text-xl font-bold text-white md:text-2xl">Pesanan Masuk</h1>
       <p className="text-sm text-muted-foreground">Realtime — antar & di tempat</p>
 
+      <div className="mt-4">
+        <MerchantOrdersNotification />
+      </div>
+
       <div className="mt-4 flex gap-2 rounded-2xl border border-white/10 p-1">
         {(["onsite", "delivery"] as const).map((t) => (
           <button
@@ -184,7 +191,15 @@ export default function MerchantOrdersPage() {
           const onsite = isOnsiteOrder(o.delivery_address);
           const customer = pickOrderCustomer(o.profiles);
           return (
-            <div key={o.id} className="glass-card p-4">
+            <div
+              key={o.id}
+              id={`merchant-order-${o.id}`}
+              className={cn(
+                "glass-card p-4 transition",
+                flashDetail?.orderId === o.id &&
+                  "ring-2 ring-orange-400 shadow-lg shadow-orange-500/20"
+              )}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-sm">#{o.id.slice(0, 8)}</span>
                 <div className="flex gap-2">

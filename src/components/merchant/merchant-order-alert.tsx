@@ -1,12 +1,37 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { Bell, BellRing, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useMerchantOrderAlert } from "@/hooks/use-merchant-order-alert";
+import { useMerchantOrderAlertContext } from "@/contexts/merchant-order-alert-context";
 
-/** Suara & banner peringatan pesanan baru — aktif di semua halaman merchant. */
+/** Suara & banner peringatan pesanan baru — aktif di semua halaman merchant (kecuali tab Order). */
 export function MerchantOrderAlert() {
-  const { audioReady, flash, enableAudio } = useMerchantOrderAlert();
+  const pathname = usePathname();
+  const onOrdersPage = pathname.startsWith("/merchant/orders");
+  const { audioReady, flash, enableAudio } = useMerchantOrderAlertContext();
+
+  if (onOrdersPage) {
+    return !audioReady ? (
+      <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.25rem)] z-50 border-b border-amber-500/50 bg-amber-600/95 px-4 py-3 text-amber-50 shadow-lg md:top-14">
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Volume2 className="h-5 w-5 shrink-0" />
+            <p className="text-sm font-medium">
+              Aktifkan suara notifikasi agar pesanan masuk tidak terlewat
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="shrink-0 bg-white font-semibold text-amber-900 hover:bg-amber-50"
+            onClick={() => void enableAudio()}
+          >
+            Aktifkan suara
+          </Button>
+        </div>
+      </div>
+    ) : null;
+  }
 
   return (
     <>

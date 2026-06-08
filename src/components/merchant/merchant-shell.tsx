@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { MerchantOrderAlert } from "@/components/merchant/merchant-order-alert";
+import { MerchantOrderAlertProvider, useMerchantOrderAlertContext } from "@/contexts/merchant-order-alert-context";
 
 const NAV = [
   { href: "/merchant", label: "Home", icon: LayoutDashboard, exact: true },
@@ -24,12 +25,14 @@ function NavLink({
   icon: Icon,
   active,
   className,
+  badge,
 }: {
   href: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
   active: boolean;
   className?: string;
+  badge?: number;
 }) {
   return (
     <Link
@@ -44,11 +47,39 @@ function NavLink({
     >
       <Icon className="h-4 w-4" />
       {label}
+      {badge != null && badge > 0 && (
+        <span className="ml-auto rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </Link>
   );
 }
 
 export function MerchantShell({ children }: { children: React.ReactNode }) {
+  return (
+    <MerchantOrderAlertProvider>
+      <MerchantShellInner>{children}</MerchantShellInner>
+    </MerchantOrderAlertProvider>
+  );
+}
+
+function MerchantShellInner({ children }: { children: React.ReactNode }) {
+  const { pendingActionCount } = useMerchantOrderAlertContext();
+  return (
+    <MerchantShellContent pendingActionCount={pendingActionCount}>
+      {children}
+    </MerchantShellContent>
+  );
+}
+
+function MerchantShellContent({
+  children,
+  pendingActionCount,
+}: {
+  children: React.ReactNode;
+  pendingActionCount: number;
+}) {
   const pathname = usePathname();
   const [merchantName, setMerchantName] = useState<string | null>(null);
   const supabase = createClient();
@@ -90,6 +121,7 @@ export function MerchantShell({ children }: { children: React.ReactNode }) {
               key={item.href}
               {...item}
               active={isActive(item.href, item.exact)}
+              badge={item.href === "/merchant/orders" ? pendingActionCount : undefined}
             />
           ))}
         </nav>
@@ -120,17 +152,24 @@ export function MerchantShell({ children }: { children: React.ReactNode }) {
             {NAV.map((item) => {
               const active = isActive(item.href, item.exact);
               const Icon = item.icon;
+              const badge =
+                item.href === "/merchant/orders" ? pendingActionCount : 0;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex flex-col items-center gap-0.5 rounded-2xl px-4 py-2 text-[10px]",
+                    "relative flex flex-col items-center gap-0.5 rounded-2xl px-4 py-2 text-[10px]",
                     active ? "text-orange-300" : "text-muted-foreground"
                   )}
                 >
                   <Icon className={cn("h-5 w-5", active && "text-orange-400")} />
                   {item.label}
+                  {badge > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-bold text-white">
+                      {badge > 9 ? "9+" : badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
