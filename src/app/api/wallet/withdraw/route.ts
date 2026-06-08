@@ -1,3 +1,4 @@
+import { rejectTrustedOwnerIdsInBody } from "@/lib/security/auth-owner";
 import { resolveWalletOwner } from "@/lib/wallet-auth";
 import {
   WALLET_WITHDRAW_MAX,
@@ -33,6 +34,9 @@ export async function POST(req: Request) {
     destinationName?: string;
   }>(req);
   if ("error" in parsed) return parsed.error;
+
+  const idorBlock = rejectTrustedOwnerIdsInBody(parsed.data as Record<string, unknown>);
+  if (idorBlock) return idorBlock;
 
   const amount = parseBoundedNumber(
     parsed.data.amount,

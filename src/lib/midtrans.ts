@@ -265,7 +265,11 @@ export type MidtransNotification = {
   payment_type?: string;
 };
 
-/** Verifikasi signature webhook Midtrans (SHA-512). */
+/**
+ * Verifikasi signature webhook Midtrans (SHA-512).
+ * Rumus resmi: SHA512(order_id + status_code + gross_amount + ServerKey)
+ * Webhook tanpa signature valid = fake notification → harus ditolak.
+ */
 export function verifyMidtransSignature(payload: MidtransNotification): boolean {
   const serverKey = process.env.MIDTRANS_SERVER_KEY?.trim();
   if (!serverKey) return false;

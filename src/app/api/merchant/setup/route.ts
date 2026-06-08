@@ -1,20 +1,45 @@
-import { NextResponse } from "next/server";
+import { rejectTrustedOwnerIdsInBody } from "@/lib/security/auth-owner";
+import {
+  enforceMethod,
+  enforceRateLimit,
+  readJsonBody,
+  secureJsonResponse,
+} from "@/lib/security/enforce";
+import { RATE_LIMITS } from "@/lib/security/rate-limit";
+import { sanitizeDescription, sanitizeName, sanitizePublicText } from "@/lib/security/sanitize";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
+  const methodBlock = enforceMethod(req, ["POST"]);
+  if (methodBlock) return methodBlock;
+  const rl = enforceRateLimit(req, "merchant-setup", RATE_LIMITS.apiWrite);
+  if (rl) return rl;
+
   try {
-    const body = (await req.json()) as {
+    const parsed = await readJsonBody<{
       name?: string;
       address?: string;
       description?: string;
       category?: string;
       latitude?: number;
       longitude?: number;
-    };
+      owner_id?: string;
+      merchant_id?: string;
+    }>(req);
+    if ("error" in parsed) return parsed.error;
 
-    const { name, address, description, category, latitude, longitude } = body;
-    if (!name?.trim() || !address?.trim()) {
-      return NextResponse.json({ error: "Nama toko dan alamat wajib diisi" }, { status: 400 });
+    const idorBlock = rejectTrustedOwnerIdsInBody(parsed.data as Record<string, unknown>);
+    if (idorBlock) return idorBlock;
+
+    const body = parsed.data;
+    const name = sanitizeName(body.name);
+    const address = sanitizePublicText(body.address, 300);
+    const description = sanitizeDescription(body.description) ?? "";
+    const category = sanitizePublicText(body.category, 40) ?? "makanan";
+    const { latitude, longitude } = body;
+
+    if (!name || !address) {
+      return secureJsonResponse({ error: "Nama toko dan alamat wajib diisi" }, { status: 400 });
     }
 
     const lat =
@@ -29,7 +54,7 @@ export async function POST(req: Request) {
       lng < -180 ||
       lng > 180
     ) {
-      return NextResponse.json(
+      return secureJsonResponse(
         { error: "Koordinat GPS toko (latitude & longitude) wajib diisi dengan benar" },
         { status: 400 }
       );
@@ -42,7 +67,7 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Belum login. Silakan masuk ulang." }, { status: 401 });
+      return secureJsonResponse({ error: "Belum login. Silakan masuk ulang." }, { status: 401 });
     }
 
     const { data: profile } = await supabase
@@ -52,7 +77,7 @@ export async function POST(req: Request) {
       .single();
 
     if (profile?.role !== "merchant") {
-      return NextResponse.json(
+      return secureJsonResponse(
         { error: "Akun ini bukan merchant. Daftar di /register?role=merchant" },
         { status: 403 }
       );
@@ -65,7 +90,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (existing) {
-      return NextResponse.json({
+      return secureJsonResponse({
         ok: true,
         merchantId: existing.id,
         alreadyExists: true,
@@ -77,10 +102,10 @@ export async function POST(req: Request) {
       .from("merchants")
       .insert({
         owner_id: user.id,
-        name: name.trim(),
-        address: address.trim(),
-        description: description?.trim() ?? "",
-        category: category ?? "makanan",
+        name,
+        address,
+        description,
+        category,
         latitude: lat,
         longitude: lng,
         is_active: false,
@@ -91,17 +116,17 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return secureJsonResponse({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
+    return secureJsonResponse({
       ok: true,
       merchantId: merchant.id,
       approvalStatus: "pending",
       pendingApproval: true,
     });
   } catch (e) {
-    return NextResponse.json(
+    return secureJsonResponse(
       { error: e instanceof Error ? e.message : "Gagal menyimpan toko" },
       { status: 500 }
     );

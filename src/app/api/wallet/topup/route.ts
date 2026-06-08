@@ -1,3 +1,4 @@
+import { rejectTrustedOwnerIdsInBody } from "@/lib/security/auth-owner";
 import { topupWallet } from "@/lib/wallet";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -31,6 +32,9 @@ export async function POST(req: Request) {
     method?: string;
   }>(req);
   if ("error" in parsed) return parsed.error;
+
+  const idorBlock = rejectTrustedOwnerIdsInBody(parsed.data as Record<string, unknown>);
+  if (idorBlock) return idorBlock;
 
   const amount = parseBoundedNumber(parsed.data.amount, 10_000, 10_000_000);
   const method = parsed.data.method === "va_bank" ? "va_bank" : "ewallet";

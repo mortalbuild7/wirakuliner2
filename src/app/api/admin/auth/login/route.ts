@@ -1,0 +1,73 @@
+import { createClient } from "@/lib/supabase/server";
+import { SUPER_ADMIN_DB_ROLE } from "@/lib/admin-auth";
+import {
+  enforceMethod,
+  readJsonBody,
+  secureJsonResponse,
+} from "@/lib/security/enforce";
+import { enforceAdminLoginRateLimit } from "@/lib/security/upstash-admin-login";
+import { sanitizeText } from "@/lib/security/validate";
+
+/**
+ * Endpoint login khusus Panel Admin.
+ *
+ * Dipanggil dari halaman /login saat redirect=/admin agar:
+ * - Rate limit Upstash (middleware) berlaku sebelum kredensial diproses
+ * - Role SUPER_ADMIN diverifikasi server-side sebelum sesi diterima
+ *
+ * Catatan MFA: setelah login sukses, middleware akan mengarahkan ke
+ * /admin/mfa-verify jika akun admin sudah mendaftarkan TOTP namun belum aal2.
+ */
+export async function POST(req: Request) {
+  const methodBlock = enforceMethod(req, ["POST"]);
+  if (methodBlock) return methodBlock;
+
+  const rateBlock = await enforceAdminLoginRateLimit(req);
+  if (rateBlock) return rateBlock;
+
+  const parsed = await readJsonBody<{ email?: string; password?: string }>(req);
+  if ("error" in parsed) return parsed.error;
+
+  const email = sanitizeText(parsed.data.email, 254)?.toLowerCase();
+  const password = parsed.data.password;
+
+  if (!email || !password || password.length < 8 || password.length > 128) {
+    return secureJsonResponse(
+      { error: "Email atau password tidak valid" },
+      { status: 400 }
+    );
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error || !data.user) {
+    return secureJsonResponse(
+      { error: "Email atau password salah" },
+      { status: 401 }
+    );
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", data.user.id)
+    .single();
+
+  if (profile?.role !== SUPER_ADMIN_DB_ROLE) {
+    await supabase.auth.signOut();
+    return secureJsonResponse(
+      { error: "Akun ini bukan SUPER_ADMIN" },
+      { status: 403 }
+    );
+  }
+
+  return secureJsonResponse({
+    ok: true,
+    redirect: "/admin",
+    userId: data.user.id,
+  });
+}

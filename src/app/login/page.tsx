@@ -50,6 +50,26 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     try {
+      /** Login admin lewat API agar rate limit Upstash (3×/5 menit/IP) berlaku. */
+      if (redirect.startsWith("/admin")) {
+        const res = await fetch("/api/admin/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email, password }),
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          redirect?: string;
+        };
+        if (!res.ok) {
+          alert(json.error ?? "Login admin gagal");
+          return;
+        }
+        window.location.assign(json.redirect ?? redirect);
+        return;
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         alert(error.message);

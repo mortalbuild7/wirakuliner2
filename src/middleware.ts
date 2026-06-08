@@ -7,6 +7,7 @@ import { getClientIp } from "@/lib/security/enforce";
 import { scanPathname, scanSearchParams } from "@/lib/security/sql-guard";
 import { isAccountAccessBlocked } from "@/lib/account-status";
 import { DRIVER_CLOSED_MESSAGE, isDriverAppEnabled } from "@/lib/feature-flags";
+import { SUPER_ADMIN_DB_ROLE } from "@/lib/admin-auth";
 
 const ROLE_ROUTES: Record<string, UserRole> = {
   "/admin": "admin",
@@ -28,6 +29,24 @@ function blockedRequestResponse(isApi: boolean) {
   return withSecurity(new NextResponse("Permintaan ditolak", { status: 400 }));
 }
 
+/** MFA step-up: admin sudah enroll TOTP tapi sesi masih aal1. */
+async function requiresMfaStepUp(
+  supabase: ReturnType<typeof createServerClient>
+): Promise<boolean> {
+  const { data: aal, error } =
+    await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error || !aal) return false;
+  return aal.nextLevel === "aal2" && aal.currentLevel !== "aal2";
+}
+
+function forwardPathHeader(request: NextRequest, res: NextResponse): NextResponse {
+  const reqHeaders = new Headers(request.headers);
+  reqHeaders.set("x-pathname", request.nextUrl.pathname);
+  const next = NextResponse.next({ request: { headers: reqHeaders } });
+  res.cookies.getAll().forEach((c) => next.cookies.set(c.name, c.value));
+  return withSecurity(next);
+}
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const ip = getClientIp(request);
@@ -35,6 +54,25 @@ export async function middleware(request: NextRequest) {
 
   if (scanPathname(pathname) || scanSearchParams(request.nextUrl.searchParams)) {
     return blockedRequestResponse(isApi);
+  }
+
+  /**
+   * RATE LIMITING LOGIN ADMIN (lapisan Edge — in-memory 3×/5 menit/IP).
+   * Upstash Redis dipanggil di API route (Node) untuk limit terdistribusi antar instance.
+   */
+  if (request.method === "POST" && pathname === "/api/admin/auth/login") {
+    const rl = checkRateLimit(`admin-login-edge:${ip}`, {
+      limit: 3,
+      windowMs: 5 * 60_000,
+    });
+    if (!rl.allowed) {
+      const res = NextResponse.json(
+        { error: "Terlalu banyak percobaan login admin. Coba lagi nanti." },
+        { status: 429 }
+      );
+      res.headers.set("Retry-After", String(rl.retryAfterSec));
+      return withSecurity(res);
+    }
   }
 
   if (!isDriverAppEnabled()) {
@@ -123,6 +161,47 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  /** API admin — role + MFA (kecuali endpoint login yang sudah di-rate-limit). */
+  if (pathname.startsWith("/api/admin")) {
+    const isLoginRoute =
+      pathname === "/api/admin/auth/login" && request.method === "POST";
+
+    if (!isLoginRoute) {
+      if (!user) {
+        return withSecurity(
+          NextResponse.json({ error: "Belum login" }, { status: 401 })
+        );
+      }
+
+      const { data: apiProfile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      if (apiProfile?.role !== SUPER_ADMIN_DB_ROLE) {
+        return withSecurity(
+          NextResponse.json(
+            { error: "Akses ditolak — bukan SUPER_ADMIN" },
+            { status: 403 }
+          )
+        );
+      }
+
+      const needMfa = await requiresMfaStepUp(supabase);
+      if (needMfa) {
+        return withSecurity(
+          NextResponse.json(
+            { error: "Verifikasi MFA diperlukan", code: "MFA_REQUIRED" },
+            { status: 403 }
+          )
+        );
+      }
+    }
+
+    return response;
+  }
+
   const protectedPrefix = Object.keys(ROLE_ROUTES).find((p) =>
     pathname.startsWith(p)
   );
@@ -155,10 +234,38 @@ export async function middleware(request: NextRequest) {
       login.searchParams.set("have", userRole ?? "unknown");
       return withSecurity(NextResponse.redirect(login));
     }
+    if (requiredRole === SUPER_ADMIN_DB_ROLE) {
+      return withSecurity(NextResponse.redirect(new URL("/unauthorized", request.url)));
+    }
     const home = new URL("/", request.url);
     home.searchParams.set("error", "unauthorized");
     home.searchParams.set("need", requiredRole);
     return withSecurity(NextResponse.redirect(home));
+  }
+
+  /**
+   * MFA step-up untuk halaman admin.
+   * Kecualikan halaman verifikasi OTP agar tidak loop redirect.
+   */
+  if (
+    requiredRole === SUPER_ADMIN_DB_ROLE &&
+    pathname.startsWith("/admin") &&
+    !pathname.startsWith("/admin/mfa-verify")
+  ) {
+    const needMfa = await requiresMfaStepUp(supabase);
+    if (needMfa) {
+      if (pathname.startsWith("/api/")) {
+        return withSecurity(
+          NextResponse.json(
+            { error: "Verifikasi MFA diperlukan", code: "MFA_REQUIRED" },
+            { status: 403 }
+          )
+        );
+      }
+      const mfaUrl = new URL("/admin/mfa-verify", request.url);
+      mfaUrl.searchParams.set("redirect", pathname);
+      return withSecurity(NextResponse.redirect(mfaUrl));
+    }
   }
 
   if (
@@ -225,7 +332,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return response;
+  return forwardPathHeader(request, response);
 }
 
 export const config = {

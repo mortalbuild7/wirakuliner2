@@ -8,7 +8,8 @@ import {
   secureJsonResponse,
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
-import { isValidUuid, sanitizeText } from "@/lib/security/validate";
+import { sanitizePublicText } from "@/lib/security/sanitize";
+import { isValidUuid } from "@/lib/security/validate";
 
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const comment = sanitizeText(parsed.data.comment, 500);
+  const comment = sanitizePublicText(parsed.data.comment, 500);
 
   try {
     const admin = createAdminClient();

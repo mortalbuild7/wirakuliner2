@@ -1,0 +1,82 @@
+// Model referensi — mirror tabel wallets di Supabase WIRA Kuliner
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WalletOwnerType {
+  customer
+  driver
+  merchant
+}
+
+enum WalletTxType {
+  topup_ewallet
+  topup_va
+  topup_qris
+  order_payment
+  order_earning
+  withdraw_ewallet
+  withdraw_va
+  adjustment
+}
+
+model Wallet {
+  id         String          @id @default(uuid()) @db.Uuid
+  ownerType  WalletOwnerType @map("owner_type")
+  ownerId    String          @map("owner_id") @db.Uuid
+  balance    Decimal         @default(0) @db.Decimal(14, 2)
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+  txs        WalletTransaction[]
+
+  @@unique([ownerType, ownerId])
+  @@index([ownerType, ownerId], map: "wallets_owner_unique_lookup_idx")
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id            String       @id @default(uuid()) @db.Uuid
+  walletId      String       @map("wallet_id") @db.Uuid
+  wallet        Wallet       @relation(fields: [walletId], references: [id])
+  txType        WalletTxType @map("tx_type")
+  amount        Decimal      @db.Decimal(14, 2)
+  balanceAfter  Decimal      @map("balance_after") @db.Decimal(14, 2)
+  orderId       String?      @map("order_id") @db.Uuid
+  topupRef      String?      @map("topup_ref")
+  note          String?
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@index([walletId, createdAt(sort: Desc)])
+  @@map("wallet_transactions")
+}
+
+model Product {
+  id          String   @id @default(uuid()) @db.Uuid
+  merchantId  String   @map("merchant_id") @db.Uuid
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(12, 2)
+  isAvailable Boolean  @default(true) @map("is_available")
+
+  @@index([merchantId, isAvailable], map: "products_merchant_available_idx")
+  @@map("products")
+}
+
+model Merchant {
+  id              String  @id @default(uuid()) @db.Uuid
+  ownerId         String  @map("owner_id") @db.Uuid
+  name            String
+  description     String?
+  category        String?
+  isActive        Boolean @default(true) @map("is_active")
+  approvalStatus  String  @default("approved") @map("approval_status")
+
+  @@index([isActive, approvalStatus, category])
+  @@map("merchants")
+}

@@ -17,11 +17,14 @@ import {
   secureJsonResponse,
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
+import { fetchServerSidePrices, computeSubtotal } from "@/lib/order-pricing";
+import { detectTrustedOwnerIdsInBody } from "@/lib/security/auth-owner";
 import { isValidUuid, parseBoundedNumber, sanitizeText } from "@/lib/security/validate";
 
 type LineItem = {
   productId?: string;
   quantity?: number;
+  /** DIABAİKAN — harga diambil server-side dari tabel products (anti tampering) */
   price?: number;
   name?: string;
 };
@@ -45,6 +48,11 @@ export async function POST(req: Request) {
   }>(req);
   if ("error" in parsed) return parsed.error;
 
+  const idorMsg = detectTrustedOwnerIdsInBody(parsed.data as Record<string, unknown>);
+  if (idorMsg) {
+    return secureJsonResponse({ error: idorMsg }, { status: 403 });
+  }
+
   const body = parsed.data;
   const merchantId = body.merchantId;
   if (!isValidUuid(merchantId)) {
@@ -52,17 +60,15 @@ export async function POST(req: Request) {
   }
 
   const rawItems = Array.isArray(body.items) ? body.items : [];
-  const items = rawItems
+  const lineInputs = rawItems
     .filter((i) => i && isValidUuid(i.productId))
     .map((i) => ({
       productId: i.productId!,
       quantity: parseBoundedNumber(i.quantity, 1, 99) ?? 0,
-      price: parseBoundedNumber(i.price, 0, 50_000_000) ?? 0,
-      name: sanitizeText(i.name, 120) ?? "Produk",
     }))
     .filter((i) => i.quantity > 0);
 
-  if (!items.length || items.length > 50) {
+  if (!lineInputs.length || lineInputs.length > 50) {
     return secureJsonResponse({ error: "Keranjang kosong atau tidak valid" }, { status: 400 });
   }
 
@@ -114,6 +120,23 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient();
 
+  let pricedLines;
+  try {
+    pricedLines = await fetchServerSidePrices(admin, merchantId, lineInputs);
+  } catch (e) {
+    return secureJsonResponse(
+      { error: e instanceof Error ? e.message : "Produk tidak valid" },
+      { status: 400 }
+    );
+  }
+
+  const items = pricedLines.map((p) => ({
+    productId: p.productId,
+    quantity: p.quantity,
+    price: p.unitPrice,
+    name: p.name,
+  }));
+
   const serviceArea = await checkFoodServiceAvailability(
     admin,
     merchant,
@@ -128,7 +151,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const subtotal = computeSubtotal(pricedLines);
   const zone = deliveryZoneCenter(merchant.latitude, merchant.longitude, merchant.name);
 
   if (!dineIn && !zone) {

@@ -5,6 +5,11 @@ export type WalletOwnerType = "customer" | "driver" | "merchant";
 export type WalletTopupMethod = "ewallet" | "va_bank";
 export type WalletWithdrawMethod = "ewallet" | "va_bank";
 
+/**
+ * Mutasi saldo atomik via RPC `wallet_apply_tx` (PostgreSQL):
+ * SELECT ... FOR UPDATE pada baris wallet → cegah race condition withdraw/topup simultan.
+ * Request kedua menunggu lock lalu gagal jika saldo tidak cukup.
+ */
 export const WALLET_WITHDRAW_MIN = 10_000;
 export const WALLET_WITHDRAW_MAX = 50_000_000;
 export const WALLET_WITHDRAW_PRESETS = [
@@ -230,6 +235,39 @@ export async function withdrawWallet(
     throw new Error("Maksimal penarikan Rp 50.000.000");
   }
 
+  const destLabel = destinationName?.trim() || destination;
+
+  if (ownerType === "driver") {
+    const { data: rpcResult, error: rpcError } = await admin.rpc("handle_withdraw", {
+      driver_id_param: ownerId,
+      amount_param: amount,
+      method_param: method,
+      destination_param: destination,
+      destination_name_param: destinationName?.trim() || null,
+    });
+
+    if (rpcError) {
+      throw new Error(rpcError.message);
+    }
+
+    const payload = (rpcResult ?? {}) as {
+      ok?: boolean;
+      withdrawal_id?: string;
+      wallet_tx_id?: string;
+      balance?: number;
+    };
+
+    if (!payload.ok || !payload.withdrawal_id) {
+      throw new Error("RPC handle_withdraw gagal");
+    }
+
+    return {
+      withdrawalId: payload.withdrawal_id,
+      txId: payload.wallet_tx_id ?? "",
+      balance: Number(payload.balance ?? 0),
+    };
+  }
+
   const balance = await getWalletBalance(admin, ownerType, ownerId);
   if (balance < amount) {
     throw new Error("Saldo tidak mencukupi");
@@ -237,7 +275,6 @@ export async function withdrawWallet(
 
   const txType = method === "ewallet" ? "withdraw_ewallet" : "withdraw_va";
   const ref = `WD_${method.toUpperCase()}_${Date.now()}`;
-  const destLabel = destinationName?.trim() || destination;
 
   const txId = await applyWalletTx(admin, ownerType, ownerId, -amount, txType, {
     topupRef: ref,

@@ -38,6 +38,7 @@
     "node_modules",
     "supabase/functions",
     "driver-app",
-    "driver-expo"
+    "driver-expo",
+    "backend-reference"
   ]
 }

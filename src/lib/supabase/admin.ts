@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
-/** Server-only — service role (jangan import di client component) */
+/**
+ * Server-only — service role (jangan import di Client Component).
+ * Untuk kode admin baru, prefer `getSupabaseAdmin` dari `./supabaseAdmin` (pakai `server-only`).
+ */
 export function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;

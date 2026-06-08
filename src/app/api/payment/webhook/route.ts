@@ -20,7 +20,20 @@ type SettlementResult = {
   error?: string;
 };
 
-/** Notifikasi HTTP Midtrans — verifikasi signature & proses settlement atomik. */
+/**
+ * ALUR PAYMENT GATEWAY — Anti Fake Webhook Midtrans
+ *
+ * Keamanan:
+ * 1. Hanya terima POST dengan payload lengkap dari Midtrans.
+ * 2. Verifikasi `signature_key` via SHA-512:
+ *    hash(order_id + status_code + gross_amount + MIDTRANS_SERVER_KEY)
+ *    (implementasi: `verifyMidtransSignature` di lib/midtrans.ts)
+ * 3. Jika signature tidak cocok → 403 (webhook palsu ditolak).
+ * 4. Settlement diproses atomik via RPC `process_midtrans_settlement` + supabaseAdmin
+ *    (service role) — update order paid & bagi hasil wallet driver/merchant.
+ *
+ * JANGAN percaya transaction_status tanpa verifikasi signature terlebih dahulu.
+ */
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
   if (methodBlock) return methodBlock;
@@ -40,6 +53,7 @@ export async function POST(req: Request) {
   }
 
   if (!verifyMidtransSignature(payload)) {
+    console.warn("[midtrans-webhook] signature mismatch order_id=", payload.order_id);
     return secureJsonResponse({ error: "Signature tidak valid" }, { status: 403 });
   }
 

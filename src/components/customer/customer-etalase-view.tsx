@@ -23,14 +23,28 @@ export function CustomerEtalaseView() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const { data: merchantRows } = await supabase
-      .from("merchants")
-      .select("*")
-      .eq("is_active", true)
-      .eq("admin_suspended", false)
-      .eq("approval_status", "approved");
 
-    setMerchants(merchantRows ?? []);
+    const params = new URLSearchParams({
+      type: "merchants",
+      limit: "40",
+      offset: "0",
+    });
+    if (search.trim()) params.set("q", search.trim());
+    if (category !== "semua") params.set("category", category);
+
+    const catalogRes = await fetch(`/api/catalog/search?${params}`);
+    if (catalogRes.ok) {
+      const json = (await catalogRes.json()) as { items?: Merchant[] };
+      setMerchants(json.items ?? []);
+    } else {
+      const { data: merchantRows } = await supabase
+        .from("merchants")
+        .select("*")
+        .eq("is_active", true)
+        .eq("admin_suspended", false)
+        .eq("approval_status", "approved");
+      setMerchants(merchantRows ?? []);
+    }
 
     const { data: menuPhotos } = await supabase
       .from("products")
@@ -40,7 +54,7 @@ export function CustomerEtalaseView() {
       .order("updated_at", { ascending: false });
 
     setMenuCovers(buildMenuCoverMap(menuPhotos ?? []));
-  }, []);
+  }, [search, category]);
 
   useEffect(() => {
     load();
@@ -55,11 +69,7 @@ export function CustomerEtalaseView() {
     load
   );
 
-  const filtered = merchants.filter((m) => {
-    const matchSearch = m.name.toLowerCase().includes(search.toLowerCase());
-    const matchCat = category === "semua" || m.category === category;
-    return matchSearch && matchCat;
-  });
+  const filtered = merchants;
 
   return (
     <div className="space-y-4">

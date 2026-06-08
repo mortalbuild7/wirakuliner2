@@ -43,6 +43,31 @@ const PROTECTIONS = [
     label: "Role guard middleware",
     detail: "Hanya akun admin yang boleh akses /admin dan API admin",
   },
+  {
+    id: "super_admin_server",
+    label: "Verifikasi SUPER_ADMIN server-side",
+    detail: "getUser() + profiles.role di setiap halaman admin & API — tanpa percaya client",
+  },
+  {
+    id: "service_role_isolation",
+    label: "Isolasi service role key",
+    detail: "supabaseAdmin.ts + server-only — kunci master tidak masuk bundle browser",
+  },
+  {
+    id: "mfa_step_up",
+    label: "MFA step-up (TOTP)",
+    detail: "Middleware cek AAL2 sebelum akses /admin/* jika TOTP sudah terdaftar",
+  },
+  {
+    id: "zod_mass_assignment",
+    label: "Anti mass-assignment (Zod)",
+    detail: "Server Actions admin — whitelist kolom UPDATE merchant/driver",
+  },
+  {
+    id: "upstash_admin_login",
+    label: "Rate limit login admin",
+    detail: "Upstash 3×/5 menit/IP pada POST /api/admin/auth/login",
+  },
 ] as const;
 
 /** Info sesi admin + status perlindungan keamanan. */

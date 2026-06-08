@@ -1,8 +1,28 @@
 export const dynamic = "force-dynamic";
 
+import { headers } from "next/headers";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
+import { assertSuperAdminPage } from "@/lib/admin-auth";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+/**
+ * Lapisan 1 privilege escalation untuk seluruh subtree `/admin/*`.
+ * Middleware sudah memeriksa role; layout ini memverifikasi ulang di Server Component
+ * agar halaman tidak pernah di-render tanpa SUPER_ADMIN (defense in depth).
+ */
+export default async function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const isMfaStepUp = pathname.startsWith("/admin/mfa-verify");
+
+  await assertSuperAdminPage();
+
+  if (isMfaStepUp) {
+    return <div className="min-h-screen bg-background">{children}</div>;
+  }
+
   return (
     <div className="min-h-screen md:flex">
       <AdminSidebar />

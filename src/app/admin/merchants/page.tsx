@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert } from "@/components/ui/alert";
 import type { Merchant } from "@/types/database";
+import { verifyMerchant } from "@/app/actions/adminActions";
 import { isStoreOpen } from "@/lib/merchant-open";
 import { Loader2, Store } from "lucide-react";
 
@@ -116,6 +117,35 @@ export default function AdminMerchantsPage() {
     load();
   }
 
+  /** Verifikasi pendaftaran via Server Action + Zod (anti mass-assignment). */
+  async function verifyMerchantAction(
+    id: string,
+    status: "approved" | "rejected"
+  ) {
+    const note = actionNote[id]?.trim();
+    if (status === "rejected" && !note) {
+      alert("Isi catatan admin untuk penolakan");
+      return;
+    }
+
+    const label = status === "approved" ? "setujui pendaftaran" : "tolak pendaftaran";
+    if (!confirm(`Yakin ${label} toko ini?`)) return;
+
+    setError(null);
+    const result = await verifyMerchant({
+      merchantId: id,
+      status_verifikasi: status,
+      catatan_admin: note || undefined,
+    });
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setSuccess(result.message ?? `Verifikasi "${status}" berhasil`);
+    load();
+  }
+
   async function merchantAction(
     id: string,
     action:
@@ -124,11 +154,9 @@ export default function AdminMerchantsPage() {
       | "force_close"
       | "disconnect"
       | "activate"
-      | "approve"
-      | "reject"
   ) {
     const note = actionNote[id]?.trim();
-    if ((action === "suspend" || action === "disconnect" || action === "reject") && !note) {
+    if ((action === "suspend" || action === "disconnect") && !note) {
       alert("Isi catatan admin untuk aksi ini");
       return;
     }
@@ -139,8 +167,6 @@ export default function AdminMerchantsPage() {
       force_close: "tutup paksa toko (is_open=false)",
       disconnect: "putus hubungan mitra (owner dikosongkan)",
       activate: "aktifkan kembali toko",
-      approve: "setujui pendaftaran toko ini",
-      reject: "tolak pendaftaran toko ini",
     };
 
     if (!confirm(`Yakin ${labels[action]}?`)) return;
@@ -329,13 +355,13 @@ export default function AdminMerchantsPage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {m.approval_status === "pending" && m.owner_id && (
                     <>
-                      <Button size="sm" onClick={() => merchantAction(m.id, "approve")}>
+                      <Button size="sm" onClick={() => verifyMerchantAction(m.id, "approved")}>
                         Setujui
                       </Button>
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => merchantAction(m.id, "reject")}
+                        onClick={() => verifyMerchantAction(m.id, "rejected")}
                       >
                         Tolak
                       </Button>

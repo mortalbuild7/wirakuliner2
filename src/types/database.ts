@@ -75,6 +75,10 @@ export interface Driver {
   created_at?: string;
   rating_avg?: number;
   rating_count?: number;
+  gps_trust?: "OK" | "SUSPICIOUS";
+  last_gps_ping_at?: string | null;
+  last_gps_lat?: number | null;
+  last_gps_lng?: number | null;
 }
 
 export type RatingTargetType = "driver" | "merchant";

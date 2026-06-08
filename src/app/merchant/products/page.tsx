@@ -71,21 +71,21 @@ export default function MerchantProductsPage() {
     if (!merchant) return;
     setSaving(true);
     try {
-      const { data: created, error } = await supabase
-        .from("products")
-        .insert({
-          merchant_id: merchant.id,
+      const res = await fetch("/api/merchant/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
           name: name.trim(),
           price: Number(price),
-          is_available: true,
-        })
-        .select("id")
-        .single();
-
-      if (error || !created) {
-        alert(error?.message ?? "Gagal menambah produk");
+        }),
+      });
+      const json = (await res.json()) as { product?: { id: string }; error?: string };
+      if (!res.ok || !json.product) {
+        alert(json.error ?? "Gagal menambah produk");
         return;
       }
+      const created = json.product;
 
       if (pendingImage) {
         await uploadForProduct(created.id, pendingImage);
