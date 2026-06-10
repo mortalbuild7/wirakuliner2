@@ -78,6 +78,8 @@ export async function POST(req: Request) {
         customer_id: merchant.owner_id,
         merchant_id: merchant.id,
         total_product_amount: subtotal,
+        merchant_product_amount: subtotal,
+        platform_markup_amount: 0,
         delivery_fee: 0,
         is_outside_radius: false,
         negotiation_status: "none",
@@ -103,6 +105,7 @@ export async function POST(req: Request) {
       product_id: i.productId,
       quantity: i.quantity,
       price: i.price,
+      merchant_unit_price: i.price,
       product_name: i.name,
     }));
 

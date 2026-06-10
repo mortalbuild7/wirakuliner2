@@ -98,8 +98,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
 
   try {
     const pricedLines = await fetchServerSidePrices(admin, input.merchantId, lines);
-    const subtotalRaw = computeSubtotal(pricedLines);
-    const promo = await applyPromoCode(admin, input.promoCode, subtotalRaw);
+    const promo = await applyPromoCode(admin, input.promoCode, pricedLines);
 
     const dineIn = input.dineIn === true;
     const deliveryLat = dineIn

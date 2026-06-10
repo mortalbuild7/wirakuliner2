@@ -21,6 +21,7 @@ import { calculateDeliveryFee, describeDeliveryFee } from "@/lib/delivery-fee";
 import { formatDineInAddress } from "@/lib/order-channel";
 import { isStoreOpen } from "@/lib/merchant-open";
 import { formatIdr } from "@/lib/utils";
+import { customerUnitPrice } from "@/lib/revenue-split";
 import {
   createQrisPayment,
   isPaymentBypassEnabled,
@@ -134,7 +135,10 @@ function CheckoutForm() {
     setDistance(distanceToZone(lat, lng, zoneCenter.lat, zoneCenter.lng));
   }, [lat, lng, dineIn, zoneCenter]);
 
-  const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const subtotal = items.reduce(
+    (s, i) => s + customerUnitPrice(i.product.price) * i.quantity,
+    0
+  );
   const deliveryFee = dineIn ? 0 : calculateDeliveryFee(distance);
   const total = subtotal + deliveryFee;
 

@@ -117,6 +117,10 @@ export interface Order {
   merchant_id: string;
   driver_id: string | null;
   total_product_amount: number;
+  /** Total harga dasar merchant (tanpa markup aplikasi) */
+  merchant_product_amount?: number;
+  /** Total markup aplikasi (Rp 1.000 × qty per item) */
+  platform_markup_amount?: number;
   delivery_fee: number;
   is_outside_radius: boolean;
   negotiation_status: NegotiationStatus;
@@ -147,7 +151,10 @@ export interface OrderItem {
   order_id: string;
   product_id: string;
   quantity: number;
+  /** Harga customer per unit */
   price: number;
+  /** Harga merchant per unit saat order */
+  merchant_unit_price?: number | null;
   product_name: string;
 }
 

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isNgojekOrder } from "@/lib/order-channel";
+import { splitDriverDeliveryFee } from "@/lib/revenue-split";
 
 export type WalletOwnerType = "customer" | "driver" | "merchant";
 export type WalletTopupMethod = "ewallet" | "va_bank";
@@ -133,7 +134,7 @@ export async function distributeWalletEarnings(
   const { data: order } = await admin
     .from("orders")
     .select(
-      "id, payment_method, delivery_address, delivery_fee, total_product_amount, merchant_id, driver_id"
+      "id, payment_method, delivery_address, delivery_fee, total_product_amount, merchant_product_amount, merchant_id, driver_id"
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -143,37 +144,46 @@ export async function distributeWalletEarnings(
   }
 
   const deliveryFee = Number(order.delivery_fee ?? 0);
-  const productAmount = Number(order.total_product_amount ?? 0);
+  const driverSplit = splitDriverDeliveryFee(deliveryFee);
+  const merchantAmount = Number(
+    order.merchant_product_amount ?? order.total_product_amount ?? 0
+  );
   const isNgojek = isNgojekOrder(order.delivery_address ?? "");
 
   if (isNgojek) {
-    if (deliveryFee > 0) {
+    if (driverSplit.driverNet > 0) {
       await applyWalletTx(
         admin,
         "driver",
         order.driver_id,
-        deliveryFee,
+        driverSplit.driverNet,
         "order_earning",
-        { orderId, note: "Pendapatan NGOJEK" }
+        {
+          orderId,
+          note: `Pendapatan NGOJEK (90%, komisi platform ${driverSplit.platformFee})`,
+        }
       );
     }
-  } else if (order.merchant_id && productAmount > 0) {
+  } else if (order.merchant_id && merchantAmount > 0) {
     await applyWalletTx(
       admin,
       "merchant",
       order.merchant_id,
-      productAmount,
+      merchantAmount,
       "order_earning",
-      { orderId, note: "Pendapatan pesanan kuliner" }
+      { orderId, note: "Pendapatan pesanan kuliner (harga merchant)" }
     );
-    if (deliveryFee > 0) {
+    if (driverSplit.driverNet > 0) {
       await applyWalletTx(
         admin,
         "driver",
         order.driver_id,
-        deliveryFee,
+        driverSplit.driverNet,
         "order_earning",
-        { orderId, note: "Ongkos kirim kuliner" }
+        {
+          orderId,
+          note: `Ongkos kirim kuliner (90%, komisi platform ${driverSplit.platformFee})`,
+        }
       );
     }
   }

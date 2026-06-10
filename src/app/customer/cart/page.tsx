@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { formatIdr } from "@/lib/utils";
+import { customerUnitPrice } from "@/lib/revenue-split";
 import { ShoppingBag, ArrowRight } from "lucide-react";
 import { ProductMenuImage } from "@/components/customer/product-menu-image";
 import { Alert } from "@/components/ui/alert";
@@ -66,7 +67,10 @@ export default function CartPage() {
     setStoreOpen(isStoreOpen(m));
   });
 
-  const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const subtotal = items.reduce(
+    (s, i) => s + customerUnitPrice(i.product.price) * i.quantity,
+    0
+  );
 
   if (!items.length) {
     return (
@@ -109,11 +113,11 @@ export default function CartPage() {
             <div className="min-w-0 flex-1">
               <p className="font-medium text-white">{i.product.name}</p>
               <p className="text-xs text-muted-foreground">
-                {i.quantity} × {formatIdr(i.product.price)}
+                {i.quantity} × {formatIdr(customerUnitPrice(i.product.price))}
               </p>
             </div>
             <p className="shrink-0 font-semibold text-cyan-300">
-              {formatIdr(i.product.price * i.quantity)}
+              {formatIdr(customerUnitPrice(i.product.price) * i.quantity)}
             </p>
           </li>
         ))}

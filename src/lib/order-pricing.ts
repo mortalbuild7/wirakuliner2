@@ -1,11 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { deliveryZoneCenter, distanceToZone } from "@/lib/geo-config";
 import { calculateDeliveryFee } from "@/lib/delivery-fee";
+import {
+  aggregateProductSplit,
+  applyPromoToProductSplit,
+  buildProductLineSplit,
+  type OrderProductSplit,
+} from "@/lib/revenue-split";
 
 /**
  * ALUR HARGA & PROMO — Anti Parameter Tampering
- * Harga SELALU diambil dari tabel `products` di server.
- * Frontend hanya boleh mengirim productId + quantity (+ promoCode opsional).
+ * Harga merchant diambil dari `products.price`; customer membayar + markup Rp 1.000/unit.
  */
 
 export type OrderLineInput = {
@@ -17,8 +22,13 @@ export type PricedLine = {
   productId: string;
   name: string;
   quantity: number;
+  /** Harga input merchant (dasar bagi hasil merchant) */
+  merchantUnitPrice: number;
+  /** Harga customer per unit (merchant + markup aplikasi) */
   unitPrice: number;
   lineTotal: number;
+  merchantLineTotal: number;
+  platformMarkupLineTotal: number;
 };
 
 export type PromoResult = {
@@ -26,6 +36,8 @@ export type PromoResult = {
   discountAmount: number;
   subtotalBefore: number;
   subtotalAfter: number;
+  merchantProductTotal: number;
+  platformMarkupTotal: number;
 };
 
 export async function fetchServerSidePrices(
@@ -64,18 +76,22 @@ export async function fetchServerSidePrices(
       throw new Error(`Produk tidak tersedia: ${line.productId}`);
     }
 
-    const qty = Math.min(Math.max(Math.floor(line.quantity), 1), 99);
-    const unitPrice = Number(product.price);
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+    const merchantBase = Number(product.price);
+    if (!Number.isFinite(merchantBase) || merchantBase < 0) {
       throw new Error("Harga produk tidak valid di database");
     }
+
+    const split = buildProductLineSplit(merchantBase, line.quantity);
 
     priced.push({
       productId: product.id,
       name: String(product.name),
-      quantity: qty,
-      unitPrice,
-      lineTotal: unitPrice * qty,
+      quantity: split.quantity,
+      merchantUnitPrice: split.merchantUnitPrice,
+      unitPrice: split.customerUnitPrice,
+      lineTotal: split.customerLineTotal,
+      merchantLineTotal: split.merchantLineTotal,
+      platformMarkupLineTotal: split.platformMarkupLineTotal,
     });
   }
 
@@ -86,16 +102,37 @@ export function computeSubtotal(lines: PricedLine[]): number {
   return lines.reduce((s, l) => s + l.lineTotal, 0);
 }
 
+export function computeMerchantSubtotal(lines: PricedLine[]): number {
+  return lines.reduce((s, l) => s + l.merchantLineTotal, 0);
+}
+
+export function computePlatformMarkup(lines: PricedLine[]): number {
+  return lines.reduce((s, l) => s + l.platformMarkupLineTotal, 0);
+}
+
+export function toOrderProductSplit(lines: PricedLine[]): OrderProductSplit {
+  return aggregateProductSplit(
+    lines.map((l) =>
+      buildProductLineSplit(l.merchantUnitPrice, l.quantity)
+    )
+  );
+}
+
 export async function applyPromoCode(
   admin: SupabaseClient,
   promoCode: string | null | undefined,
-  subtotal: number
+  lines: PricedLine[]
 ): Promise<PromoResult> {
+  const split = toOrderProductSplit(lines);
+  const subtotalBefore = split.customerProductTotal;
+
   const base: PromoResult = {
     code: null,
     discountAmount: 0,
-    subtotalBefore: subtotal,
-    subtotalAfter: subtotal,
+    subtotalBefore,
+    subtotalAfter: subtotalBefore,
+    merchantProductTotal: split.merchantProductTotal,
+    platformMarkupTotal: split.platformMarkupTotal,
   };
 
   const code = promoCode?.trim().toUpperCase();
@@ -117,21 +154,26 @@ export async function applyPromoCode(
   }
 
   const minOrder = Number(promo.min_order_amount ?? 0);
-  if (subtotal < minOrder) {
+  if (subtotalBefore < minOrder) {
     throw new Error(`Minimal belanja untuk promo: Rp ${minOrder.toLocaleString("id-ID")}`);
   }
 
   const pct = Number(promo.discount_percent ?? 0);
-  let discount = Math.round((subtotal * pct) / 100);
+  let discount = Math.round((subtotalBefore * pct) / 100);
   const maxDisc = Number(promo.max_discount ?? 0);
   if (maxDisc > 0) discount = Math.min(discount, maxDisc);
-  discount = Math.min(discount, subtotal);
+  discount = Math.min(discount, subtotalBefore);
+
+  const subtotalAfter = subtotalBefore - discount;
+  const adjusted = applyPromoToProductSplit(split, subtotalAfter);
 
   return {
     code,
     discountAmount: discount,
-    subtotalBefore: subtotal,
-    subtotalAfter: subtotal - discount,
+    subtotalBefore,
+    subtotalAfter: adjusted.customerProductTotal,
+    merchantProductTotal: adjusted.merchantProductTotal,
+    platformMarkupTotal: adjusted.platformMarkupTotal,
   };
 }
 
@@ -155,7 +197,6 @@ export function computeDeliveryFeeServer(
   };
 }
 
-/** Kecepatan maksimum kendaraan normal urban (km/h) untuk sanity check jarak. */
 export const MAX_VEHICLE_SPEED_KMH = 120;
 
 export function kmPerHourFromDelta(km: number, seconds: number): number {

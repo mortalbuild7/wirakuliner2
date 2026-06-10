@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { formatIdr, cn } from "@/lib/utils";
+import { customerUnitPrice } from "@/lib/revenue-split";
 import { ProductMenuImage } from "@/components/customer/product-menu-image";
 import { StoreStatusBadge } from "@/components/customer/store-status-badge";
 import { isStoreOpen } from "@/lib/merchant-open";
@@ -156,7 +157,7 @@ function MerchantDetailContent() {
             <div className="p-3">
               <p className="line-clamp-2 text-sm font-medium text-white">{p.name}</p>
               <p className="mt-1 text-base font-bold text-cyan-300">
-                {formatIdr(Number(p.price))}
+                {formatIdr(customerUnitPrice(Number(p.price)))}
               </p>
               {canOrder ? (
                 <Button

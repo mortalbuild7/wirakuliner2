@@ -17,7 +17,10 @@ import {
   secureJsonResponse,
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
-import { fetchServerSidePrices, computeSubtotal } from "@/lib/order-pricing";
+import {
+  fetchServerSidePrices,
+  applyPromoCode,
+} from "@/lib/order-pricing";
 import { detectTrustedOwnerIdsInBody } from "@/lib/security/auth-owner";
 import { isValidUuid, parseBoundedNumber, sanitizeText } from "@/lib/security/validate";
 
@@ -130,10 +133,21 @@ export async function POST(req: Request) {
     );
   }
 
+  let promo;
+  try {
+    promo = await applyPromoCode(admin, undefined, pricedLines);
+  } catch (e) {
+    return secureJsonResponse(
+      { error: e instanceof Error ? e.message : "Promo tidak valid" },
+      { status: 400 }
+    );
+  }
+
   const items = pricedLines.map((p) => ({
     productId: p.productId,
     quantity: p.quantity,
     price: p.unitPrice,
+    merchantUnitPrice: p.merchantUnitPrice,
     name: p.name,
   }));
 
@@ -151,7 +165,6 @@ export async function POST(req: Request) {
     );
   }
 
-  const subtotal = computeSubtotal(pricedLines);
   const zone = deliveryZoneCenter(merchant.latitude, merchant.longitude, merchant.name);
 
   if (!dineIn && !zone) {
@@ -165,7 +178,7 @@ export async function POST(req: Request) {
     ? 0
     : distanceToZone(deliveryLat, deliveryLng, zone!.lat, zone!.lng);
   const deliveryFee = dineIn ? 0 : calculateDeliveryFee(distanceKm);
-  const orderTotal = subtotal + deliveryFee;
+  const orderTotal = promo.subtotalAfter + deliveryFee;
   const useWallet = body.paymentMethod === "wallet";
   const skipPayment =
     !useWallet &&
@@ -176,7 +189,9 @@ export async function POST(req: Request) {
     .insert({
       customer_id: user.id,
       merchant_id: merchantId,
-      total_product_amount: subtotal,
+      total_product_amount: promo.subtotalAfter,
+      merchant_product_amount: promo.merchantProductTotal,
+      platform_markup_amount: promo.platformMarkupTotal,
       delivery_fee: deliveryFee,
       is_outside_radius: false,
       negotiation_status: "none",
@@ -205,6 +220,7 @@ export async function POST(req: Request) {
       product_id: i.productId,
       quantity: i.quantity,
       price: i.price,
+      merchant_unit_price: i.merchantUnitPrice,
       product_name: i.name,
     }))
   );

@@ -2,12 +2,17 @@ import { createHash } from "crypto";
 
 export type MidtransPaymentType = "topup" | "ngojek" | "food";
 
-const COMMISSION_RATE = Number(process.env.PLATFORM_COMMISSION_RATE ?? "0.10");
+import { PLATFORM_SHARE_RATE } from "@/lib/revenue-split";
 
+const COMMISSION_RATE = Number(
+  process.env.PLATFORM_COMMISSION_RATE ?? String(PLATFORM_SHARE_RATE)
+);
+
+/** Komisi aplikasi dari ongkir / NGOJEK (default 10%). */
 export function getPlatformCommissionRate(): number {
   return Number.isFinite(COMMISSION_RATE) && COMMISSION_RATE >= 0 && COMMISSION_RATE < 1
     ? COMMISSION_RATE
-    : 0.1;
+    : PLATFORM_SHARE_RATE;
 }
 
 export function getMidtransServerKey(): string {
