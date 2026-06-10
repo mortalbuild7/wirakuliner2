@@ -1,5 +1,5 @@
 import { verifyAdminSession } from "@/app/utils/adminAuth";
-import { RegionalDriversPanel } from "@/components/admin/regional-drivers-panel";
+import { DashboardDriversTable } from "@/components/admin/dashboard-drivers-table";
 import {
   applyRegionalEntityScope,
   applyRegionalServiceCityScope,
@@ -10,16 +10,21 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 /**
- * Manajemen driver regional — Server Component.
- * Kueri awal difilter city_id / province_id sebelum data dikirim ke client (defense in depth).
+ * URL: /admin/dashboard/drivers
+ * File: app/admin/dashboard/drivers/page.tsx (di bawah layout admin + sidebar).
+ *
+ * Filter geografis:
+ * - CITY_ADMIN  → .eq('city_id', session.cityId)
+ * - PROVINCE_ADMIN → .eq('province_id', session.provinceId)
+ * - SUPER_ADMIN → tanpa filter
  */
-export default async function AdminDashboardDriversPage() {
+export default async function AdminDriversDashboardPage() {
   const session = await verifyAdminSession();
   const supabase = await createClient();
 
   let driversQuery = supabase
     .from("drivers")
-    .select("*, profiles(email), service_cities(name)")
+    .select("*, profiles(email, account_status), service_cities(name)")
     .order("created_at", { ascending: false });
 
   driversQuery = applyRegionalEntityScope(driversQuery, session);
@@ -38,7 +43,7 @@ export default async function AdminDashboardDriversPage() {
   ]);
 
   return (
-    <RegionalDriversPanel
+    <DashboardDriversTable
       initialDrivers={drivers ?? []}
       initialCities={cities ?? []}
       scopeHint={regionalScopeHint(session)}

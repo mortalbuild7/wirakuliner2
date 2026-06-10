@@ -1,6 +1,8 @@
 const DEFAULT_HOSTS = [
   "https://wirakuliner.web.id",
   "https://www.wirakuliner.web.id",
+  "https://wirakuliner.co.id",
+  "https://www.wirakuliner.co.id",
   "https://wirakuliner2.vercel.app",
 ];
 

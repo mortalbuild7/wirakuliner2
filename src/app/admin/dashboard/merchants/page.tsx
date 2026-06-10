@@ -1,5 +1,5 @@
 import { verifyAdminSession } from "@/app/utils/adminAuth";
-import { RegionalMerchantsPanel } from "@/components/admin/regional-merchants-panel";
+import { DashboardMerchantsTable } from "@/components/admin/dashboard-merchants-table";
 import {
   applyRegionalEntityScope,
   regionalScopeHint,
@@ -9,10 +9,12 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 /**
- * Manajemen merchant regional — Server Component.
- * Filter province_id / city_id diterapkan di server sebelum render UI.
+ * URL: /admin/dashboard/merchants
+ * File: app/admin/dashboard/merchants/page.tsx
+ *
+ * Filter geografis otomatis per tier admin (city_id / province_id).
  */
-export default async function AdminDashboardMerchantsPage() {
+export default async function AdminMerchantsDashboardPage() {
   const session = await verifyAdminSession();
   const supabase = await createClient();
 
@@ -26,7 +28,7 @@ export default async function AdminDashboardMerchantsPage() {
   const { data: merchants } = await query;
 
   return (
-    <RegionalMerchantsPanel
+    <DashboardMerchantsTable
       initialMerchants={merchants ?? []}
       scopeHint={regionalScopeHint(session)}
       adminTier={session.adminRole}

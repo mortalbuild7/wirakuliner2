@@ -1,0 +1,467 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { Driver } from "@/types/database";
+import { ACCOUNT_STATUS_LABEL } from "@/lib/account-status";
+import {
+  DriverPhotoPicker,
+  uploadDriverPhoto,
+  type DriverPhotoDraft,
+} from "@/components/admin/driver-photo-picker";
+import { Bike, Loader2, Pencil, Plus, UserX } from "lucide-react";
+
+type ServiceCity = { id: string; name: string };
+
+type DriverRow = Driver & {
+  profiles: { email: string | null; account_status?: string | null } | null;
+  service_cities?: { name: string } | { name: string }[] | null;
+};
+
+const EMPTY_FORM = {
+  name: "",
+  phone: "",
+  plate: "",
+  email: "",
+  password: "",
+  service_city_id: "",
+};
+
+type Props = {
+  initialDrivers: DriverRow[];
+  initialCities: ServiceCity[];
+  scopeHint: string;
+  adminTier: string;
+};
+
+function cityName(d: DriverRow): string {
+  if (Array.isArray(d.service_cities)) return d.service_cities[0]?.name ?? "—";
+  return d.service_cities?.name ?? "—";
+}
+
+export function DashboardDriversTable({
+  initialDrivers,
+  initialCities,
+  scopeHint,
+  adminTier,
+}: Props) {
+  const [drivers, setDrivers] = useState<DriverRow[]>(initialDrivers);
+  const [cities, setCities] = useState(initialCities);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [photoDraft, setPhotoDraft] = useState<DriverPhotoDraft | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", phone: "", plate: "", service_city_id: "" });
+  const [loading, setLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (cities.length && !form.service_city_id) {
+      setForm((f) => ({ ...f, service_city_id: cities[0].id }));
+    }
+  }, [cities, form.service_city_id]);
+
+  const load = useCallback(async () => {
+    setListLoading(true);
+    const res = await fetch("/api/admin/drivers", { credentials: "include" });
+    const json = (await res.json().catch(() => ({}))) as {
+      drivers?: DriverRow[];
+      error?: string;
+    };
+    if (!res.ok) setError(json.error ?? "Gagal memuat driver");
+    else setDrivers(json.drivers ?? []);
+    setListLoading(false);
+  }, []);
+
+  async function registerDriver(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const res = await fetch("/api/admin/drivers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        vehicle_plate: form.plate.trim() || undefined,
+        email: form.email.trim(),
+        password: form.password,
+        service_city_id: form.service_city_id,
+      }),
+    });
+
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      driverId?: string;
+      email?: string;
+    };
+
+    if (!res.ok) {
+      setLoading(false);
+      setError(body.error ?? "Gagal mendaftarkan driver");
+      return;
+    }
+
+    if (photoDraft && body.driverId) {
+      try {
+        await uploadDriverPhoto(body.driverId, photoDraft);
+        if (photoDraft.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+        setPhotoDraft(null);
+      } catch {
+        /* foto opsional */
+      }
+    }
+
+    setLoading(false);
+    setSuccess(`Driver ${form.name} berhasil dibuat.`);
+    setForm(EMPTY_FORM);
+    setShowAdd(false);
+    load();
+  }
+
+  function openEdit(d: DriverRow) {
+    setEditId(d.id);
+    setEditForm({
+      name: d.name,
+      phone: d.phone,
+      plate: d.vehicle_plate ?? "",
+      service_city_id: d.service_city_id ?? "",
+    });
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editId) return;
+    setLoading(true);
+    setError(null);
+
+    const res = await fetch(`/api/admin/drivers/${editId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        name: editForm.name.trim(),
+        phone: editForm.phone.trim(),
+        vehicle_plate: editForm.plate.trim() || null,
+        service_city_id: editForm.service_city_id,
+      }),
+    });
+
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    setLoading(false);
+
+    if (!res.ok) {
+      setError(body.error ?? "Gagal menyimpan perubahan");
+      return;
+    }
+    setSuccess("Data driver diperbarui");
+    setEditId(null);
+    load();
+  }
+
+  async function toggleSuspend(d: DriverRow) {
+    const suspended = d.profiles?.account_status === "suspended";
+    const action = suspended ? "unsuspend" : "suspend";
+    if (action === "suspend") {
+      const note = prompt("Catatan suspend (wajib):");
+      if (!note?.trim()) return;
+      if (!confirm(`Suspend akun driver "${d.name}"?`)) return;
+      await patchDriverAction(d.id, action, note.trim());
+    } else {
+      if (!confirm(`Aktifkan kembali akun "${d.name}"?`)) return;
+      await patchDriverAction(d.id, action);
+    }
+  }
+
+  async function patchDriverAction(id: string, action: "suspend" | "unsuspend", note?: string) {
+    setError(null);
+    const res = await fetch(`/api/admin/drivers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ action, note }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setError(body.error ?? "Gagal memproses aksi");
+      return;
+    }
+    setSuccess(action === "suspend" ? "Akun driver disuspend" : "Akun driver diaktifkan");
+    load();
+  }
+
+  async function deleteDriver(id: string, name: string) {
+    if (!confirm(`Hapus permanen driver "${name}"?`)) return;
+    setError(null);
+    const res = await fetch(`/api/admin/drivers/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setError(body.error ?? "Gagal menghapus");
+      return;
+    }
+    setSuccess(`Driver ${name} dihapus`);
+    load();
+  }
+
+  return (
+    <main className="p-6">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <Bike className="h-7 w-7 text-emerald-600" />
+            Data Driver
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {scopeHint} · Tier {adminTier}
+          </p>
+        </div>
+        <Button onClick={() => setShowAdd((v) => !v)} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Tambah Driver Baru
+        </Button>
+      </div>
+
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          {error}
+        </Alert>
+      )}
+      {success && (
+        <Alert className="mb-4 border-emerald-500/40 bg-emerald-500/10 text-emerald-900">
+          {success}
+        </Alert>
+      )}
+
+      {showAdd && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-lg">Pendaftaran Driver Baru</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={registerDriver} className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Label>Nama lengkap</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Telepon</Label>
+                <Input
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Plat (opsional)</Label>
+                <Input
+                  value={form.plate}
+                  onChange={(e) => setForm({ ...form, plate: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Email login</Label>
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Password</Label>
+                <Input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  minLength={6}
+                  required
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <Label>Kota layanan</Label>
+                <select
+                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.service_city_id}
+                  onChange={(e) => setForm({ ...form, service_city_id: e.target.value })}
+                  required
+                >
+                  {cities.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <DriverPhotoPicker value={photoDraft} onChange={setPhotoDraft} disabled={loading} />
+              <div className="flex gap-2 sm:col-span-2">
+                <Button type="submit" disabled={loading}>
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Simpan
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>
+                  Batal
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {editId && (
+        <Card className="mb-6 border-amber-500/30">
+          <CardHeader>
+            <CardTitle className="text-lg">Edit Data Driver</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={saveEdit} className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label>Nama</Label>
+                <Input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Telepon</Label>
+                <Input
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Plat</Label>
+                <Input
+                  value={editForm.plate}
+                  onChange={(e) => setEditForm({ ...editForm, plate: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Kota layanan</Label>
+                <select
+                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={editForm.service_city_id}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, service_city_id: e.target.value })
+                  }
+                  required
+                >
+                  {cities.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 sm:col-span-2">
+                <Button type="submit" disabled={loading}>
+                  Simpan Perubahan
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setEditId(null)}>
+                  Batal
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="overflow-x-auto rounded-xl border">
+        <table className="w-full min-w-[800px] border-collapse text-sm">
+          <thead>
+            <tr className="border-b bg-muted/40 text-left text-muted-foreground">
+              <th className="px-4 py-3">Nama</th>
+              <th className="px-4 py-3">Kontak</th>
+              <th className="px-4 py-3">Kota</th>
+              <th className="px-4 py-3">Status GPS</th>
+              <th className="px-4 py-3">Akun</th>
+              <th className="px-4 py-3 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {listLoading ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  Memuat...
+                </td>
+              </tr>
+            ) : drivers.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  Tidak ada driver di wilayah ini.
+                </td>
+              </tr>
+            ) : (
+              drivers.map((d) => {
+                const acct = d.profiles?.account_status ?? "active";
+                const suspended = acct === "suspended" || acct === "blocked";
+                return (
+                  <tr key={d.id} className="border-b last:border-0 hover:bg-muted/20">
+                    <td className="px-4 py-3 font-medium">{d.name}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {d.phone}
+                      <br />
+                      <span className="text-xs">{d.profiles?.email ?? "—"}</span>
+                    </td>
+                    <td className="px-4 py-3">{cityName(d)}</td>
+                    <td className="px-4 py-3 capitalize">{d.status}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={
+                          suspended ? "font-medium text-red-600" : "text-emerald-600"
+                        }
+                      >
+                        {ACCOUNT_STATUS_LABEL[acct as keyof typeof ACCOUNT_STATUS_LABEL] ??
+                          acct}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(d)}>
+                          <Pencil className="mr-1 h-3.5 w-3.5" />
+                          Edit Data
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={suspended ? "outline" : "secondary"}
+                          onClick={() => toggleSuspend(d)}
+                        >
+                          <UserX className="mr-1 h-3.5 w-3.5" />
+                          {suspended ? "Aktifkan" : "Suspend Akun"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => deleteDriver(d.id, d.name)}
+                        >
+                          Hapus
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  );
+}

@@ -42,15 +42,18 @@ export async function PATCH(
     return secureJsonResponse({ error: "ID toko tidak valid" }, { status: 400 });
   }
 
-  const parsed = await readJsonBody<{ action?: MerchantAction; note?: string }>(req);
+  const parsed = await readJsonBody<{
+    action?: MerchantAction;
+    note?: string;
+    edit?: boolean;
+    name?: string;
+    address?: string;
+    category?: string;
+  }>(req);
   if ("error" in parsed) return parsed.error;
 
   const action = parsed.data.action;
   const note = sanitizeText(parsed.data.note, 500);
-
-  if (!action || !MERCHANT_ACTIONS.includes(action)) {
-    return secureJsonResponse({ error: "Aksi tidak valid" }, { status: 400 });
-  }
 
   const admin = createAdminClient();
   const { data: merchant, error: fetchErr } = await admin
@@ -67,6 +70,31 @@ export async function PATCH(
 
   if (!entityWithinAdminScope(auth, merchant)) {
     return secureJsonResponse({ error: "Toko di luar wilayah admin" }, { status: 403 });
+  }
+
+  if (parsed.data.edit) {
+    const shopName = sanitizeText(parsed.data.name, 120);
+    const address = sanitizeText(parsed.data.address, 300);
+    const category = sanitizeText(parsed.data.category, 40);
+    if (!shopName || !address) {
+      return secureJsonResponse({ error: "Nama dan alamat wajib diisi" }, { status: 400 });
+    }
+    const { error: editErr } = await admin
+      .from("merchants")
+      .update({
+        name: shopName,
+        address,
+        ...(category ? { category } : {}),
+      })
+      .eq("id", id);
+    if (editErr) {
+      return secureJsonResponse({ error: editErr.message }, { status: 500 });
+    }
+    return secureJsonResponse({ ok: true, merchantId: id });
+  }
+
+  if (!action || !MERCHANT_ACTIONS.includes(action)) {
+    return secureJsonResponse({ error: "Aksi tidak valid" }, { status: 400 });
   }
 
   let patch: Record<string, unknown> = {};

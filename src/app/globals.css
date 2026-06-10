@@ -93,6 +93,30 @@
   .leaflet-control-zoom a {
     @apply !rounded-lg !border-white/20 !bg-slate-900/90 !text-cyan-300;
   }
+
+  /* Marker driver PNG — cegah Leaflet/browser menampilkan ukuran asli (128px+) */
+  .leaflet-div-icon.wira-driver-gps-marker {
+    background: transparent !important;
+    border: none !important;
+  }
+
+  .wira-driver-gps-marker__wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .wira-driver-gps-marker__img {
+    display: block;
+    width: var(--wira-driver-marker-size, 14px) !important;
+    height: var(--wira-driver-marker-size, 14px) !important;
+    max-width: var(--wira-driver-marker-size, 14px) !important;
+    max-height: var(--wira-driver-marker-size, 14px) !important;
+    object-fit: contain;
+    pointer-events: none;
+  }
 }
 
 /* ——— Print: thermal struk (58mm) vs laporan penjualan (A4) ——— */

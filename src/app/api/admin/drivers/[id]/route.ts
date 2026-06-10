@@ -12,7 +12,7 @@ import {
   secureJsonResponse,
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
-import { isValidUuid } from "@/lib/security/validate";
+import { isValidUuid, sanitizeText } from "@/lib/security/validate";
 
 export async function PATCH(
   req: Request,
@@ -33,21 +33,21 @@ export async function PATCH(
     return secureJsonResponse({ error: "ID driver tidak valid" }, { status: 400 });
   }
 
-  const parsed = await readJsonBody<{ service_city_id?: string }>(req);
+  const parsed = await readJsonBody<{
+    action?: "suspend" | "unsuspend";
+    note?: string;
+    name?: string;
+    phone?: string;
+    vehicle_plate?: string | null;
+    service_city_id?: string;
+  }>(req);
   if ("error" in parsed) return parsed.error;
-
-  const serviceCityId = isValidUuid(parsed.data.service_city_id)
-    ? parsed.data.service_city_id
-    : null;
-  if (!serviceCityId) {
-    return secureJsonResponse({ error: "Kota layanan wajib diisi" }, { status: 400 });
-  }
 
   const admin = createAdminClient();
 
   const { data: existing } = await admin
     .from("drivers")
-    .select("id, province_id, city_id")
+    .select("id, profile_id, province_id, city_id, status")
     .eq("id", id)
     .maybeSingle();
 
@@ -59,35 +59,99 @@ export async function PATCH(
     return secureJsonResponse({ error: "Driver di luar wilayah admin" }, { status: 403 });
   }
 
-  const { data: city } = await admin
-    .from("service_cities")
-    .select("id, province_id, city_id")
-    .eq("id", serviceCityId)
-    .eq("is_active", true)
-    .maybeSingle();
+  if (parsed.data.action === "suspend" || parsed.data.action === "unsuspend") {
+    if (!existing.profile_id) {
+      return secureJsonResponse({ error: "Driver belum punya akun login" }, { status: 400 });
+    }
 
-  if (!city) {
-    return secureJsonResponse({ error: "Kota layanan tidak valid" }, { status: 400 });
+    const note = sanitizeText(parsed.data.note, 500);
+    if (parsed.data.action === "suspend" && !note) {
+      return secureJsonResponse({ error: "Catatan suspend wajib diisi" }, { status: 400 });
+    }
+
+    const until = new Date();
+    until.setDate(until.getDate() + 365);
+
+    const profilePatch =
+      parsed.data.action === "suspend"
+        ? {
+            account_status: "suspended" as const,
+            admin_note: note,
+            suspended_until: until.toISOString(),
+          }
+        : {
+            account_status: "active" as const,
+            admin_note: note ?? null,
+            suspended_until: null,
+          };
+
+    const { error: profileErr } = await admin
+      .from("profiles")
+      .update(profilePatch)
+      .eq("id", existing.profile_id);
+
+    if (profileErr) {
+      return secureJsonResponse({ error: profileErr.message }, { status: 500 });
+    }
+
+    return secureJsonResponse({ ok: true, action: parsed.data.action });
   }
 
-  if (!serviceCityWithinAdminScope(auth, city)) {
-    return secureJsonResponse(
-      { error: "Kota layanan di luar wilayah admin Anda" },
-      { status: 403 }
-    );
+  const name = sanitizeText(parsed.data.name, 120);
+  const phone = sanitizeText(parsed.data.phone, 20)?.replace(/\s/g, "") ?? null;
+  const vehiclePlate =
+    parsed.data.vehicle_plate === null
+      ? null
+      : sanitizeText(parsed.data.vehicle_plate, 20);
+  const serviceCityId = isValidUuid(parsed.data.service_city_id)
+    ? parsed.data.service_city_id
+    : null;
+
+  const driverPatch: Record<string, unknown> = {};
+  if (name) driverPatch.name = name;
+  if (phone && phone.length >= 8) driverPatch.phone = phone;
+  if (parsed.data.vehicle_plate !== undefined) driverPatch.vehicle_plate = vehiclePlate;
+
+  if (serviceCityId) {
+    const { data: city } = await admin
+      .from("service_cities")
+      .select("id, province_id, city_id")
+      .eq("id", serviceCityId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (!city) {
+      return secureJsonResponse({ error: "Kota layanan tidak valid" }, { status: 400 });
+    }
+    if (!serviceCityWithinAdminScope(auth, city)) {
+      return secureJsonResponse(
+        { error: "Kota layanan di luar wilayah admin Anda" },
+        { status: 403 }
+      );
+    }
+    driverPatch.service_city_id = serviceCityId;
+    driverPatch.province_id = city.province_id;
+    driverPatch.city_id = city.city_id;
   }
 
-  const { error } = await admin
-    .from("drivers")
-    .update({
-      service_city_id: serviceCityId,
-      province_id: city.province_id,
-      city_id: city.city_id,
-    })
-    .eq("id", id);
+  if (Object.keys(driverPatch).length === 0) {
+    return secureJsonResponse({ error: "Tidak ada data yang diubah" }, { status: 400 });
+  }
+
+  const { error } = await admin.from("drivers").update(driverPatch).eq("id", id);
 
   if (error) {
     return secureJsonResponse({ error: error.message }, { status: 500 });
+  }
+
+  if (existing.profile_id && (name || phone)) {
+    await admin
+      .from("profiles")
+      .update({
+        ...(name ? { name } : {}),
+        ...(phone ? { phone } : {}),
+      })
+      .eq("id", existing.profile_id);
   }
 
   return secureJsonResponse({ ok: true });

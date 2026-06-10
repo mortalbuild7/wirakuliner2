@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   const admin = createAdminClient();
   let query = admin
     .from("drivers")
-    .select("*, profiles(email), service_cities(name)")
+    .select("*, profiles(email, account_status), service_cities(name)")
     .order("created_at", { ascending: false });
 
   query = applyRegionalEntityScope(query, auth);

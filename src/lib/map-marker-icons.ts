@@ -33,21 +33,23 @@ export function customerPickupIcon(bearingDeg?: number): L.DivIcon {
   });
 }
 
-/** PNG custom — lingkaran hijau + panah arah (public/markers/driver-gps.png). */
+/** PNG custom — lingkaran hijau + panah arah (public/markers/driver-gps.png, 32×32). */
 const DRIVER_GPS_MARKER_URL = "/markers/driver-gps.png";
-/** Titik driver minimal di peta (5px). */
-const DRIVER_MARKER_SIZE = 5;
+/** Tampilan di peta — kecil agar tidak menutupi jalan/pin lain. */
+const DRIVER_MARKER_SIZE = 14;
 
 /** Marker driver — gambar GPS custom, berputar mengikuti arah navigasi. */
 export function driverMotorcycleIcon(bearingDeg?: number): L.DivIcon {
   const rotation =
     bearingDeg != null ? `transform:rotate(${bearingDeg}deg);` : "";
+  const s = DRIVER_MARKER_SIZE;
+  const half = s / 2;
   return L.divIcon({
-    className: "",
-    html: `<div style="display:flex;width:${DRIVER_MARKER_SIZE}px;height:${DRIVER_MARKER_SIZE}px;align-items:center;justify-content:center;${rotation}">
-      <img src="${DRIVER_GPS_MARKER_URL}" alt="" width="${DRIVER_MARKER_SIZE}" height="${DRIVER_MARKER_SIZE}" draggable="false" style="display:block;pointer-events:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.35));" />
+    className: "wira-driver-gps-marker",
+    html: `<div class="wira-driver-gps-marker__wrap" style="width:${s}px;height:${s}px;--wira-driver-marker-size:${s}px;${rotation}">
+      <img src="${DRIVER_GPS_MARKER_URL}" alt="" width="${s}" height="${s}" draggable="false" class="wira-driver-gps-marker__img" />
     </div>`,
-    iconSize: [DRIVER_MARKER_SIZE, DRIVER_MARKER_SIZE],
-    iconAnchor: [DRIVER_MARKER_SIZE / 2, DRIVER_MARKER_SIZE / 2],
+    iconSize: [s, s],
+    iconAnchor: [half, half],
   });
 }
