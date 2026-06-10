@@ -138,3 +138,41 @@ export async function checkFoodServiceAvailability(
 
   return area;
 }
+
+/**
+ * NGOJEK: jemput & tujuan harus dalam wilayah aktif + kota layanan yang sama.
+ */
+export async function checkRideServiceAvailability(
+  admin: SupabaseClient,
+  pickupLat: number,
+  pickupLng: number,
+  destLat: number,
+  destLng: number
+): Promise<ServiceAvailability> {
+  const pickup = await checkServiceAvailability(admin, pickupLat, pickupLng);
+  if (!pickup.available) {
+    return {
+      ...pickup,
+      message: pickup.message ?? "Titik jemput di luar wilayah layanan",
+    };
+  }
+
+  const dest = await checkServiceAvailability(admin, destLat, destLng);
+  if (!dest.available) {
+    return {
+      ...dest,
+      message: "Tujuan di luar wilayah layanan NGOJEK",
+    };
+  }
+
+  if (pickup.cityId && dest.cityId && pickup.cityId !== dest.cityId) {
+    return {
+      available: false,
+      message: "Jemput dan tujuan harus dalam kota layanan yang sama",
+      cityId: pickup.cityId,
+      cityName: pickup.cityName,
+    };
+  }
+
+  return pickup;
+}

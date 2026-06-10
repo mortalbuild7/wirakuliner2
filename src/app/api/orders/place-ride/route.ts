@@ -2,10 +2,8 @@ import { haversineKm } from "@/lib/geo-config";
 import { calculateDeliveryFee } from "@/lib/delivery-fee";
 import { formatNgojekAddress } from "@/lib/order-channel";
 import { notifyDriversNewOrder } from "@/lib/notify-drivers";
-import {
-  checkServiceAvailability,
-  SERVICE_UNAVAILABLE_MSG,
-} from "@/lib/service-area";
+import { checkRideServiceAvailability } from "@/lib/service-area";
+import { NGOJEK_MAX_DISTANCE_KM, NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
 import { debitCustomerForOrder } from "@/lib/wallet";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -84,9 +82,15 @@ export async function POST(req: Request) {
   }
 
   const distanceKm = haversineKm(pickupLat, pickupLng, destinationLat, destinationLng);
-  if (distanceKm < 0.05) {
+  if (distanceKm < NGOJEK_MIN_DISTANCE_KM) {
     return secureJsonResponse(
       { error: "Titik jemput dan tujuan terlalu dekat" },
+      { status: 400 }
+    );
+  }
+  if (distanceKm > NGOJEK_MAX_DISTANCE_KM) {
+    return secureJsonResponse(
+      { error: `Jarak maksimal NGOJEK ${NGOJEK_MAX_DISTANCE_KM} km` },
       { status: 400 }
     );
   }
@@ -105,10 +109,16 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient();
 
-  const serviceArea = await checkServiceAvailability(admin, pickupLat, pickupLng);
+  const serviceArea = await checkRideServiceAvailability(
+    admin,
+    pickupLat,
+    pickupLng,
+    destinationLat,
+    destinationLng
+  );
   if (!serviceArea.available) {
     return secureJsonResponse(
-      { error: serviceArea.message ?? SERVICE_UNAVAILABLE_MSG },
+      { error: serviceArea.message ?? "Layanan NGOJEK tidak tersedia di wilayah ini" },
       { status: 403 }
     );
   }
