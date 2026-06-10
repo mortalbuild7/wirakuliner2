@@ -6,10 +6,11 @@ import { SidebarClient, TIER_LABEL } from "@/components/admin/sidebar-client";
  * Sidebar admin dinamis — Server Component.
  *
  * Alur hak akses menu (UI masking):
- * 1. `verifyAdminSession()` memvalidasi JWT + profiles.role + tier + MFA.
- * 2. `buildSidebarMenu()` mengevaluasi `visible()` per item — item terlarang
- *    tidak pernah dikirim ke client (bukan sekadar CSS hidden).
- * 3. Badge 'Aksi Aktif' hanya disertakan untuk CITY_ADMIN pada Verifikasi Berkas.
+ * 1. `verifyAdminSession()` — validasi JWT server-side + profiles.role + tier + MFA.
+ * 2. `buildSidebarMenu()` — `visible()` per item; menu terlarang tidak dikirim ke client.
+ * 3. Menu legacy (Data Driver / Data Merchant) selalu tampil untuk semua tier;
+ *    pembatasan wilayah diterapkan di halaman & API, bukan di sidebar.
+ * 4. Menu sensitif (Tarif, Rekrut, Rekening) disembunyikan per tier sebelum render.
  */
 export async function Sidebar() {
   const session = await verifyAdminSession();

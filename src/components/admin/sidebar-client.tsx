@@ -36,8 +36,8 @@ const ICON_BY_HREF: Record<string, LucideIcon> = {
   "/admin/recruit": UserPlus,
   "/admin/company-bank": Landmark,
   "/admin/orders": ClipboardList,
-  "/admin/merchants": Store,
-  "/admin/drivers": Truck,
+  "/admin/dashboard/merchants": Store,
+  "/admin/dashboard/drivers": Truck,
   "/admin/customers": Users,
 };
 

@@ -1,4 +1,5 @@
 import { requireAdmin } from "@/lib/admin-server";
+import { applyRegionalServiceCityScope } from "@/lib/admin/regional-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   enforceMethod,
@@ -21,10 +22,11 @@ export async function GET(req: Request) {
   }
 
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("service_cities")
-    .select("*")
-    .order("name");
+  let query = admin.from("service_cities").select("id, name, province_id, city_id").order("name");
+
+  query = applyRegionalServiceCityScope(query, auth);
+
+  const { data, error } = await query;
 
   if (error) {
     return secureJsonResponse({ error: error.message }, { status: 500 });

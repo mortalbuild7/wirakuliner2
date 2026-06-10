@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSuperAdmin } from "@/lib/admin-auth";
+import { requireAnyAdmin } from "@/lib/admin-auth";
+import { entityWithinAdminScope } from "@/lib/admin/regional-scope";
 import { getSupabaseAdmin } from "@/lib/supabase/supabaseAdmin";
 import {
   verifyMerchantSchema,
@@ -27,7 +28,7 @@ export type AdminActionResult =
 export async function verifyMerchant(
   raw: unknown
 ): Promise<AdminActionResult> {
-  const auth = await requireSuperAdmin();
+  const auth = await requireAnyAdmin();
   if ("error" in auth) {
     return { ok: false, error: auth.error };
   }
@@ -43,12 +44,16 @@ export async function verifyMerchant(
 
   const { data: merchant, error: fetchErr } = await admin
     .from("merchants")
-    .select("id, owner_id")
+    .select("id, owner_id, province_id, city_id")
     .eq("id", merchantId)
     .maybeSingle();
 
   if (fetchErr || !merchant) {
     return { ok: false, error: "Merchant tidak ditemukan" };
+  }
+
+  if (!entityWithinAdminScope(auth, merchant)) {
+    return { ok: false, error: "Merchant di luar wilayah admin" };
   }
 
   if (
@@ -72,12 +77,12 @@ export async function verifyMerchant(
     return { ok: false, error: updateErr.message };
   }
 
-  revalidatePath("/admin/merchants");
+  revalidatePath("/admin/dashboard/merchants");
   return { ok: true, message: "Status verifikasi merchant diperbarui" };
 }
 
 export async function verifyDriver(raw: unknown): Promise<AdminActionResult> {
-  const auth = await requireSuperAdmin();
+  const auth = await requireAnyAdmin();
   if ("error" in auth) {
     return { ok: false, error: auth.error };
   }
@@ -93,7 +98,7 @@ export async function verifyDriver(raw: unknown): Promise<AdminActionResult> {
 
   const { data: driver } = await admin
     .from("drivers")
-    .select("id")
+    .select("id, province_id, city_id")
     .eq("id", driverId)
     .maybeSingle();
 
@@ -101,9 +106,13 @@ export async function verifyDriver(raw: unknown): Promise<AdminActionResult> {
     return { ok: false, error: "Driver tidak ditemukan" };
   }
 
+  if (!entityWithinAdminScope(auth, driver)) {
+    return { ok: false, error: "Driver di luar wilayah admin" };
+  }
+
   const { data: city } = await admin
     .from("service_cities")
-    .select("id")
+    .select("id, province_id, city_id")
     .eq("id", service_city_id)
     .eq("is_active", true)
     .maybeSingle();
@@ -123,6 +132,6 @@ export async function verifyDriver(raw: unknown): Promise<AdminActionResult> {
     return { ok: false, error: updateErr.message };
   }
 
-  revalidatePath("/admin/drivers");
+  revalidatePath("/admin/dashboard/drivers");
   return { ok: true, message: "Data driver diperbarui" };
 }

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/admin-server";
 import { deleteAuthUser, deleteOrdersForMerchant } from "@/lib/admin-delete-ops";
+import { entityWithinAdminScope } from "@/lib/admin/regional-scope";
 import {
   enforceMethod,
   enforceRateLimit,
@@ -54,12 +55,18 @@ export async function PATCH(
   const admin = createAdminClient();
   const { data: merchant, error: fetchErr } = await admin
     .from("merchants")
-    .select("id, owner_id, name, is_active, is_open, admin_suspended, approval_status")
+    .select(
+      "id, owner_id, name, is_active, is_open, admin_suspended, approval_status, province_id, city_id"
+    )
     .eq("id", id)
     .maybeSingle();
 
   if (fetchErr || !merchant) {
     return secureJsonResponse({ error: "Toko tidak ditemukan" }, { status: 404 });
+  }
+
+  if (!entityWithinAdminScope(auth, merchant)) {
+    return secureJsonResponse({ error: "Toko di luar wilayah admin" }, { status: 403 });
   }
 
   let patch: Record<string, unknown> = {};
@@ -175,12 +182,16 @@ export async function DELETE(
   const admin = createAdminClient();
   const { data: merchant } = await admin
     .from("merchants")
-    .select("id, owner_id, name")
+    .select("id, owner_id, name, province_id, city_id")
     .eq("id", id)
     .maybeSingle();
 
   if (!merchant) {
     return secureJsonResponse({ error: "Toko tidak ditemukan" }, { status: 404 });
+  }
+
+  if (!entityWithinAdminScope(auth, merchant)) {
+    return secureJsonResponse({ error: "Toko di luar wilayah admin" }, { status: 403 });
   }
 
   const { count: activeOrders } = await admin

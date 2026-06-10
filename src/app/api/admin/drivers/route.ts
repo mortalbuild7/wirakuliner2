@@ -1,6 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/admin-server";
 import {
+  applyRegionalEntityScope,
+  serviceCityWithinAdminScope,
+} from "@/lib/admin/regional-scope";
+import {
   enforceMethod,
   enforceRateLimit,
   readJsonBody,
@@ -8,6 +12,34 @@ import {
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
 import { isValidUuid, sanitizeEmail, sanitizeText } from "@/lib/security/validate";
+
+/** Daftar driver — filter regional di server (bukan di browser). */
+export async function GET(req: Request) {
+  const methodBlock = enforceMethod(req, ["GET"]);
+  if (methodBlock) return methodBlock;
+  const rl = enforceRateLimit(req, "admin-drivers-get", RATE_LIMITS.api);
+  if (rl) return rl;
+
+  const auth = await requireAdmin();
+  if ("error" in auth) {
+    return secureJsonResponse({ error: auth.error }, { status: auth.status });
+  }
+
+  const admin = createAdminClient();
+  let query = admin
+    .from("drivers")
+    .select("*, profiles(email), service_cities(name)")
+    .order("created_at", { ascending: false });
+
+  query = applyRegionalEntityScope(query, auth);
+
+  const { data, error } = await query;
+  if (error) {
+    return secureJsonResponse({ error: error.message }, { status: 500 });
+  }
+
+  return secureJsonResponse({ ok: true, drivers: data ?? [] });
+}
 
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
@@ -61,13 +93,20 @@ export async function POST(req: Request) {
 
   const { data: city } = await admin
     .from("service_cities")
-    .select("id")
+    .select("id, province_id, city_id")
     .eq("id", serviceCityId)
     .eq("is_active", true)
     .maybeSingle();
 
   if (!city) {
     return secureJsonResponse({ error: "Kota layanan tidak valid" }, { status: 400 });
+  }
+
+  if (!serviceCityWithinAdminScope(auth, city)) {
+    return secureJsonResponse(
+      { error: "Kota layanan di luar wilayah admin Anda" },
+      { status: 403 }
+    );
   }
 
   const { data: phoneUsed } = await admin
@@ -114,6 +153,8 @@ export async function POST(req: Request) {
       phone,
       vehicle_plate: vehiclePlate,
       service_city_id: serviceCityId,
+      province_id: city.province_id,
+      city_id: city.city_id,
       status: "offline",
     })
     .select("id")

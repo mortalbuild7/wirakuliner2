@@ -2,6 +2,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/admin-server";
 import { deleteAuthUser } from "@/lib/admin-delete-ops";
 import {
+  entityWithinAdminScope,
+  serviceCityWithinAdminScope,
+} from "@/lib/admin/regional-scope";
+import {
   enforceMethod,
   enforceRateLimit,
   readJsonBody,
@@ -40,9 +44,24 @@ export async function PATCH(
   }
 
   const admin = createAdminClient();
+
+  const { data: existing } = await admin
+    .from("drivers")
+    .select("id, province_id, city_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!existing) {
+    return secureJsonResponse({ error: "Driver tidak ditemukan" }, { status: 404 });
+  }
+
+  if (!entityWithinAdminScope(auth, existing)) {
+    return secureJsonResponse({ error: "Driver di luar wilayah admin" }, { status: 403 });
+  }
+
   const { data: city } = await admin
     .from("service_cities")
-    .select("id")
+    .select("id, province_id, city_id")
     .eq("id", serviceCityId)
     .eq("is_active", true)
     .maybeSingle();
@@ -51,9 +70,20 @@ export async function PATCH(
     return secureJsonResponse({ error: "Kota layanan tidak valid" }, { status: 400 });
   }
 
+  if (!serviceCityWithinAdminScope(auth, city)) {
+    return secureJsonResponse(
+      { error: "Kota layanan di luar wilayah admin Anda" },
+      { status: 403 }
+    );
+  }
+
   const { error } = await admin
     .from("drivers")
-    .update({ service_city_id: serviceCityId })
+    .update({
+      service_city_id: serviceCityId,
+      province_id: city.province_id,
+      city_id: city.city_id,
+    })
     .eq("id", id);
 
   if (error) {
@@ -85,12 +115,16 @@ export async function DELETE(
   const admin = createAdminClient();
   const { data: driver } = await admin
     .from("drivers")
-    .select("id, profile_id, name, status, photo_url")
+    .select("id, profile_id, name, status, photo_url, province_id, city_id")
     .eq("id", id)
     .maybeSingle();
 
   if (!driver) {
     return secureJsonResponse({ error: "Driver tidak ditemukan" }, { status: 404 });
+  }
+
+  if (!entityWithinAdminScope(auth, driver)) {
+    return secureJsonResponse({ error: "Driver di luar wilayah admin" }, { status: 403 });
   }
 
   if (driver.status === "delivering") {

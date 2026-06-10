@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -110,6 +111,63 @@ function ServicePicker({
   );
 }
 
+/**
+ * Input angka paket — izinkan field kosong saat edit agar tidak jadi "0200" setelah hapus angka.
+ * Nilai dikomit ke parent hanya jika parse valid; blur kosong mengembalikan nilai terakhir.
+ */
+function PackageNumericInput({
+  label,
+  value,
+  onChange,
+  integerOnly = false,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+  integerOnly?: boolean;
+}) {
+  const [text, setText] = useState(String(value));
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) setText(String(value));
+  }, [value]);
+
+  return (
+    <div>
+      <Label className="text-[10px]">{label}</Label>
+      <Input
+        type="text"
+        inputMode={integerOnly ? "numeric" : "decimal"}
+        value={text}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (integerOnly && raw !== "" && !/^\d*$/.test(raw)) return;
+          if (!integerOnly && raw !== "" && !/^\d*\.?\d*$/.test(raw)) return;
+          setText(raw);
+          if (raw === "" || raw === ".") return;
+          const n = parseFloat(raw);
+          if (Number.isFinite(n)) onChange(n);
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          const n = parseFloat(text);
+          if (text === "" || text === "." || !Number.isFinite(n)) {
+            setText(String(value));
+            return;
+          }
+          onChange(n);
+          setText(integerOnly ? String(Math.round(n)) : String(n));
+        }}
+        className="mt-1 border-white/10 bg-white/5"
+      />
+    </div>
+  );
+}
+
 function PaketDetailsForm({
   ride,
 }: {
@@ -199,55 +257,29 @@ function PaketDetailsForm({
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div>
-          <Label className="text-[10px]">Berat (kg)</Label>
-          <Input
-            type="number"
-            min={0.1}
-            step={0.1}
-            value={pkg.weightKg}
-            onChange={(e) =>
-              ride.updatePackageField("weightKg", Number(e.target.value) || 0)
-            }
-            className="mt-1 border-white/10 bg-white/5"
-          />
-        </div>
-        <div>
-          <Label className="text-[10px]">Panjang (cm)</Label>
-          <Input
-            type="number"
-            min={1}
-            value={pkg.lengthCm}
-            onChange={(e) =>
-              ride.updatePackageField("lengthCm", Number(e.target.value) || 0)
-            }
-            className="mt-1 border-white/10 bg-white/5"
-          />
-        </div>
-        <div>
-          <Label className="text-[10px]">Lebar (cm)</Label>
-          <Input
-            type="number"
-            min={1}
-            value={pkg.widthCm}
-            onChange={(e) =>
-              ride.updatePackageField("widthCm", Number(e.target.value) || 0)
-            }
-            className="mt-1 border-white/10 bg-white/5"
-          />
-        </div>
-        <div>
-          <Label className="text-[10px]">Tinggi (cm)</Label>
-          <Input
-            type="number"
-            min={1}
-            value={pkg.heightCm}
-            onChange={(e) =>
-              ride.updatePackageField("heightCm", Number(e.target.value) || 0)
-            }
-            className="mt-1 border-white/10 bg-white/5"
-          />
-        </div>
+        <PackageNumericInput
+          label="Berat (kg)"
+          value={pkg.weightKg}
+          onChange={(n) => ride.updatePackageField("weightKg", n)}
+        />
+        <PackageNumericInput
+          label="Panjang (cm)"
+          value={pkg.lengthCm}
+          onChange={(n) => ride.updatePackageField("lengthCm", n)}
+          integerOnly
+        />
+        <PackageNumericInput
+          label="Lebar (cm)"
+          value={pkg.widthCm}
+          onChange={(n) => ride.updatePackageField("widthCm", n)}
+          integerOnly
+        />
+        <PackageNumericInput
+          label="Tinggi (cm)"
+          value={pkg.heightCm}
+          onChange={(n) => ride.updatePackageField("heightCm", n)}
+          integerOnly
+        />
       </div>
 
       <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs">

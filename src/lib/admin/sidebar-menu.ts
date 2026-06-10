@@ -34,8 +34,8 @@ export type SidebarMenuItem = {
 };
 
 /**
- * Definisi menu sidebar — satu sumber kebenaran hak akses jobdesk.
- * `visible()` dipanggil server-side sebelum props dikirim ke client.
+ * Definisi menu sidebar — satu sumber kebenaran hak akses jobdesk (UI masking).
+ * `visible()` dievaluasi di Server Component; client tidak menerima href terlarang.
  */
 export function buildSidebarMenu(session: SidebarSession): SidebarMenuItem[] {
   const { adminRole: role } = session;
@@ -75,6 +75,18 @@ export function buildSidebarMenu(session: SidebarSession): SidebarMenuItem[] {
       visible: () => role === "SUPER_ADMIN" || role === "PROVINCE_ADMIN",
     },
     {
+      href: "/admin/dashboard/drivers",
+      label: "Data Driver (Add/Suspend)",
+      icon: Truck,
+      visible: () => true,
+    },
+    {
+      href: "/admin/dashboard/merchants",
+      label: "Data Merchant (Add/Delete)",
+      icon: Store,
+      visible: () => true,
+    },
+    {
       href: "/admin/company-bank",
       label: "Data Rekening Perusahaan",
       icon: Landmark,
@@ -84,18 +96,6 @@ export function buildSidebarMenu(session: SidebarSession): SidebarMenuItem[] {
       href: "/admin/orders",
       label: "Pesanan",
       icon: ClipboardList,
-      visible: () => true,
-    },
-    {
-      href: "/admin/merchants",
-      label: "Merchants",
-      icon: Store,
-      visible: () => true,
-    },
-    {
-      href: "/admin/drivers",
-      label: "Drivers",
-      icon: Truck,
       visible: () => true,
     },
     {

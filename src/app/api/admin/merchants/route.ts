@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/admin-server";
+import { applyRegionalEntityScope } from "@/lib/admin/regional-scope";
 import {
   enforceMethod,
   enforceRateLimit,
@@ -8,6 +9,34 @@ import {
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
 import { parseBoundedNumber, sanitizeEmail, sanitizeText } from "@/lib/security/validate";
+
+/** Daftar merchant — scoped per tier admin. */
+export async function GET(req: Request) {
+  const methodBlock = enforceMethod(req, ["GET"]);
+  if (methodBlock) return methodBlock;
+  const rl = enforceRateLimit(req, "admin-merchants-get", RATE_LIMITS.api);
+  if (rl) return rl;
+
+  const auth = await requireAdmin();
+  if ("error" in auth) {
+    return secureJsonResponse({ error: auth.error }, { status: auth.status });
+  }
+
+  const admin = createAdminClient();
+  let query = admin
+    .from("merchants")
+    .select("*, owner:profiles!owner_id(email, name)")
+    .order("created_at", { ascending: false });
+
+  query = applyRegionalEntityScope(query, auth);
+
+  const { data, error } = await query;
+  if (error) {
+    return secureJsonResponse({ error: error.message }, { status: 500 });
+  }
+
+  return secureJsonResponse({ ok: true, merchants: data ?? [] });
+}
 
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
@@ -104,6 +133,12 @@ export async function POST(req: Request) {
     );
   }
 
+  const provinceId =
+    auth.adminRole === "PROVINCE_ADMIN" || auth.adminRole === "CITY_ADMIN"
+      ? auth.provinceId
+      : null;
+  const cityId = auth.adminRole === "CITY_ADMIN" ? auth.cityId : null;
+
   const { data: merchant, error: merchantErr } = await admin
     .from("merchants")
     .insert({
@@ -114,6 +149,8 @@ export async function POST(req: Request) {
       category,
       latitude,
       longitude,
+      province_id: provinceId,
+      city_id: cityId,
       is_active: true,
       is_open: false,
       admin_suspended: false,

@@ -35,8 +35,8 @@ export function customerPickupIcon(bearingDeg?: number): L.DivIcon {
 
 /** PNG custom — lingkaran hijau + panah arah (public/markers/driver-gps.png). */
 const DRIVER_GPS_MARKER_URL = "/markers/driver-gps.png";
-/** Ukuran ringan agar tidak mendominasi peta (sebelumnya 40px). */
-const DRIVER_MARKER_SIZE = 20;
+/** Titik driver minimal di peta (5px). */
+const DRIVER_MARKER_SIZE = 5;
 
 /** Marker driver — gambar GPS custom, berputar mengikuti arah navigasi. */
 export function driverMotorcycleIcon(bearingDeg?: number): L.DivIcon {

@@ -134,19 +134,8 @@ export function regionalDashboardTitle(session: RegionalAdminSession): string {
   return "Dashboard Operasional Regional";
 }
 
-/** Filter server-side untuk kueri orders sesuai lingkup admin. */
-export function applyRegionalOrderScope<T extends { eq: (col: string, val: number) => T }>(
-  query: T,
-  session: RegionalAdminSession
-): T {
-  if (session.adminRole === "CITY_ADMIN" && session.cityId != null) {
-    return query.eq("city_id", session.cityId);
-  }
-  if (session.adminRole === "PROVINCE_ADMIN" && session.provinceId != null) {
-    return query.eq("province_id", session.provinceId);
-  }
-  return query;
-}
+/** Filter server-side untuk kueri orders — delegasi ke regional-scope. */
+export { applyRegionalEntityScope as applyRegionalOrderScope } from "@/lib/admin/regional-scope";
 
 /** API / Server Action guard — tidak redirect, return error object. */
 export async function requireRegionalAdmin(opts?: {
