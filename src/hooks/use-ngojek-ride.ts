@@ -26,10 +26,44 @@ import type { PaymentMethodChoice } from "@/components/wallet/payment-method-pic
 import { createClient } from "@/lib/supabase/client";
 
 const REVERSE_MIN_KM = 0.025;
-/** Perubahan jemput di bawah ini tidak memicu ulang kalkulasi tarif (hindari jitter GPS). */
-const PICKUP_QUOTE_MIN_MOVE_KM = 0.03;
-const QUOTE_DEBOUNCE_MS = 600;
-const QUOTE_FETCH_TIMEOUT_MS = 12_000;
+/** Perubahan koordinat di bawah ini dianggap sama (hindari jitter GPS / geocode). */
+const COORD_QUOTE_MIN_MOVE_KM = 0.03;
+const PICKUP_QUOTE_MIN_MOVE_KM = COORD_QUOTE_MIN_MOVE_KM;
+const QUOTE_DEBOUNCE_MS = 500;
+const QUOTE_FETCH_TIMEOUT_MS = 10_000;
+const QUOTE_SPIN_DELAY_MS = 400;
+
+/** Bulatkan koordinat ~1 m agar perubahan mikro tidak memicu ulang kalkulasi. */
+function roundCoordForQuote(value: number): number {
+  return Math.round(value * 10000) / 10000;
+}
+
+function buildQuoteKey(
+  pickupLat: number,
+  pickupLng: number,
+  destLat: number,
+  destLng: number,
+  serviceType: ServiceType
+): string {
+  return [
+    roundCoordForQuote(pickupLat),
+    roundCoordForQuote(pickupLng),
+    roundCoordForQuote(destLat),
+    roundCoordForQuote(destLng),
+    serviceType,
+  ].join("|");
+}
+
+function parseQuoteKey(key: string) {
+  const [pickupLat, pickupLng, destLat, destLng, serviceType] = key.split("|");
+  return {
+    pickupLat: Number(pickupLat),
+    pickupLng: Number(pickupLng),
+    destLat: Number(destLat),
+    destLng: Number(destLng),
+    serviceType: serviceType as ServiceType,
+  };
+}
 
 function transitQuoteFallback(serviceType: ServiceType, distanceKm: number) {
   const defaults: Record<ServiceType, { base: number; perKm: number }> = {
@@ -117,7 +151,7 @@ export function useNgojekRide() {
 
   const [distanceKm, setDistanceKm] = useState(0);
   const [rideFee, setRideFee] = useState(0);
-  const [feeDescription, setFeeDescription] = useState("Menghitung tarif...");
+  const [feeDescription, setFeeDescription] = useState("");
   const [quoting, setQuoting] = useState(false);
 
   const skipForwardGeocodeRef = useRef(false);
@@ -128,8 +162,17 @@ export function useNgojekRide() {
   const lastForwardQueryRef = useRef("");
   const pickupGeoRef = useRef({ lat: pickupLat, lng: pickupLng });
   pickupGeoRef.current = { lat: pickupLat, lng: pickupLng };
+  const destGeoRef = useRef({ lat: destLat, lng: destLng });
+  destGeoRef.current = { lat: destLat, lng: destLng };
   const quoteGenRef = useRef(0);
+  const quoteAbortRef = useRef<AbortController | null>(null);
+  const lastServerQuoteKeyRef = useRef("");
   const [gpsLoading, setGpsLoading] = useState(false);
+
+  const quoteKey = useMemo(
+    () => buildQuoteKey(pickupLat, pickupLng, destLat, destLng, serviceType),
+    [pickupLat, pickupLng, destLat, destLng, serviceType]
+  );
 
   const areaAvailable = pickupAreaOk && destAreaOk && sameCityOk;
 
@@ -169,16 +212,37 @@ export function useNgojekRide() {
       .catch(() => {});
   }, [userId]);
 
-  /** Preview tarif dari server (regional_tariffs per service_type). */
+  /** Tarif lokal instan + refresh server di background (tanpa spinner menggantung). */
   useEffect(() => {
+    const coords = parseQuoteKey(quoteKey);
+    const km = haversineKm(
+      coords.pickupLat,
+      coords.pickupLng,
+      coords.destLat,
+      coords.destLng
+    );
+    const local = transitQuoteFallback(coords.serviceType, km);
+
+    setDistanceKm(km);
+    setRideFee(local.rideFee);
+    setFeeDescription(local.feeDescription);
+    setQuoting(false);
+
+    if (quoteKey === lastServerQuoteKeyRef.current) return;
+
     const gen = ++quoteGenRef.current;
-    const timer = setTimeout(() => {
+    quoteAbortRef.current?.abort();
+
+    const spinTimer = setTimeout(() => {
+      if (gen === quoteGenRef.current) setQuoting(true);
+    }, QUOTE_SPIN_DELAY_MS);
+
+    const fetchTimer = setTimeout(() => {
       void (async () => {
         if (gen !== quoteGenRef.current) return;
-        setQuoting(true);
 
-        const km = haversineKm(pickupLat, pickupLng, destLat, destLng);
         const controller = new AbortController();
+        quoteAbortRef.current = controller;
         const timeoutId = setTimeout(() => controller.abort(), QUOTE_FETCH_TIMEOUT_MS);
 
         try {
@@ -188,11 +252,11 @@ export function useNgojekRide() {
             credentials: "include",
             signal: controller.signal,
             body: JSON.stringify({
-              pickupLat,
-              pickupLng,
-              destinationLat: destLat,
-              destinationLng: destLng,
-              serviceType,
+              pickupLat: coords.pickupLat,
+              pickupLng: coords.pickupLng,
+              destinationLat: coords.destLat,
+              destinationLng: coords.destLng,
+              serviceType: coords.serviceType,
             }),
           });
           const json = (await res.json().catch(() => ({}))) as {
@@ -205,28 +269,27 @@ export function useNgojekRide() {
             tooClose?: boolean;
             tooFar?: boolean;
           };
-          if (gen !== quoteGenRef.current) return;
+          if (gen !== quoteGenRef.current || controller.signal.aborted) return;
 
           if (!res.ok) {
-            const fallback = transitQuoteFallback(serviceType, km);
-            setDistanceKm(km);
-            setRideFee(fallback.rideFee);
-            setFeeDescription(json.error ?? fallback.feeDescription);
+            setFeeDescription(json.error ?? local.feeDescription);
             return;
           }
 
+          lastServerQuoteKeyRef.current = quoteKey;
           setDistanceKm(Number(json.distanceKm ?? km));
-          setRideFee(Number(json.rideFee ?? 0));
-          setFeeDescription(json.feeDescription ?? transitQuoteFallback(serviceType, km).feeDescription);
+          if (json.tooClose || json.tooFar || json.rideFee === 0) {
+            setRideFee(0);
+          } else {
+            setRideFee(Number(json.rideFee ?? local.rideFee));
+          }
+          setFeeDescription(json.feeDescription ?? local.feeDescription);
           if (json.areaAvailable === false && json.areaMessage) {
             setAreaMessage(json.areaMessage);
           }
         } catch {
-          if (gen !== quoteGenRef.current) return;
-          const fallback = transitQuoteFallback(serviceType, km);
-          setDistanceKm(km);
-          setRideFee(fallback.rideFee);
-          setFeeDescription(`${fallback.feeDescription} (estimasi lokal)`);
+          if (gen !== quoteGenRef.current || controller.signal.aborted) return;
+          setFeeDescription(`${local.feeDescription} (estimasi lokal)`);
         } finally {
           clearTimeout(timeoutId);
           if (gen === quoteGenRef.current) setQuoting(false);
@@ -234,8 +297,13 @@ export function useNgojekRide() {
       })();
     }, QUOTE_DEBOUNCE_MS);
 
-    return () => clearTimeout(timer);
-  }, [pickupLat, pickupLng, destLat, destLng, serviceType]);
+    return () => {
+      clearTimeout(spinTimer);
+      clearTimeout(fetchTimer);
+      quoteAbortRef.current?.abort();
+      setQuoting(false);
+    };
+  }, [quoteKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,10 +346,20 @@ export function useNgojekRide() {
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setPickupLat(pos.coords.latitude);
-        setPickupLng(pos.coords.longitude);
+        const lat = roundCoordForQuote(pos.coords.latitude);
+        const lng = roundCoordForQuote(pos.coords.longitude);
+        const movedKm = haversineKm(
+          pickupGeoRef.current.lat,
+          pickupGeoRef.current.lng,
+          lat,
+          lng
+        );
         setPickupAccuracyM(pos.coords.accuracy);
         setGpsLoading(false);
+        if (movedKm >= PICKUP_QUOTE_MIN_MOVE_KM) {
+          setPickupLat(lat);
+          setPickupLng(lng);
+        }
         void reverseGeocode(pos.coords.latitude, pos.coords.longitude).then((hit) => {
           if (hit) setPickupAddress(hit.label);
         });
@@ -292,8 +370,18 @@ export function useNgojekRide() {
   }, []);
 
   const applyDestinationCoords = useCallback((lat: number, lng: number, fly = true) => {
-    setDestLat(lat);
-    setDestLng(lng);
+    const roundedLat = roundCoordForQuote(lat);
+    const roundedLng = roundCoordForQuote(lng);
+    const movedKm = haversineKm(
+      destGeoRef.current.lat,
+      destGeoRef.current.lng,
+      roundedLat,
+      roundedLng
+    );
+    if (movedKm < COORD_QUOTE_MIN_MOVE_KM) return;
+
+    setDestLat(roundedLat);
+    setDestLng(roundedLng);
     if (fly) setMapFlyTrigger((n) => n + 1);
   }, []);
 
@@ -320,7 +408,10 @@ export function useNgojekRide() {
   }, []);
 
   useEffect(() => {
-    if (destFromPinRef.current) return;
+    if (destFromPinRef.current) {
+      destFromPinRef.current = false;
+      return;
+    }
     if (skipForwardGeocodeRef.current) {
       skipForwardGeocodeRef.current = false;
       return;
@@ -432,8 +523,8 @@ export function useNgojekRide() {
         setPlaceError(null);
         setGpsLoading(false);
         if (movedKm >= PICKUP_QUOTE_MIN_MOVE_KM) {
-          setPickupLat(pos.coords.latitude);
-          setPickupLng(pos.coords.longitude);
+          setPickupLat(roundCoordForQuote(pos.coords.latitude));
+          setPickupLng(roundCoordForQuote(pos.coords.longitude));
         }
         void reverseGeocode(pos.coords.latitude, pos.coords.longitude).then((hit) => {
           if (hit) setPickupAddress(hit.label);

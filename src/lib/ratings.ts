@@ -1,4 +1,4 @@
-import { isNgojekOrder } from "@/lib/order-channel";
+import { isTransitOrderRecord } from "@/lib/order-channel";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type RatingTargetType = "driver" | "merchant";
@@ -21,13 +21,14 @@ export type ReceivedReview = OrderRatingRow & {
 
 export function getRateableTargets(order: {
   delivery_address: string;
+  service_type?: "NGOJEK" | "NGOMOBIL" | "PAKET" | null;
   driver_id: string | null;
   merchant_id: string;
 }): RatingTargetType[] {
   const targets: RatingTargetType[] = [];
-  const isRide = isNgojekOrder(order.delivery_address);
+  const isTransit = isTransitOrderRecord(order);
 
-  if (!isRide) {
+  if (!isTransit) {
     targets.push("merchant");
   }
   if (order.driver_id) {

@@ -110,10 +110,10 @@
 
   .wira-driver-gps-marker__img {
     display: block;
-    width: var(--wira-driver-marker-size, 100px) !important;
-    height: var(--wira-driver-marker-size, 100px) !important;
-    max-width: var(--wira-driver-marker-size, 100px) !important;
-    max-height: var(--wira-driver-marker-size, 100px) !important;
+    width: var(--wira-driver-marker-size, 60px) !important;
+    height: var(--wira-driver-marker-size, 60px) !important;
+    max-width: var(--wira-driver-marker-size, 60px) !important;
+    max-height: var(--wira-driver-marker-size, 60px) !important;
     object-fit: contain;
     pointer-events: none;
   }

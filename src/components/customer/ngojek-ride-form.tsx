@@ -12,6 +12,7 @@ import { SERVICE_TYPE_LABEL, type ServiceType } from "@/lib/service-types";
 import { QrisPaymentPanel } from "@/components/payment/qris-payment-panel";
 import { PaymentMethodPicker } from "@/components/wallet/payment-method-picker";
 import { useNgojekRide } from "@/hooks/use-ngojek-ride";
+import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
 import { cn } from "@/lib/utils";
 import {
   Bike,
@@ -486,16 +487,15 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
               {ride.distanceKm.toFixed(2)} km
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {ride.quoting ? "Menghitung tarif..." : ride.feeDescription}
+              {ride.quoting ? "Memperbarui tarif wilayah…" : ride.feeDescription}
             </p>
           </div>
           <div className="text-right">
             <p className="text-xs text-muted-foreground">Tarif {ride.serviceType}</p>
-            <p className="text-2xl font-bold text-emerald-300">
-              {ride.quoting ? (
-                <Loader2 className="inline h-6 w-6 animate-spin" />
-              ) : (
-                formatIdr(ride.rideFee)
+            <p className="flex items-center justify-end gap-2 text-2xl font-bold text-emerald-300">
+              {formatIdr(ride.rideFee)}
+              {ride.quoting && (
+                <Loader2 className="h-5 w-5 shrink-0 animate-spin opacity-70" />
               )}
             </p>
           </div>
@@ -524,7 +524,8 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
           ride.placing ||
           !ride.destAddress.trim() ||
           !ride.areaAvailable ||
-          ride.quoting
+          ride.rideFee <= 0 ||
+          ride.distanceKm < NGOJEK_MIN_DISTANCE_KM
         }
         onClick={() => void ride.bookRide()}
       >

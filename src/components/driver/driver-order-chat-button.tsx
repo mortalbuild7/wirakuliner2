@@ -4,7 +4,7 @@ import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isOrderChatClosed, isOrderChatOpen } from "@/lib/order-chat";
-import { markDriverChatRead } from "@/hooks/use-driver-order-chat-notify";
+import { markDriverChatRead } from "@/lib/order-chat-read";
 import type { OrderStatus } from "@/types/database";
 import { cn } from "@/lib/utils";
 

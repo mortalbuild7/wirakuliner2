@@ -19,6 +19,7 @@ import {
   orderChatChannelName,
 } from "@/lib/order-chat";
 import { decodeStoredChatEntities } from "@/lib/privacy/chat-sanitize";
+import { markOrderChatRead, type OrderChatReaderRole } from "@/lib/order-chat-read";
 import type { OrderChatRow, OrderStatus } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,8 @@ type Props = {
   driverId: string | null;
   /** Label lawan bicara di bubble (mis. "Driver" / "Customer") */
   peerLabel?: string;
+  /** Tandai pesan dibaca saat panel terbuka */
+  readerRole?: OrderChatReaderRole;
 };
 
 export function OrderChatPanel({
@@ -39,6 +42,7 @@ export function OrderChatPanel({
   orderStatus,
   driverId,
   peerLabel = "Lawan bicara",
+  readerRole,
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const [messages, setMessages] = useState<OrderChatRow[]>([]);
@@ -129,6 +133,11 @@ export function OrderChatPanel({
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    if (!readerRole || loading) return;
+    markOrderChatRead(orderId, readerRole);
+  }, [orderId, readerRole, messages, loading]);
 
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault();

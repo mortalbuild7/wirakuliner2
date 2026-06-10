@@ -3,8 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { ORDER_STATUS_LABEL } from "@/lib/order-flow";
-import { isNgojekOrder, isOnsiteOrder, parseNgojekLegs } from "@/lib/order-channel";
+import {
+  channelLabelFromRecord,
+  customerTrackerStatusLabel,
+  effectiveTrackerStepStatus,
+  isOnsiteOrder,
+  isPaketOrderRecord,
+  isTransitOrderRecord,
+  parseTransitLegs,
+} from "@/lib/order-channel";
 import { OrderRatingPanel } from "@/components/ratings/order-rating-panel";
 import type { RatingTargetType } from "@/lib/ratings";
 import { CustomerOrderTrackMap } from "@/components/customer/customer-order-track-map";
@@ -13,7 +20,6 @@ import {
   Bike,
   Loader2,
   MapPin,
-  MessageCircle,
   Package,
   Phone,
   Search,
@@ -23,6 +29,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { isOrderChatClosed, isOrderChatOpen } from "@/lib/order-chat";
+import { CustomerOrderChatButton } from "@/components/customer/customer-order-chat-button";
+import { useCustomerOrderChatNotify } from "@/hooks/use-customer-order-chat-notify";
 import type { DriverPublicInfo, Order, OrderStatus } from "@/types/database";
 
 const FOOD_STEPS: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
@@ -34,12 +42,20 @@ const FOOD_STEPS: { status: OrderStatus; label: string; icon: React.ReactNode }[
   { status: "delivered", label: "Sampai", icon: <MapPin className="h-4 w-4" /> },
 ];
 
-const NGOJEK_STEPS: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
+const TRANSIT_STEPS: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
   { status: "pending_payment", label: "Menunggu Bayar", icon: <Package className="h-4 w-4" /> },
   { status: "paid", label: "Mencari Driver", icon: <Search className="h-4 w-4" /> },
   { status: "ready_for_pickup", label: "Driver Menuju Jemput", icon: <Bike className="h-4 w-4" /> },
   { status: "on_the_way", label: "Menuju Tujuan", icon: <Truck className="h-4 w-4" /> },
   { status: "delivered", label: "Sampai", icon: <MapPin className="h-4 w-4" /> },
+];
+
+const PAKET_STEPS: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
+  { status: "pending_payment", label: "Menunggu Bayar", icon: <Package className="h-4 w-4" /> },
+  { status: "paid", label: "Mencari Kurir", icon: <Search className="h-4 w-4" /> },
+  { status: "ready_for_pickup", label: "Kurir Menuju Pengirim", icon: <Package className="h-4 w-4" /> },
+  { status: "on_the_way", label: "Mengantar Paket", icon: <Truck className="h-4 w-4" /> },
+  { status: "delivered", label: "Paket Terkirim", icon: <MapPin className="h-4 w-4" /> },
 ];
 
 type TrackResponse = {
@@ -51,11 +67,17 @@ type TrackResponse = {
 
 export function OrderTracker({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<Order | null>(null);
+  const [customerUserId, setCustomerUserId] = useState<string | null>(null);
   const [driverPos, setDriverPos] = useState<{ lat: number; lng: number } | null>(null);
   const [driverInfo, setDriverInfo] = useState<DriverPublicInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const supabase = createClient();
+
+  const { unread: chatUnread } = useCustomerOrderChatNotify(
+    order?.driver_id ? orderId : null,
+    customerUserId
+  );
 
   const applyOrder = useCallback(
     (
@@ -157,6 +179,8 @@ export function OrderTracker({ orderId }: { orderId: string }) {
         return;
       }
 
+      setCustomerUserId(session.user.id);
+
       const ok = await loadOrder();
       if (!ok && attempt < 4 && !cancelled) {
         retryTimer = setTimeout(() => void run(attempt + 1), 600);
@@ -250,27 +274,33 @@ export function OrderTracker({ orderId }: { orderId: string }) {
     );
   }
 
-  const isRide = isNgojekOrder(order.delivery_address);
-  const rideLegs = parseNgojekLegs(order.delivery_address);
+  const channelRecord = {
+    delivery_address: order.delivery_address,
+    service_type: order.service_type,
+  };
+  const isTransit = isTransitOrderRecord(channelRecord);
+  const isPaket = isPaketOrderRecord(channelRecord);
+  const transitLegs = parseTransitLegs(order.delivery_address);
   const isDelivery = !isOnsiteOrder(order.delivery_address);
+  const effectiveStatus = effectiveTrackerStepStatus(channelRecord, order.order_status);
+
   const searchingDriver =
     isDelivery &&
     !order.driver_id &&
     ["paid", "preparing", "ready_for_pickup"].includes(order.order_status);
 
-  const steps = isRide ? NGOJEK_STEPS : FOOD_STEPS;
-  const currentIdx = isRide
-    ? steps.findIndex((s) => s.status === order.order_status)
-    : steps.findIndex((s) => s.status === order.order_status);
-  const statusLabel = searchingDriver
-    ? "Mencari driver..."
-    : isRide && order.order_status === "ready_for_pickup"
-      ? order.driver_id
-        ? "Driver menuju titik jemput"
-        : "Mencari driver..."
-      : isRide && order.order_status === "on_the_way"
-        ? "Menuju tujuan"
-        : ORDER_STATUS_LABEL[order.order_status] ?? order.order_status;
+  const steps = isPaket ? PAKET_STEPS : isTransit ? TRANSIT_STEPS : FOOD_STEPS;
+  let currentIdx = steps.findIndex((s) => s.status === effectiveStatus);
+  if (currentIdx < 0 && isTransit && order.order_status === "preparing") {
+    currentIdx = steps.findIndex((s) => s.status === "paid");
+  }
+
+  const statusLabel = customerTrackerStatusLabel({
+    delivery_address: order.delivery_address,
+    service_type: order.service_type,
+    order_status: order.order_status,
+    driver_id: order.driver_id,
+  });
 
   const deliveryLat = Number(order.delivery_lat);
   const deliveryLng = Number(order.delivery_lng);
@@ -306,9 +336,15 @@ export function OrderTracker({ orderId }: { orderId: string }) {
               <Search className="h-5 w-5 animate-pulse text-amber-300" />
             </span>
             <div>
-              <p className="font-medium text-amber-100">Mencari driver</p>
+              <p className="font-medium text-amber-100">
+                {isPaket ? "Mencari kurir" : "Mencari driver"}
+              </p>
               <p className="mt-0.5 text-xs text-amber-200/80">
-                Pesanan sudah masuk ke sistem. Driver terdekat akan segera menerima penawaran.
+                {isPaket
+                  ? "Pesanan paket sudah masuk. Kurir terdekat akan segera menerima penawaran."
+                  : isTransit
+                    ? "Pesanan sudah masuk ke sistem. Driver terdekat akan segera menerima penawaran."
+                    : "Pesanan sudah masuk ke sistem. Driver terdekat akan segera menerima penawaran."}
               </p>
             </div>
             <Loader2 className="ml-auto h-5 w-5 animate-spin text-amber-300" />
@@ -317,11 +353,13 @@ export function OrderTracker({ orderId }: { orderId: string }) {
       )}
 
       <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm">
-        <p className="text-muted-foreground">{isRide ? "NGOJEK" : "Status saat ini"}</p>
+        <p className="text-muted-foreground">
+          {isTransit ? channelLabelFromRecord(channelRecord) : "Status saat ini"}
+        </p>
         <p className="mt-1 font-medium text-white">{statusLabel}</p>
-        {isRide && rideLegs && (
+        {isTransit && transitLegs && (
           <p className="mt-2 text-xs text-muted-foreground">
-            {rideLegs.pickup} → {rideLegs.destination}
+            {transitLegs.pickup} → {transitLegs.destination}
           </p>
         )}
       </div>
@@ -330,14 +368,18 @@ export function OrderTracker({ orderId }: { orderId: string }) {
         <div className="overflow-hidden rounded-lg border border-white/10">
           <p className="border-b border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white">
             {hasDriverOnMap
-              ? isRide && order.order_status === "ready_for_pickup"
-                ? "Driver menuju jemput"
-                : isRide && order.order_status === "on_the_way"
-                  ? "Driver menuju tujuan"
-                  : "Posisi driver"
+              ? isPaket && order.order_status === "ready_for_pickup"
+                ? "Kurir menuju pengirim"
+                : isPaket && order.order_status === "on_the_way"
+                  ? "Kurir mengantar paket"
+                  : isTransit && order.order_status === "ready_for_pickup"
+                    ? "Driver menuju jemput"
+                    : isTransit && order.order_status === "on_the_way"
+                      ? "Driver menuju tujuan"
+                      : "Posisi driver"
               : searchingDriver
-                ? isRide
-                  ? "Rute NGOJEK"
+                ? isTransit
+                  ? `Rute ${channelLabelFromRecord(channelRecord)}`
                   : "Lokasi antar"
                 : "Peta pesanan"}
           </p>
@@ -348,7 +390,7 @@ export function OrderTracker({ orderId }: { orderId: string }) {
             pickupLng={hasPickupCoords ? pickupLng : null}
             driverLat={mapDriverLat}
             driverLng={mapDriverLng}
-            isRide={isRide}
+            isRide={isTransit}
             orderStatus={order.order_status}
           />
           {!hasDriverOnMap && order.driver_id && (
@@ -358,9 +400,11 @@ export function OrderTracker({ orderId }: { orderId: string }) {
           )}
           {searchingDriver && (
             <p className="px-3 py-2 text-xs text-amber-200/80">
-              {isRide
-                ? "Hijau = jemput, biru = tujuan. Garis biru = rute driver (sama seperti di app driver)."
-                : "Pin biru = alamat antar Anda. Driver akan muncul di peta setelah ditugaskan."}
+              {isPaket
+                ? "Hijau = pengirim, biru = penerima. Garis biru = rute kurir."
+                : isTransit
+                  ? "Hijau = jemput, biru = tujuan. Garis biru = rute driver (sama seperti di app driver)."
+                  : "Pin biru = alamat antar Anda. Driver akan muncul di peta setelah ditugaskan."}
             </p>
           )}
         </div>
@@ -385,7 +429,7 @@ export function OrderTracker({ orderId }: { orderId: string }) {
           orderId={orderId}
           rateableTargets={(() => {
             const targets: RatingTargetType[] = [];
-            if (!isRide) targets.push("merchant");
+            if (!isTransit) targets.push("merchant");
             if (order.driver_id) targets.push("driver");
             return targets;
           })()}
@@ -395,13 +439,13 @@ export function OrderTracker({ orderId }: { orderId: string }) {
       {order.driver_id &&
         isDelivery &&
         (isOrderChatOpen(order) || isOrderChatClosed(order)) && (
-          <Link
-            href={`/customer/orders/${orderId}/chat`}
-            className="flex items-center justify-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/20"
-          >
-            <MessageCircle className="h-4 w-4" />
-            {isOrderChatOpen(order) ? "Chat dengan driver" : "Lihat riwayat chat"}
-          </Link>
+          <CustomerOrderChatButton
+            orderId={orderId}
+            orderStatus={order.order_status}
+            driverId={order.driver_id}
+            unread={chatUnread}
+            isRide={isTransit}
+          />
         )}
 
       {driverInfo && order.driver_id && !["pending_payment", "cancelled"].includes(order.order_status) && (
@@ -440,12 +484,16 @@ export function OrderTracker({ orderId }: { orderId: string }) {
           {driverPos && ["on_the_way", "ready_for_pickup", "preparing", "paid"].includes(order.order_status) && (
             <p className="mt-3 text-xs text-muted-foreground">
               {order.order_status === "on_the_way"
-                ? isRide
-                  ? "Driver sedang mengantar ke tujuan"
-                  : "Lokasi driver diperbarui — sedang menuju Anda"
-                : isRide
-                  ? "Driver ditugaskan — pantau perjalanan di peta"
-                  : "Driver sudah ditugaskan — pantau posisi di peta di atas"}
+                ? isPaket
+                  ? "Kurir sedang mengantar paket ke penerima"
+                  : isTransit
+                    ? "Driver sedang mengantar ke tujuan"
+                    : "Lokasi driver diperbarui — sedang menuju Anda"
+                : isPaket
+                  ? "Kurir ditugaskan — pantau perjalanan di peta"
+                  : isTransit
+                    ? "Driver ditugaskan — pantau perjalanan di peta"
+                    : "Driver sudah ditugaskan — pantau posisi di peta di atas"}
             </p>
           )}
         </div>

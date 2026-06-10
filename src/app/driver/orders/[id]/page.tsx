@@ -11,11 +11,12 @@ import { Button } from "@/components/ui/button";
 import { cn, formatIdr } from "@/lib/utils";
 import { DRIVER_REWARD_POINTS_PER_ORDER } from "@/lib/order-flow";
 import {
+  channelLabel,
   driverOrderStatusLabel,
-  isNgojekOrder,
+  getTransitKind,
+  isTransitOrder,
   KULINER_FOOD_LABEL,
-  NGOJEK_LABEL,
-  parseNgojekLegs,
+  parseTransitLegs,
 } from "@/lib/order-channel";
 import type { Order, OrderItem } from "@/types/database";
 import { pickOrderCustomer } from "@/lib/order-customer";
@@ -28,19 +29,18 @@ import {
   Bike,
   CheckCircle,
   MapPin,
-  MessageCircle,
   Package,
-  Phone,
   Store,
   User,
 } from "lucide-react";
-import Link from "next/link";
 import { isOrderChatClosed, isOrderChatOpen } from "@/lib/order-chat";
+import { DriverOrderChatButton } from "@/components/driver/driver-order-chat-button";
+import { useDriverOrderChatNotify } from "@/hooks/use-driver-order-chat-notify";
 
 export default function DriverOrderDetailPage() {
   const params = useParams();
   const orderId = params.id as string;
-  const { driver, loading: profileLoading } = useDriverProfile();
+  const { driver, userId, loading: profileLoading } = useDriverProfile();
   const [order, setOrder] = useState<
     | (Order & {
         profiles?: { name: string; phone: string | null } | { name: string; phone: string | null }[];
@@ -116,12 +116,22 @@ export default function DriverOrderDetailPage() {
   const shop = Array.isArray(merchant) ? merchant[0] : merchant;
   const customer = order ? pickOrderCustomer(order.profiles) : undefined;
 
-  const isRide = order ? isNgojekOrder(order.delivery_address) : false;
-  const legs = order ? parseNgojekLegs(order.delivery_address) : null;
-  const pickupLat = isRide ? order?.pickup_lat : shop?.latitude;
-  const pickupLng = isRide ? order?.pickup_lng : shop?.longitude;
+  const addr = order?.delivery_address ?? "";
+  const isTransit = order ? isTransitOrder(addr) : false;
+  const isFood = order ? !isTransitOrder(addr) : false;
+  const transitKind = order ? getTransitKind(addr) : null;
+  const isPaket = transitKind === "paket";
+  const isPassenger = isTransit && !isPaket;
+  const legs = order ? parseTransitLegs(addr) : null;
+
+  const pickupLat = isTransit ? order?.pickup_lat : shop?.latitude;
+  const pickupLng = isTransit ? order?.pickup_lng : shop?.longitude;
 
   const isMine = order?.driver_id === driver?.id;
+  const { unread: chatUnread } = useDriverOrderChatNotify(
+    isMine && order?.driver_id ? orderId : null,
+    userId
+  );
   const canAccept =
     order && !order.driver_id && ["paid", "preparing", "ready_for_pickup"].includes(order.order_status);
   const total = order ? Number(order.total_product_amount) + Number(order.delivery_fee) : 0;
@@ -143,11 +153,13 @@ export default function DriverOrderDetailPage() {
   }
 
   async function pickupOrder() {
-    const ok = isRide
-      ? confirm(
-          `Penumpang ${customer?.name ?? "penumpang"} sudah naik?\n\nMulai perjalanan ke lokasi tujuan.`
-        )
-      : confirm("Sudah menerima paket dari restoran?");
+    const ok = isPaket
+      ? confirm("Paket sudah diambil dari pengirim?\n\nMulai antar ke lokasi penerima.")
+      : isPassenger
+        ? confirm(
+            `Penumpang ${customer?.name ?? "penumpang"} sudah naik?\n\nMulai perjalanan ke lokasi tujuan.`
+          )
+        : confirm("Sudah menerima paket dari restoran?");
     if (!ok) return;
 
     setBusy(true);
@@ -159,7 +171,10 @@ export default function DriverOrderDetailPage() {
     setBusy(false);
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      alert(j.error ?? (isRide ? "Gagal mulai perjalanan" : "Gagal ambil pesanan"));
+      alert(
+        j.error ??
+          (isTransit ? "Gagal mulai perjalanan" : "Gagal ambil pesanan")
+      );
       return;
     }
     router.refresh();
@@ -181,9 +196,11 @@ export default function DriverOrderDetailPage() {
     const j = await res.json().catch(() => ({}));
     if (j.pointsAwarded) {
       alert(
-        isRide
-          ? `NGOJEK selesai! +${j.pointsAwarded} poin reward`
-          : `Pengantaran selesai! +${j.pointsAwarded} poin reward`
+        isPaket
+          ? `PAKET terkirim! +${j.pointsAwarded} poin reward`
+          : isPassenger
+            ? `${channelLabel(addr)} selesai! +${j.pointsAwarded} poin reward`
+            : `Pengantaran selesai! +${j.pointsAwarded} poin reward`
       );
     }
     router.push("/driver");
@@ -193,15 +210,16 @@ export default function DriverOrderDetailPage() {
     return <p className="p-6 text-center text-muted-foreground">Memuat order...</p>;
   }
 
+  const title = isTransit ? channelLabel(addr) : (shop?.name ?? KULINER_FOOD_LABEL);
+  const customerRole = isPaket ? "Customer" : isPassenger ? "Penumpang" : "Customer";
+
   return (
     <main className="space-y-4 px-4 py-4">
-      <div className={cn("glass-card space-y-2 border p-4", driverCardBorderClass(isRide))}>
-        <DriverChannelBadge isRide={isRide} />
-        <h1 className="text-xl font-bold text-white">
-          {isRide ? NGOJEK_LABEL : (shop?.name ?? KULINER_FOOD_LABEL)}
-        </h1>
+      <div className={cn("glass-card space-y-2 border p-4", driverCardBorderClass(addr))}>
+        <DriverChannelBadge deliveryAddress={addr} />
+        <h1 className="text-xl font-bold text-white">{title}</h1>
         <p className="text-xs text-muted-foreground">
-          {driverOrderStatusLabel(order.delivery_address, order.order_status)}
+          {driverOrderStatusLabel(addr, order.order_status)}
         </p>
       </div>
 
@@ -221,7 +239,7 @@ export default function DriverOrderDetailPage() {
           <div className="flex items-start gap-2">
             <User className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
             <div>
-              <p className="font-medium text-white">{isRide ? "Penumpang" : "Customer"}</p>
+              <p className="font-medium text-white">{customerRole}</p>
               <p className="text-sm font-semibold text-cyan-200">{customer.name}</p>
               {customer.phone && (
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -234,11 +252,8 @@ export default function DriverOrderDetailPage() {
       )}
 
       <section className="glass-card space-y-3 p-4 text-sm">
-        {isRide ? (
-          <DriverOrderRouteLine
-            isRide
-            deliveryAddress={order.delivery_address}
-          />
+        {isTransit ? (
+          <DriverOrderRouteLine deliveryAddress={addr} />
         ) : (
           <>
             <div className="flex items-start gap-2">
@@ -259,7 +274,7 @@ export default function DriverOrderDetailPage() {
         )}
       </section>
 
-      {!isRide && items.length > 0 && (
+      {isFood && items.length > 0 && (
         <section className="glass-card p-4">
           <p className="text-sm font-medium text-white">Item pesanan</p>
           <ul className="mt-2 space-y-1 text-sm">
@@ -277,10 +292,10 @@ export default function DriverOrderDetailPage() {
 
       <section className="glass-card p-4">
         <div className="flex justify-between font-bold text-white">
-          <span>{isRide ? "Tarif ride" : "Total"}</span>
+          <span>{isTransit ? "Tarif layanan" : "Total"}</span>
           <span className="text-cyan-300">{formatIdr(total)}</span>
         </div>
-        {!isRide && (
+        {isFood && (
           <p className="mt-1 text-xs text-muted-foreground">
             Ongkir: {formatIdr(Number(order.delivery_fee))}
           </p>
@@ -290,17 +305,12 @@ export default function DriverOrderDetailPage() {
       {isMine &&
         order.driver_id &&
         (isOrderChatOpen(order) || isOrderChatClosed(order)) && (
-          <Link
-            href={`/driver/orders/${orderId}/chat`}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-cyan-500/40 bg-cyan-500/10 font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
-          >
-            <MessageCircle className="h-4 w-4" />
-            {isOrderChatOpen(order)
-              ? isRide
-                ? "Chat penumpang"
-                : "Chat customer"
-              : "Riwayat chat"}
-          </Link>
+          <DriverOrderChatButton
+            orderId={orderId}
+            orderStatus={order.order_status}
+            driverId={order.driver_id}
+            unread={chatUnread}
+          />
         )}
 
       <div className="space-y-2 pb-4">
@@ -308,25 +318,38 @@ export default function DriverOrderDetailPage() {
           <Button
             className={cn(
               "h-12 w-full rounded-2xl font-semibold",
-              isRide ? "bg-cyan-600 hover:bg-cyan-500" : "bg-emerald-600 hover:bg-emerald-500"
+              isPaket
+                ? "bg-amber-600 hover:bg-amber-500"
+                : isPassenger
+                  ? "bg-cyan-600 hover:bg-cyan-500"
+                  : "bg-emerald-600 hover:bg-emerald-500"
             )}
             disabled={busy || driver?.status === "offline"}
             onClick={acceptJob}
           >
-            {isRide ? "Terima order NGOJEK" : "Ambil order ini"}
+            {isPaket
+              ? "Terima order PAKET"
+              : isPassenger
+                ? `Terima order ${channelLabel(addr)}`
+                : "Ambil order ini"}
           </Button>
         )}
-        {isMine && !isRide && ["paid", "preparing"].includes(order.order_status) && (
+        {isMine && isFood && ["paid", "preparing"].includes(order.order_status) && (
           <p className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-xs text-amber-100">
             Tunggu merchant menandai pesanan siap diambil
           </p>
         )}
-        {isMine && isRide && order.order_status === "ready_for_pickup" && (
+        {isMine && isPassenger && order.order_status === "ready_for_pickup" && (
           <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-center text-xs text-cyan-100">
             Temui penumpang di {legs?.pickup ?? "titik jemput"}
           </div>
         )}
-        {isMine && order.order_status === "ready_for_pickup" && isRide && (
+        {isMine && isPaket && order.order_status === "ready_for_pickup" && (
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-xs text-amber-100">
+            Ambil paket di {legs?.pickup ?? "lokasi pengirim"}
+          </div>
+        )}
+        {isMine && order.order_status === "ready_for_pickup" && isPassenger && (
           <Button
             className="h-12 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-emerald-500 font-semibold text-slate-950"
             disabled={busy}
@@ -336,7 +359,17 @@ export default function DriverOrderDetailPage() {
             Penumpang naik — mulai perjalanan
           </Button>
         )}
-        {isMine && order.order_status === "ready_for_pickup" && !isRide && (
+        {isMine && order.order_status === "ready_for_pickup" && isPaket && (
+          <Button
+            className="h-12 w-full rounded-2xl bg-gradient-to-r from-amber-500 to-emerald-500 font-semibold text-slate-950"
+            disabled={busy}
+            onClick={pickupOrder}
+          >
+            <Package className="mr-2 h-4 w-4" />
+            Paket diambil — mulai antar
+          </Button>
+        )}
+        {isMine && order.order_status === "ready_for_pickup" && isFood && (
           <Button
             className="h-12 w-full rounded-2xl bg-orange-500 font-semibold"
             disabled={busy}
@@ -353,9 +386,11 @@ export default function DriverOrderDetailPage() {
             onClick={completeDelivery}
           >
             <CheckCircle className="mr-2 h-4 w-4" />
-            {isRide
-              ? `Selesai NGOJEK (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`
-              : `Selesai antar (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`}
+            {isPaket
+              ? `Selesai kirim paket (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`
+              : isPassenger
+                ? `Selesai ${channelLabel(addr)} (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`
+                : `Selesai antar (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`}
           </Button>
         )}
       </div>

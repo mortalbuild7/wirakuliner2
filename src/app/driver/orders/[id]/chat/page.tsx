@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isNgojekOrder } from "@/lib/order-channel";
 import { Button } from "@/components/ui/button";
 import type { Order, OrderStatus } from "@/types/database";
-import { markDriverChatRead } from "@/hooks/use-driver-order-chat-notify";
+import { markDriverChatRead } from "@/lib/order-chat-read";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 export default function DriverOrderChatPage() {
@@ -103,6 +103,7 @@ export default function DriverOrderChatPage() {
         orderStatus={order.order_status as OrderStatus}
         driverId={order.driver_id}
         peerLabel={ride ? "Penumpang" : "Customer"}
+        readerRole="driver"
       />
     </main>
   );

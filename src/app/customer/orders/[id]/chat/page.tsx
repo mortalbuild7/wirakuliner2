@@ -90,6 +90,7 @@ export default function CustomerOrderChatPage() {
         orderStatus={order.order_status as OrderStatus}
         driverId={order.driver_id}
         peerLabel="Driver"
+        readerRole="customer"
       />
     </main>
   );

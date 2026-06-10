@@ -12,11 +12,12 @@ import { DriverStatusToggle } from "@/components/driver/driver-status-toggle";
 import { formatIdr } from "@/lib/utils";
 import {
   driverOrderStatusLabel,
-  isNgojekOrder,
+  channelLabel,
+  getTransitKind,
   isOnsiteOrder,
+  isTransitOrder,
   KULINER_FOOD_LABEL,
-  NGOJEK_LABEL,
-  parseNgojekLegs,
+  parseTransitLegs,
 } from "@/lib/order-channel";
 import { DRIVER_REWARD_POINTS_PER_ORDER } from "@/lib/order-flow";
 import {
@@ -325,24 +326,32 @@ export function DriverCockpit() {
   }, [incomingOffer?.id, incomingOffer?.offered_at, hasActive]);
 
   const shop = activeOrder ? merchantOf(activeOrder) : undefined;
-  const activeIsNgojek = activeOrder ? isNgojekOrder(activeOrder.delivery_address) : false;
-  const ngojekLegs = activeOrder ? parseNgojekLegs(activeOrder.delivery_address) : null;
+  const activeAddr = activeOrder?.delivery_address ?? "";
+  const activeIsTransit = activeOrder ? isTransitOrder(activeAddr) : false;
+  const activeTransitKind = activeOrder ? getTransitKind(activeAddr) : null;
+  const activeIsPaket = activeTransitKind === "paket";
+  const activeIsPassenger = activeIsTransit && !activeIsPaket;
+  const transitLegs = activeOrder ? parseTransitLegs(activeAddr) : null;
 
   const pickupCoords = useMemo(() => {
-    if (!activeOrder || !activeIsNgojek) return null;
+    if (!activeOrder || !activeIsTransit) return null;
     const lat = activeOrder.pickup_lat;
     const lng = activeOrder.pickup_lng;
     if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
       return null;
     }
     return { lat, lng };
-  }, [activeOrder, activeIsNgojek]);
+  }, [activeOrder, activeIsTransit]);
 
   const navDestination = useMemo(() => {
     if (!navMode || !activeOrder) return null;
     if (navMode === "merchant") {
-      if (activeIsNgojek && pickupCoords) {
-        return { lat: pickupCoords.lat, lng: pickupCoords.lng, label: "Jemput penumpang" };
+      if (activeIsTransit && pickupCoords) {
+        return {
+          lat: pickupCoords.lat,
+          lng: pickupCoords.lng,
+          label: activeIsPaket ? "Jemput paket" : "Jemput penumpang",
+        };
       }
       if (shop?.latitude != null && shop?.longitude != null) {
         return { lat: shop.latitude, lng: shop.longitude, label: shop.name ?? "Toko" };
@@ -381,12 +390,16 @@ export function DriverCockpit() {
 
     const message =
       navMode === "merchant"
-        ? activeIsNgojek
-          ? "Sudah dekat titik jemput — temui penumpang"
-          : "Sudah dekat restoran — ambil pesanan di toko"
-        : activeIsNgojek
-          ? "Sudah dekat tujuan — selesaikan perjalanan NGOJEK"
-          : "Sudah dekat lokasi customer — selesaikan pengantaran";
+        ? activeIsPaket
+          ? "Sudah dekat pengirim — ambil paket"
+          : activeIsPassenger
+            ? "Sudah dekat titik jemput — temui penumpang"
+            : "Sudah dekat restoran — ambil pesanan di toko"
+        : activeIsPaket
+          ? "Sudah dekat penerima — selesaikan pengiriman paket"
+          : activeIsPassenger
+            ? "Sudah dekat tujuan — selesaikan perjalanan"
+            : "Sudah dekat lokasi customer — selesaikan pengantaran";
 
     setNavMode(null);
     setOrderCardExpanded(true);
@@ -396,9 +409,9 @@ export function DriverCockpit() {
   const mapProps = useMemo(() => {
     const order = activeOrder ?? incomingOffer;
     const shop = order ? merchantOf(order) : undefined;
-    const orderIsNgojek = order ? isNgojekOrder(order.delivery_address) : false;
+    const orderIsTransit = order ? isTransitOrder(order.delivery_address) : false;
     const orderPickup =
-      orderIsNgojek &&
+      orderIsTransit &&
       order?.pickup_lat != null &&
       order?.pickup_lng != null &&
       Number.isFinite(order.pickup_lat) &&
@@ -520,15 +533,20 @@ export function DriverCockpit() {
 
   async function pickupOrder() {
     if (!activeOrder) return;
-    const isRide = isNgojekOrder(activeOrder.delivery_address);
-    const customerName = customerOf(activeOrder)?.name ?? "penumpang";
-    const ok = isRide
-      ? confirm(
-          `Penumpang ${customerName} sudah naik?\n\nMulai perjalanan ke lokasi tujuan.`
-        )
-      : confirm(
-          `Konfirmasi pengambilan di toko:\n\nSebutkan ke kasir:\n• Nama: ${customerName}\n• ID: ${shortOrderId(activeOrder.id)}\n\nSudah menerima paket dari restoran?`
-        );
+    const kind = getTransitKind(activeOrder.delivery_address);
+    const customerName = customerOf(activeOrder)?.name ?? "customer";
+    const ok =
+      kind === "paket"
+        ? confirm(
+            `Paket sudah diambil dari pengirim?\n\nMulai antar ke lokasi penerima.`
+          )
+        : kind
+          ? confirm(
+              `Penumpang ${customerName} sudah naik?\n\nMulai perjalanan ke lokasi tujuan.`
+            )
+          : confirm(
+              `Konfirmasi pengambilan di toko:\n\nSebutkan ke kasir:\n• Nama: ${customerName}\n• ID: ${shortOrderId(activeOrder.id)}\n\nSudah menerima paket dari restoran?`
+            );
     if (!ok) return;
     setBusy(true);
     const res = await fetchWithDriverAuth("/api/driver/pickup", {
@@ -593,7 +611,9 @@ export function DriverCockpit() {
 
   const offerShop = incomingOffer ? merchantOf(incomingOffer) : undefined;
   const offerCustomer = incomingOffer ? customerOf(incomingOffer) : undefined;
-  const offerIsNgojek = incomingOffer ? isNgojekOrder(incomingOffer.delivery_address) : false;
+  const offerAddr = incomingOffer?.delivery_address ?? "";
+  const offerIsTransit = incomingOffer ? isTransitOrder(offerAddr) : false;
+  const offerTransitKind = incomingOffer ? getTransitKind(offerAddr) : null;
   const activeCustomer = activeOrder ? customerOf(activeOrder) : undefined;
   const orderTotal = (o: OrderRow) =>
     Number(o.total_product_amount) + Number(o.delivery_fee);
@@ -716,7 +736,7 @@ export function DriverCockpit() {
             <div
               className={cn(
                 `absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl border bg-slate-950/95 p-4 shadow-xl backdrop-blur`,
-                driverCardBorderClass(offerIsNgojek)
+                driverCardBorderClass(offerAddr)
               )}
             >
               <div className="flex items-start justify-between gap-2">
@@ -724,20 +744,20 @@ export function DriverCockpit() {
                   <p
                     className={cn(
                       "text-[10px] font-semibold uppercase tracking-wider",
-                      offerIsNgojek ? "text-cyan-400" : "text-orange-400"
+                      offerIsTransit ? "text-cyan-400" : "text-orange-400"
                     )}
                   >
                     Order masuk
                   </p>
-                  <DriverChannelBadge isRide={offerIsNgojek} />
+                  <DriverChannelBadge deliveryAddress={offerAddr} />
                   <p className="text-lg font-bold text-white">
-                    {offerIsNgojek ? NGOJEK_LABEL : (offerShop?.name ?? KULINER_FOOD_LABEL)}
+                    {offerIsTransit ? channelLabel(offerAddr) : (offerShop?.name ?? KULINER_FOOD_LABEL)}
                   </p>
                 </div>
                 <span
                   className={cn(
                     "shrink-0 rounded-full border px-2 py-0.5 text-[10px]",
-                    offerIsNgojek
+                    offerIsTransit
                       ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-200"
                       : "border-orange-500/30 bg-orange-500/10 text-orange-200"
                   )}
@@ -750,20 +770,24 @@ export function DriverCockpit() {
               </div>
               {offerCustomer && (
                 <p className="mt-2 text-sm font-medium text-cyan-200">
-                  {offerIsNgojek ? "Penumpang" : "Customer"}: {offerCustomer.name}
+                  {offerTransitKind === "paket"
+                    ? "Customer"
+                    : offerIsTransit
+                      ? "Penumpang"
+                      : "Customer"}
+                  : {offerCustomer.name}
                 </p>
               )}
               <div className="mt-2">
                 <DriverOrderRouteLine
-                  isRide={offerIsNgojek}
                   deliveryAddress={incomingOffer.delivery_address}
-                  merchantName={offerShop?.name}
+                  merchantName={offerIsTransit ? undefined : offerShop?.name}
                 />
               </div>
               <p className="mt-3 text-sm font-semibold text-cyan-300">
                 {formatIdr(orderTotal(incomingOffer))}
                 <span className="ml-2 text-xs text-muted-foreground">
-                  {offerIsNgojek ? "tarif ride" : "ongkir"}{" "}
+                  {offerIsTransit ? "tarif ride" : "ongkir"}{" "}
                   {formatIdr(Number(incomingOffer.delivery_fee))}
                 </span>
               </p>
@@ -807,31 +831,31 @@ export function DriverCockpit() {
               }}
               className={cn(
                 `absolute inset-x-4 ${orderCardBottom} z-20 flex w-auto items-center justify-between gap-3 rounded-2xl border bg-slate-950/95 px-4 py-3 shadow-xl backdrop-blur`,
-                activeIsNgojek ? "border-cyan-400/50" : "border-orange-400/50"
+                activeIsTransit ? "border-cyan-400/50" : "border-orange-400/50"
               )}
             >
               <div className="min-w-0 text-left">
                 <p
                   className={cn(
                     "text-[10px] font-semibold uppercase tracking-wider",
-                    activeIsNgojek ? "text-cyan-300" : "text-orange-300"
+                    activeIsTransit ? "text-cyan-300" : "text-orange-300"
                   )}
                 >
                   {navMode === "merchant"
-                    ? activeIsNgojek
+                    ? activeIsTransit
                       ? "Navigasi jemput"
                       : "Navigasi ke toko"
                     : navMode === "customer"
-                      ? activeIsNgojek
+                      ? activeIsTransit
                         ? "Navigasi tujuan"
                         : "Navigasi ke customer"
-                      : activeIsNgojek
-                        ? NGOJEK_LABEL
+                      : activeIsTransit
+                        ? channelLabel(activeAddr)
                         : KULINER_FOOD_LABEL}
                 </p>
                 <p className="truncate text-sm font-semibold text-white">
                   {navDestination?.label ??
-                    (activeIsNgojek
+                    (activeIsTransit
                       ? activeCustomer?.name ?? "Penumpang"
                       : activeCustomer?.name ?? shop?.name ?? "Pesanan")}
                 </p>
@@ -844,7 +868,7 @@ export function DriverCockpit() {
             <div
               className={cn(
                 `absolute inset-x-4 ${orderCardBottom} z-20 max-h-[min(70dvh,520px)] overflow-y-auto rounded-2xl border bg-slate-950/95 p-4 shadow-xl backdrop-blur`,
-                driverCardBorderClass(activeIsNgojek)
+                driverCardBorderClass(activeAddr)
               )}
             >
               <div className="flex items-start justify-between gap-2">
@@ -852,12 +876,12 @@ export function DriverCockpit() {
                   <p
                     className={cn(
                       "text-[10px] font-semibold uppercase tracking-wider",
-                      activeIsNgojek ? "text-cyan-400" : "text-orange-400"
+                      activeIsTransit ? "text-cyan-400" : "text-orange-400"
                     )}
                   >
-                    {activeIsNgojek ? "Ride aktif" : "Pesanan aktif"}
+                    {activeIsTransit ? "Ride aktif" : "Pesanan aktif"}
                   </p>
-                  <DriverChannelBadge isRide={activeIsNgojek} />
+                  <DriverChannelBadge deliveryAddress={activeAddr} />
                   <p className="text-xs text-muted-foreground">
                     ID: <span className="font-mono text-cyan-200">{shortOrderId(activeOrder.id)}</span>
                   </p>
@@ -874,24 +898,29 @@ export function DriverCockpit() {
               </div>
 
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {activeIsNgojek ? (
+                {activeIsTransit ? (
                   <>
                     <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2">
                       <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
-                        <Bike className="h-3 w-3" />
-                        Jemput
+                        {activeIsPaket ? (
+                          <Package className="h-3 w-3" />
+                        ) : (
+                          <Bike className="h-3 w-3" />
+                        )}
+                        {activeIsPaket ? "Pengirim" : "Jemput"}
                       </p>
                       <p className="mt-0.5 line-clamp-2 text-sm font-medium text-white">
-                        {ngojekLegs?.pickup ?? "Titik jemput"}
+                        {transitLegs?.pickup ?? (activeIsPaket ? "Lokasi pengirim" : "Titik jemput")}
                       </p>
                     </div>
                     <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-3 py-2">
                       <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
                         <MapPin className="h-3 w-3" />
-                        Tujuan
+                        {activeIsPaket ? "Penerima" : "Tujuan"}
                       </p>
                       <p className="mt-0.5 line-clamp-2 text-sm font-medium text-white">
-                        {ngojekLegs?.destination ?? "Lokasi tujuan"}
+                        {transitLegs?.destination ??
+                          (activeIsPaket ? "Lokasi penerima" : "Lokasi tujuan")}
                       </p>
                     </div>
                   </>
@@ -925,7 +954,7 @@ export function DriverCockpit() {
               <p
                 className={cn(
                   "mt-2 text-xs font-medium",
-                  activeIsNgojek ? "text-cyan-200/90" : "text-emerald-200/90"
+                  activeIsTransit ? "text-cyan-200/90" : "text-emerald-200/90"
                 )}
               >
                 {driverOrderStatusLabel(
@@ -934,13 +963,13 @@ export function DriverCockpit() {
                 )}
               </p>
 
-              {!activeIsNgojek && (
+              {!activeIsTransit && (
                 <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                   {activeOrder.delivery_address}
                 </p>
               )}
 
-              {!activeIsNgojek && orderItems.length > 0 && (
+              {!activeIsTransit && orderItems.length > 0 && (
                 <ul className="mt-2 space-y-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">
                   {orderItems.map((item) => (
                     <li key={item.id} className="flex justify-between gap-2 text-white/90">
@@ -958,7 +987,7 @@ export function DriverCockpit() {
               <p className="mt-2 font-semibold text-cyan-300">
                 {formatIdr(orderTotal(activeOrder))}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
-                  {activeIsNgojek ? "tarif ride" : "total"}
+                  {activeIsTransit ? "tarif ride" : "total"}
                 </span>
               </p>
 
@@ -971,7 +1000,7 @@ export function DriverCockpit() {
               />
 
               <div className="mt-3 flex flex-wrap gap-2">
-                {(activeIsNgojek
+                {(activeIsTransit
                   ? pickupCoords != null
                   : shop?.latitude != null && shop.longitude != null) &&
                   ["paid", "preparing", "ready_for_pickup"].includes(
@@ -984,10 +1013,10 @@ export function DriverCockpit() {
                       className={cn(
                         "h-9 flex-1 rounded-xl",
                         navMode === "merchant"
-                          ? activeIsNgojek
+                          ? activeIsTransit
                             ? "border-emerald-400/60 bg-emerald-950/40 text-emerald-100"
                             : "border-orange-400/60 bg-orange-950/40 text-orange-100"
-                          : activeIsNgojek
+                          : activeIsTransit
                             ? "border-emerald-500/40 text-emerald-200"
                             : "border-orange-500/40 text-orange-200"
                       )}
@@ -997,23 +1026,23 @@ export function DriverCockpit() {
                     >
                       <Navigation className="mr-1.5 h-3.5 w-3.5" />
                       {navMode === "merchant"
-                        ? activeIsNgojek
+                        ? activeIsTransit
                           ? "Hentikan navigasi jemput"
                           : "Hentikan navigasi toko"
-                        : activeIsNgojek
+                        : activeIsTransit
                           ? "Navigasi jemput"
                           : "Navigasi ke toko"}
                     </Button>
                   )}
               </div>
 
-              {!activeIsNgojek && ["paid", "preparing"].includes(activeOrder.order_status) && (
+              {!activeIsTransit && ["paid", "preparing"].includes(activeOrder.order_status) && (
                 <p className="mt-3 rounded-xl bg-amber-500/10 px-3 py-2 text-center text-xs text-amber-100">
                   Tunggu merchant menandai pesanan siap diambil
                 </p>
               )}
 
-              {activeOrder.order_status === "ready_for_pickup" && activeIsNgojek && (
+              {activeOrder.order_status === "ready_for_pickup" && activeIsPassenger && (
                 <>
                   <div className="mt-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
@@ -1042,7 +1071,37 @@ export function DriverCockpit() {
                 </>
               )}
 
-              {activeOrder.order_status === "ready_for_pickup" && !activeIsNgojek && (
+              {activeOrder.order_status === "ready_for_pickup" && activeIsPaket && (
+                <>
+                  <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-200">
+                      Ambil paket di lokasi pengirim
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm font-medium text-white">
+                      {transitLegs?.pickup ?? "Lokasi pengirim"}
+                    </p>
+                    {activeCustomer && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Customer: {activeCustomer.name}
+                        {activeCustomer.phone ? ` · ${activeCustomer.phone}` : ""}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    className="mt-3 h-11 w-full rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 font-semibold text-slate-950"
+                    disabled={busy}
+                    onClick={() => {
+                      handleUserGesture();
+                      void pickupOrder();
+                    }}
+                  >
+                    <Package className="mr-2 h-4 w-4" />
+                    Paket diambil — mulai antar
+                  </Button>
+                </>
+              )}
+
+              {activeOrder.order_status === "ready_for_pickup" && !activeIsTransit && (
                 <>
                   <div className="mt-3 rounded-xl border border-orange-500/40 bg-orange-500/10 px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-200">
@@ -1085,10 +1144,10 @@ export function DriverCockpit() {
                   >
                     <MapPin className="mr-2 h-4 w-4" />
                     {navMode === "customer"
-                      ? activeIsNgojek
+                      ? activeIsTransit
                         ? "Hentikan navigasi tujuan"
                         : "Hentikan navigasi customer"
-                      : activeIsNgojek
+                      : activeIsTransit
                         ? "Navigasi ke tujuan"
                         : "Navigasi ke customer"}
                   </Button>
@@ -1100,9 +1159,11 @@ export function DriverCockpit() {
                       void completeOrder();
                     }}
                   >
-                    {activeIsNgojek
-                      ? `Selesai NGOJEK (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`
-                      : `Selesai antar (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`}
+                    {activeIsPaket
+                      ? `Selesai kirim paket (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`
+                      : activeIsPassenger
+                        ? `Selesai ${channelLabel(activeAddr)} (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`
+                        : `Selesai antar (+${DRIVER_REWARD_POINTS_PER_ORDER} poin)`}
                   </Button>
                 </>
               )}
