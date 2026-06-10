@@ -1,6 +1,12 @@
 import { haversineKm } from "@/lib/geo-config";
-import { calculateDeliveryFee } from "@/lib/delivery-fee";
-import { formatNgojekAddress } from "@/lib/order-channel";
+import { formatTransitAddressByService } from "@/lib/order-channel";
+import {
+  computeTransitFareFromTariff,
+  fetchRegionalTransitTariff,
+  resolveRegionalIdsFromServiceCity,
+} from "@/lib/regional-transit-pricing";
+import { createTransitOrderSchema } from "@/lib/admin/order-transit-schemas";
+import { computePackageVolumeCm3, isServiceType, type ServiceType } from "@/lib/service-types";
 import { notifyDriversNewOrder } from "@/lib/notify-drivers";
 import { checkRideServiceAvailability } from "@/lib/service-area";
 import { NGOJEK_MAX_DISTANCE_KM, NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
@@ -56,6 +62,18 @@ export async function POST(req: Request) {
     destinationLng?: number;
     skipPayment?: boolean;
     paymentMethod?: string;
+    serviceType?: string;
+    packageDetails?: {
+      senderName?: string;
+      senderPhone?: string;
+      recipientName?: string;
+      recipientPhone?: string;
+      packageType?: string;
+      weightKg?: number;
+      lengthCm?: number;
+      widthCm?: number;
+      heightCm?: number;
+    };
   }>(req);
   if ("error" in parsed) return parsed.error;
 
@@ -95,7 +113,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const rideFee = calculateDeliveryFee(distanceKm);
+  const serviceType: ServiceType = isServiceType(body.serviceType)
+    ? body.serviceType
+    : "NGOJEK";
 
   const supabase = await createClient();
   const {
@@ -118,7 +138,7 @@ export async function POST(req: Request) {
   );
   if (!serviceArea.available) {
     return secureJsonResponse(
-      { error: serviceArea.message ?? "Layanan NGOJEK tidak tersedia di wilayah ini" },
+      { error: serviceArea.message ?? "Layanan tidak tersedia di wilayah ini" },
       { status: 403 }
     );
   }
@@ -126,53 +146,167 @@ export async function POST(req: Request) {
   const hubMerchantId = await resolveHubMerchantId(admin);
   if (!hubMerchantId) {
     return secureJsonResponse(
-      { error: "Layanan NGOJEK belum tersedia. Hubungi admin." },
+      { error: "Layanan transit belum tersedia. Hubungi admin." },
       { status: 503 }
     );
   }
 
-  const deliveryAddress = formatNgojekAddress(pickupAddress, destinationAddress);
+  const { provinceId, cityId } = await resolveRegionalIdsFromServiceCity(
+    admin,
+    serviceArea.cityId
+  );
+  const tariff =
+    provinceId != null
+      ? await fetchRegionalTransitTariff(admin, provinceId, cityId, serviceType)
+      : null;
+  const rideFee = computeTransitFareFromTariff(tariff, distanceKm);
+
+  const deliveryAddress = formatTransitAddressByService(
+    serviceType,
+    pickupAddress,
+    destinationAddress
+  );
   const useWallet = body.paymentMethod === "wallet";
   const skipPayment =
     !useWallet &&
     (body.skipPayment === true || process.env.NEXT_PUBLIC_PAYMENT_BYPASS === "true");
 
-  const { data: order, error: orderError } = await admin
-    .from("orders")
-    .insert({
-      customer_id: user.id,
-      merchant_id: hubMerchantId,
-      total_product_amount: 0,
-      delivery_fee: rideFee,
-      is_outside_radius: false,
-      negotiation_status: "none",
-      order_status: "pending_payment",
-      delivery_address: deliveryAddress,
-      delivery_lat: destinationLat,
-      delivery_lng: destinationLng,
-      pickup_lat: pickupLat,
-      pickup_lng: pickupLng,
-      distance_km: distanceKm,
-      service_city_id: serviceArea.cityId,
-      payment_method: useWallet ? "wallet" : "gateway",
-      payment_gateway: useWallet ? "wallet" : skipPayment ? "test_bypass" : "midtrans",
-    })
-    .select("id")
-    .single();
+  let totalVolumeCm3 = 0;
+  let packagePayload: Record<string, unknown> | null = null;
 
-  if (orderError || !order) {
-    return secureJsonResponse(
-      { error: orderError?.message ?? "Gagal membuat pesanan NGOJEK" },
-      { status: 500 }
-    );
+  if (serviceType === "PAKET") {
+    const pkgParsed = createTransitOrderSchema.safeParse({
+      serviceType: "PAKET",
+      pickupAddress,
+      destinationAddress,
+      pickupLat,
+      pickupLng,
+      destinationLat,
+      destinationLng,
+      packageDetails: body.packageDetails
+        ? {
+            senderName: body.packageDetails.senderName,
+            senderPhone: body.packageDetails.senderPhone,
+            recipientName: body.packageDetails.recipientName,
+            recipientPhone: body.packageDetails.recipientPhone,
+            packageType: body.packageDetails.packageType,
+            weightKg: body.packageDetails.weightKg,
+            lengthCm: body.packageDetails.lengthCm,
+            widthCm: body.packageDetails.widthCm,
+            heightCm: body.packageDetails.heightCm,
+          }
+        : undefined,
+    });
+
+    if (!pkgParsed.success) {
+      const msg = pkgParsed.error.issues.map((i) => i.message).join("; ");
+      return secureJsonResponse({ error: msg || "Data paket tidak valid" }, { status: 400 });
+    }
+
+    const pkg = pkgParsed.data.packageDetails!;
+    totalVolumeCm3 = computePackageVolumeCm3(pkg.lengthCm, pkg.widthCm, pkg.heightCm);
+    packagePayload = {
+      sender_name: pkg.senderName,
+      sender_phone: pkg.senderPhone,
+      recipient_name: pkg.recipientName,
+      recipient_phone: pkg.recipientPhone,
+      package_type: pkg.packageType,
+      weight_kg: pkg.weightKg,
+      length_cm: pkg.lengthCm,
+      width_cm: pkg.widthCm,
+      height_cm: pkg.heightCm,
+    };
   }
+
+  let orderId: string;
+
+  if (serviceType === "PAKET" && packagePayload) {
+    const { data: rpcOrderId, error: rpcError } = await admin.rpc(
+      "insert_transit_order_atomic",
+      {
+        p_order: {
+          customer_id: user.id,
+          merchant_id: hubMerchantId,
+          total_product_amount: 0,
+          delivery_fee: rideFee,
+          is_outside_radius: false,
+          negotiation_status: "none",
+          order_status: "pending_payment",
+          delivery_address: deliveryAddress,
+          delivery_lat: destinationLat,
+          delivery_lng: destinationLng,
+          pickup_lat: pickupLat,
+          pickup_lng: pickupLng,
+          distance_km: distanceKm,
+          service_city_id: serviceArea.cityId,
+          province_id: provinceId,
+          city_id: cityId,
+          service_type: serviceType,
+          total_volume_cm3: totalVolumeCm3,
+          payment_method: useWallet ? "wallet" : "gateway",
+          payment_gateway: useWallet ? "wallet" : skipPayment ? "test_bypass" : "midtrans",
+        },
+        p_package: packagePayload,
+      }
+    );
+
+    if (rpcError || !rpcOrderId) {
+      return secureJsonResponse(
+        { error: rpcError?.message ?? "Gagal membuat pesanan PAKET" },
+        { status: 500 }
+      );
+    }
+    orderId = rpcOrderId as string;
+  } else {
+    const { data: order, error: orderError } = await admin
+      .from("orders")
+      .insert({
+        customer_id: user.id,
+        merchant_id: hubMerchantId,
+        total_product_amount: 0,
+        delivery_fee: rideFee,
+        is_outside_radius: false,
+        negotiation_status: "none",
+        order_status: "pending_payment",
+        delivery_address: deliveryAddress,
+        delivery_lat: destinationLat,
+        delivery_lng: destinationLng,
+        pickup_lat: pickupLat,
+        pickup_lng: pickupLng,
+        distance_km: distanceKm,
+        service_city_id: serviceArea.cityId,
+        province_id: provinceId,
+        city_id: cityId,
+        service_type: serviceType,
+        total_volume_cm3: totalVolumeCm3,
+        payment_method: useWallet ? "wallet" : "gateway",
+        payment_gateway: useWallet ? "wallet" : skipPayment ? "test_bypass" : "midtrans",
+      })
+      .select("id")
+      .single();
+
+    if (orderError || !order) {
+      return secureJsonResponse(
+        { error: orderError?.message ?? "Gagal membuat pesanan" },
+        { status: 500 }
+      );
+    }
+    orderId = order.id;
+  }
+
+  const order = { id: orderId };
 
   const { error: itemsError } = await admin.from("order_items").insert({
     order_id: order.id,
     product_id: null,
     quantity: 1,
     price: 0,
-    product_name: "NGOJEK Ride",
+    product_name:
+      serviceType === "NGOMOBIL"
+        ? "NGOMOBIL Ride"
+        : serviceType === "PAKET"
+          ? "PAKET Delivery"
+          : "NGOJEK Ride",
   });
 
   if (itemsError) {

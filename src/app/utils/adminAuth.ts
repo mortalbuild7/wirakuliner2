@@ -22,6 +22,7 @@ export type RegionalAdminSession = {
   cityName: string | null;
 };
 
+const ADMIN_LOGIN_PATH = "/admin/login";
 const MFA_CHALLENGE_PATH = "/admin/mfa-challenge";
 
 /**
@@ -43,7 +44,7 @@ export async function verifyAdminSession(opts?: {
   } = await supabase.auth.getUser();
 
   if (authError || !user) {
-    redirect("/login?redirect=/admin");
+    redirect(`${ADMIN_LOGIN_PATH}?redirect=/admin/dashboard`);
   }
 
   const { data: profile, error: profileError } = await supabase
@@ -82,7 +83,7 @@ export async function verifyAdminSession(opts?: {
       aal?.nextLevel === "aal2" &&
       aal.currentLevel !== "aal2"
     ) {
-      redirect(`${MFA_CHALLENGE_PATH}?redirect=/admin`);
+      redirect(`${MFA_CHALLENGE_PATH}?redirect=/admin/dashboard`);
     }
   }
 

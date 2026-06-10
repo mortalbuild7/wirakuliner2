@@ -18,6 +18,7 @@ import {
   isOrderChatOpen,
   orderChatChannelName,
 } from "@/lib/order-chat";
+import { decodeStoredChatEntities } from "@/lib/privacy/chat-sanitize";
 import type { OrderChatRow, OrderStatus } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -207,7 +208,9 @@ export function OrderChatPanel({
                       {peerLabel}
                     </p>
                   )}
-                  <p className="whitespace-pre-wrap break-words">{m.message}</p>
+                  <p className="whitespace-pre-wrap break-words">
+                    {decodeStoredChatEntities(m.message)}
+                  </p>
                   <p
                     className={`mt-1 text-[10px] ${mine ? "text-cyan-100/70" : "text-muted-foreground"}`}
                   >

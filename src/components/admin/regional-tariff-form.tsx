@@ -12,6 +12,7 @@ type TariffRow = {
   id: string;
   province_id: number;
   city_id: number | null;
+  service_type: "NGOJEK" | "NGOMOBIL" | "PAKET";
   base_fare: number;
   price_per_km: number;
   merchant_markup: number;
@@ -36,6 +37,10 @@ export function RegionalTariffForm({
     startTransition(async () => {
       const result = await updateRegionalTariff({
         tariffId: formData.get("tariffId") || undefined,
+        serviceType: (formData.get("serviceType") || "NGOJEK") as
+          | "NGOJEK"
+          | "NGOMOBIL"
+          | "PAKET",
         provinceId: formData.get("provinceId"),
         cityId: formData.get("cityId") || null,
         baseFare: formData.get("baseFare"),
@@ -80,10 +85,11 @@ export function RegionalTariffForm({
           }}
         >
           <input type="hidden" name="tariffId" value={t.id} />
+          <input type="hidden" name="serviceType" value={t.service_type} />
           <input type="hidden" name="provinceId" value={t.province_id} />
           <input type="hidden" name="cityId" value={t.city_id ?? ""} />
           <p className="font-medium text-sm">
-            Provinsi {t.province_id}
+            {t.service_type} · Provinsi {t.province_id}
             {t.city_id ? ` · Kota ${t.city_id}` : " · (default provinsi)"}
           </p>
           <div className="grid gap-3 sm:grid-cols-3">

@@ -16,6 +16,18 @@ const ROLE_ROUTES: Record<string, UserRole> = {
   "/driver": "driver",
 };
 
+/** Satu pintu login admin — halaman ini tidak memerlukan sesi. */
+const ADMIN_AUTH_EXEMPT_PREFIXES = [
+  "/admin/login",
+  "/admin/mfa-verify",
+  "/admin/mfa-setup",
+  "/admin/mfa-challenge",
+] as const;
+
+function isAdminAuthExempt(pathname: string): boolean {
+  return ADMIN_AUTH_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 function withSecurity(res: NextResponse): NextResponse {
   return applySecurityHeaders(res);
 }
@@ -202,6 +214,54 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  /**
+   * SATPAM ADMIN — anti URL interception manual.
+   *
+   * Customer / Driver yang mengetik `/admin/dashboard` (atau path admin lain)
+   * tidak boleh masuk meski sudah login: langsung `/unauthorized`.
+   * Hanya `profiles.role === 'admin'` yang boleh melanjutkan (setelah MFA).
+   */
+  if (pathname.startsWith("/admin")) {
+    if (isAdminAuthExempt(pathname)) {
+      return forwardPathHeader(request, response);
+    }
+
+    if (!user) {
+      const login = new URL("/admin/login", request.url);
+      login.searchParams.set("redirect", pathname);
+      return withSecurity(NextResponse.redirect(login));
+    }
+
+    const { data: adminProfile } = await supabase
+      .from("profiles")
+      .select("role, account_status, suspended_until")
+      .eq("id", user.id)
+      .single();
+
+    const adminUserRole = adminProfile?.role as UserRole | undefined;
+
+    if (adminUserRole === "customer" || adminUserRole === "driver") {
+      return withSecurity(
+        NextResponse.redirect(new URL("/unauthorized", request.url))
+      );
+    }
+
+    if (adminUserRole !== SUPER_ADMIN_DB_ROLE) {
+      return withSecurity(
+        NextResponse.redirect(new URL("/unauthorized", request.url))
+      );
+    }
+
+    const needMfa = await requiresMfaStepUp(supabase);
+    if (needMfa) {
+      const mfaUrl = new URL("/admin/mfa-challenge", request.url);
+      mfaUrl.searchParams.set("redirect", pathname);
+      return withSecurity(NextResponse.redirect(mfaUrl));
+    }
+
+    return forwardPathHeader(request, response);
+  }
+
   const protectedPrefix = Object.keys(ROLE_ROUTES).find((p) =>
     pathname.startsWith(p)
   );
@@ -234,40 +294,10 @@ export async function middleware(request: NextRequest) {
       login.searchParams.set("have", userRole ?? "unknown");
       return withSecurity(NextResponse.redirect(login));
     }
-    if (requiredRole === SUPER_ADMIN_DB_ROLE) {
-      return withSecurity(NextResponse.redirect(new URL("/unauthorized", request.url)));
-    }
     const home = new URL("/", request.url);
     home.searchParams.set("error", "unauthorized");
     home.searchParams.set("need", requiredRole);
     return withSecurity(NextResponse.redirect(home));
-  }
-
-  /**
-   * MFA step-up untuk halaman admin.
-   * Kecualikan halaman verifikasi OTP agar tidak loop redirect.
-   */
-  if (
-    requiredRole === SUPER_ADMIN_DB_ROLE &&
-    pathname.startsWith("/admin") &&
-    !pathname.startsWith("/admin/mfa-verify") &&
-    !pathname.startsWith("/admin/mfa-setup") &&
-    !pathname.startsWith("/admin/mfa-challenge")
-  ) {
-    const needMfa = await requiresMfaStepUp(supabase);
-    if (needMfa) {
-      if (pathname.startsWith("/api/")) {
-        return withSecurity(
-          NextResponse.json(
-            { error: "Verifikasi MFA diperlukan", code: "MFA_REQUIRED" },
-            { status: 403 }
-          )
-        );
-      }
-      const mfaUrl = new URL("/admin/mfa-challenge", request.url);
-      mfaUrl.searchParams.set("redirect", pathname);
-      return withSecurity(NextResponse.redirect(mfaUrl));
-    }
   }
 
   if (

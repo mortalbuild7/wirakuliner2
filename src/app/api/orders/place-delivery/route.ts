@@ -7,7 +7,7 @@ import {
   checkFoodServiceAvailability,
   SERVICE_UNAVAILABLE_MSG,
 } from "@/lib/service-area";
-import { debitCustomerForOrder } from "@/lib/wallet";
+import { executeKulinerWalletPayment } from "@/lib/wallet/pay-kuliner-with-wallet";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -178,11 +178,39 @@ export async function POST(req: Request) {
     ? 0
     : distanceToZone(deliveryLat, deliveryLng, zone!.lat, zone!.lng);
   const deliveryFee = dineIn ? 0 : calculateDeliveryFee(distanceKm);
-  const orderTotal = promo.subtotalAfter + deliveryFee;
   const useWallet = body.paymentMethod === "wallet";
   const skipPayment =
     !useWallet &&
     (body.skipPayment === true || process.env.NEXT_PUBLIC_PAYMENT_BYPASS === "true");
+
+  if (useWallet) {
+    const walletResult = await executeKulinerWalletPayment(admin, user.id, {
+      merchantId: merchantId!,
+      items: lineInputs,
+      dineIn,
+      deliveryAddress: deliveryAddress ?? undefined,
+      deliveryLat: deliveryLat ?? undefined,
+      deliveryLng: deliveryLng ?? undefined,
+    });
+
+    if (!walletResult.ok) {
+      return secureJsonResponse(
+        { error: walletResult.error },
+        { status: walletResult.status ?? 400 }
+      );
+    }
+
+    return secureJsonResponse({
+      ok: true,
+      orderId: walletResult.orderId,
+      paid: true,
+      deliveryFee: walletResult.deliveryFee,
+      distanceKm: walletResult.distanceKm,
+      paymentMethod: "wallet",
+      amountCharged: walletResult.amountCharged,
+      driversNotified: walletResult.driversNotified,
+    });
+  }
 
   const { data: order, error: orderError } = await admin
     .from("orders")
@@ -201,8 +229,8 @@ export async function POST(req: Request) {
       delivery_lng: deliveryLng,
       distance_km: distanceKm,
       service_city_id: serviceArea.cityId,
-      payment_method: useWallet ? "wallet" : "gateway",
-      payment_gateway: useWallet ? "wallet" : skipPayment ? "test_bypass" : "midtrans",
+      payment_method: "gateway",
+      payment_gateway: skipPayment ? "test_bypass" : "midtrans",
     })
     .select("id")
     .single();
@@ -231,44 +259,6 @@ export async function POST(req: Request) {
       { error: itemsError.message ?? "Gagal menyimpan item pesanan" },
       { status: 500 }
     );
-  }
-
-  if (useWallet) {
-    try {
-      await debitCustomerForOrder(admin, user.id, orderTotal, order.id);
-    } catch (e) {
-      await admin.from("orders").delete().eq("id", order.id);
-      return secureJsonResponse(
-        { error: e instanceof Error ? e.message : "Gagal membayar dengan saldo" },
-        { status: 400 }
-      );
-    }
-
-    const { error: payError } = await admin
-      .from("orders")
-      .update({
-        order_status: "paid",
-        snap_token: `WALLET_${order.id}`,
-      })
-      .eq("id", order.id);
-
-    if (payError) {
-      return secureJsonResponse(
-        { error: payError.message ?? "Gagal mengonfirmasi pembayaran saldo" },
-        { status: 500 }
-      );
-    }
-
-    const notify = await notifyDriversNewOrder(order.id);
-    return secureJsonResponse({
-      ok: true,
-      orderId: order.id,
-      paid: true,
-      deliveryFee,
-      distanceKm,
-      paymentMethod: "wallet",
-      driversNotified: !("skipped" in notify && notify.skipped),
-    });
   }
 
   if (skipPayment) {

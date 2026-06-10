@@ -1,4 +1,5 @@
 import { getAuthDriverFromRequest } from "@/lib/driver-server";
+import { redactCustomerProfileForDriver } from "@/lib/privacy/phone-mask";
 import { isOfferExpired, offerSecondsLeft } from "@/lib/driver-order-offer";
 import { processExpiredOffersAndDispatch } from "@/lib/driver-dispatch";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -40,7 +41,10 @@ export async function GET(req: Request) {
     .maybeSingle();
 
   if (activeOrder) {
-    return secureJsonResponse({ activeOrder, incoming: [] });
+    return secureJsonResponse({
+      activeOrder: redactCustomerProfileForDriver(activeOrder),
+      incoming: [],
+    });
   }
 
   const isOnline = driver.status === "idle" || driver.status === "delivering";
@@ -64,7 +68,7 @@ export async function GET(req: Request) {
 
   return secureJsonResponse({
     activeOrder: null,
-    incoming,
+    incoming: incoming.map((o) => redactCustomerProfileForDriver(o)),
     offerSecondsLeft: incomingOffer?.offered_at
       ? offerSecondsLeft(incomingOffer.offered_at)
       : null,

@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { SERVICE_TYPES } from "@/lib/service-types";
 
 /** Anti parameter tampering — hanya field whitelist, angka non-negatif. */
 export const updateRegionalTariffSchema = z
   .object({
     tariffId: z.string().uuid("ID tarif tidak valid").optional(),
+    serviceType: z.enum(SERVICE_TYPES).default("NGOJEK"),
     provinceId: z.coerce.number().int().positive("province_id wajib positif"),
     cityId: z
       .union([z.coerce.number().int().positive(), z.null(), z.literal("")])

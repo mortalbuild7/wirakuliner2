@@ -15,7 +15,7 @@ import { sanitizeText } from "@/lib/security/validate";
 /**
  * Endpoint login khusus Panel Admin.
  *
- * Dipanggil dari halaman /login saat redirect=/admin agar:
+ * Dipanggil dari halaman `/admin/login` (satu pintu admin) agar:
  * - Rate limit Upstash (middleware) berlaku sebelum kredensial diproses
  * - Role SUPER_ADMIN diverifikasi server-side sebelum sesi diterima
  *
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
 
   return secureJsonResponse({
     ok: true,
-    redirect: "/admin",
+    redirect: "/admin/dashboard",
     userId: data.user.id,
   });
 }

@@ -12,6 +12,11 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 export type NegotiationRecordStatus = "pending" | "accepted" | "rejected";
+export type ServiceType = "NGOJEK" | "NGOMOBIL" | "PAKET";
+export type DriverServiceCategory =
+  | "MOTOR_HYBRID"
+  | "MOBIL_PASSENGER"
+  | "MOBIL_CARGO";
 
 export interface Profile {
   id: string;
@@ -78,11 +83,12 @@ export interface Driver {
   fcm_token: string | null;
   reward_points?: number;
   service_city_id?: string | null;
+  service_category?: DriverServiceCategory;
+  province_id?: number | null;
+  city_id?: number | null;
   created_at?: string;
   rating_avg?: number;
   rating_count?: number;
-  province_id?: number | null;
-  city_id?: number | null;
   gps_trust?: "OK" | "SUSPICIOUS";
   last_gps_ping_at?: string | null;
   last_gps_lat?: number | null;
@@ -154,7 +160,24 @@ export interface Order {
   offered_driver_id?: string | null;
   offered_at?: string | null;
   offer_skip_driver_ids?: string[];
+  service_type?: ServiceType | null;
+  total_volume_cm3?: number;
   merchants?: Merchant;
+}
+
+export interface OrderPackageDetails {
+  id: string;
+  order_id: string;
+  sender_name: string;
+  sender_phone: string;
+  recipient_name: string;
+  recipient_phone: string;
+  package_type: string;
+  weight_kg: number;
+  length_cm: number;
+  width_cm: number;
+  height_cm: number;
+  created_at: string;
 }
 
 export interface OrderItem {

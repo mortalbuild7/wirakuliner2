@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isNgojekOrder } from "@/lib/order-channel";
+import { isTransitOrder } from "@/lib/order-channel";
+import type { ServiceType } from "@/lib/service-types";
 
 /** Radius pencarian driver idle di sekitar titik order (km). */
 export const DISPATCH_SEARCH_RADIUS_KM = 15;
@@ -11,6 +12,7 @@ export type PriorityDriverRow = {
   completion_rate: number;
   acceptance_rate: number;
   average_rating: number;
+  service_category?: string;
 };
 
 /** Titik referensi jarak dispatch: jemput NGOJEK atau lokasi merchant. */
@@ -25,14 +27,14 @@ export async function resolveDispatchOrigin(
   const { data: order } = await admin
     .from("orders")
     .select(
-      "id, delivery_address, delivery_lat, delivery_lng, pickup_lat, pickup_lng, service_city_id, merchant_id, merchants(latitude, longitude)"
+      "id, delivery_address, delivery_lat, delivery_lng, pickup_lat, pickup_lng, service_city_id, service_type, total_volume_cm3, merchant_id, merchants(latitude, longitude)"
     )
     .eq("id", orderId)
     .maybeSingle();
 
   if (!order) return null;
 
-  if (isNgojekOrder(order.delivery_address ?? "")) {
+  if (isTransitOrder(order.delivery_address ?? "") || order.service_type) {
     const lat = order.pickup_lat ?? order.delivery_lat;
     const lng = order.pickup_lng ?? order.delivery_lng;
     if (lat == null || lng == null) return null;
@@ -68,8 +70,8 @@ export async function resolveDispatchOrigin(
 }
 
 /**
- * RPC `find_nearest_priority_drivers` — hasil ORDER BY priority_score DESC.
- * Indeks 0 = driver KPI terbaik dalam radius.
+ * RPC `find_nearest_priority_drivers_v2` — filter kategori kendaraan + KPI.
+ * Indeks 0 = driver KPI terbaik dalam radius untuk jenis layanan yang diminta.
  */
 export async function findPriorityDrivers(
   admin: SupabaseClient,
@@ -81,12 +83,18 @@ export async function findPriorityDrivers(
     serviceCityId?: string | null;
     limit?: number;
     offerTimeoutSeconds?: number;
+    requestedService?: ServiceType;
+    packageVolumeCm3?: number;
   }
 ): Promise<PriorityDriverRow[]> {
-  const { data, error } = await admin.rpc("find_nearest_priority_drivers", {
+  const service: ServiceType = opts.requestedService ?? "NGOJEK";
+
+  const { data, error } = await admin.rpc("find_nearest_priority_drivers_v2", {
     lat_customer: opts.lat,
     lng_customer: opts.lng,
     max_radius_km: opts.maxRadiusKm ?? DISPATCH_SEARCH_RADIUS_KM,
+    requested_service: service,
+    package_volume_cm3: opts.packageVolumeCm3 ?? 0,
     p_skip_driver_ids: opts.skipDriverIds ?? [],
     p_service_city_id: opts.serviceCityId ?? null,
     p_offer_timeout_seconds: opts.offerTimeoutSeconds ?? 15,
@@ -98,4 +106,34 @@ export async function findPriorityDrivers(
   }
 
   return (data ?? []) as PriorityDriverRow[];
+}
+
+/** Ambil service_type & volume dari order untuk dispatch v2. */
+export async function resolveOrderDispatchContext(
+  admin: SupabaseClient,
+  orderId: string
+): Promise<{
+  requestedService: ServiceType;
+  packageVolumeCm3: number;
+} | null> {
+  const { data: order } = await admin
+    .from("orders")
+    .select("service_type, total_volume_cm3, delivery_address")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!order) return null;
+
+  let service = order.service_type as ServiceType | null;
+  if (!service) {
+    const addr = order.delivery_address ?? "";
+    if (addr.startsWith("[NGOMOBIL]")) service = "NGOMOBIL";
+    else if (addr.startsWith("[PAKET]")) service = "PAKET";
+    else service = "NGOJEK";
+  }
+
+  return {
+    requestedService: service,
+    packageVolumeCm3: Number(order.total_volume_cm3 ?? 0),
+  };
 }

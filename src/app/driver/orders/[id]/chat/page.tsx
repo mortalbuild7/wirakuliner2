@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isNgojekOrder } from "@/lib/order-channel";
 import { Button } from "@/components/ui/button";
 import type { Order, OrderStatus } from "@/types/database";
+import { markDriverChatRead } from "@/hooks/use-driver-order-chat-notify";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 export default function DriverOrderChatPage() {
@@ -59,6 +60,7 @@ export default function DriverOrderChatPage() {
 
       setUserId(user.id);
       setOrder(o as Order);
+      markDriverChatRead(orderId);
       setLoading(false);
     }
 

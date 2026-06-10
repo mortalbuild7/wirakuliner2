@@ -21,7 +21,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/admin", label: "Analytics", icon: BarChart3, exact: true },
+  { href: "/admin/dashboard", label: "Dashboard", icon: BarChart3, exact: true },
   { href: "/admin/orders", label: "Pesanan", icon: ClipboardList },
   { href: "/admin/tariffs", label: "Tarif Regional", icon: SlidersHorizontal },
   { href: "/admin/merchants", label: "Merchants", icon: Store },
@@ -56,7 +56,7 @@ export function AdminSidebar({
         alert(j.error ?? "Gagal mengakhiri sesi");
         return;
       }
-      router.replace("/login?redirect=/admin");
+      router.replace("/admin/login");
       router.refresh();
     } catch {
       alert("Gagal mengakhiri sesi");

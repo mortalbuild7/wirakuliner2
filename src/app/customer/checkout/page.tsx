@@ -35,6 +35,7 @@ import {
   type PaymentMethodChoice,
 } from "@/components/wallet/payment-method-picker";
 import type { CartItem } from "@/types/database";
+import { payKulinerOrderWithWallet } from "@/app/actions/walletPaymentActions";
 import { CreditCard, MapPin, UserRound } from "lucide-react";
 import { useSingleMerchantRealtime } from "@/hooks/use-merchant-realtime";
 
@@ -241,6 +242,42 @@ function CheckoutForm() {
     setPlacing(true);
 
     try {
+      if (paymentMethod === "wallet") {
+        const walletResult = await payKulinerOrderWithWallet({
+          merchantId,
+          dineIn,
+          items: items.map((i: CartItem) => ({
+            productId: i.product.id,
+            quantity: i.quantity,
+          })),
+          deliveryAddress: deliveryAddr ?? undefined,
+          deliveryLat: lat,
+          deliveryLng: lng,
+        });
+
+        if (!walletResult.ok) {
+          setPlaceError(walletResult.error);
+          return;
+        }
+
+        localStorage.removeItem(`wira_cart_${merchantId}`);
+        try {
+          sessionStorage.setItem(
+            `wira_track_${walletResult.orderId}`,
+            JSON.stringify({
+              id: walletResult.orderId,
+              order_status: "paid",
+              merchant_id: merchantId,
+              delivery_address: deliveryAddr,
+            })
+          );
+        } catch {
+          /* ignore */
+        }
+        router.push(`/customer/orders/${walletResult.orderId}`);
+        return;
+      }
+
       const res = await fetch("/api/orders/place-delivery", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -251,15 +288,13 @@ function CheckoutForm() {
           items: items.map((i: CartItem) => ({
             productId: i.product.id,
             quantity: i.quantity,
-            price: i.product.price,
-            name: i.product.name,
           })),
           deliveryAddress: deliveryAddr,
           deliveryLat: lat,
           deliveryLng: lng,
           accuracyM: bestGpsAccuracyM ?? gpsAccuracyM,
           skipPayment: isPaymentBypassEnabled(),
-          paymentMethod: paymentMethod === "wallet" ? "wallet" : "gateway",
+          paymentMethod: "gateway",
         }),
       });
 

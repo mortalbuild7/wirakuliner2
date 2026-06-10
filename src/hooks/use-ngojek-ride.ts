@@ -4,22 +4,41 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { GeocodeHit } from "@/lib/geocode";
 import { haversineKm, JALAN_WIRA } from "@/lib/geo-config";
-import { describeDeliveryFee } from "@/lib/delivery-fee";
 import {
   buildPlaceRidePayload,
-  quoteNgojekRide,
-  validateNgojekBooking,
+  packageNeedsCargoVehicle,
+  packageVolumeCm3,
+  validateTransitBooking,
+  type PackageDetailsInput,
 } from "@/lib/ngojek-ride-logic";
+import { formatTransitAddressByService } from "@/lib/order-channel";
 import {
   createQrisPayment,
   isPaymentBypassEnabled,
 } from "@/lib/payment-flow";
+import {
+  PAKET_CARGO_VOLUME_THRESHOLD_CM3,
+  SERVICE_TYPE_LABEL,
+  type ServiceType,
+} from "@/lib/service-types";
 import type { QrisPaymentData } from "@/components/payment/qris-payment-panel";
 import type { PaymentMethodChoice } from "@/components/wallet/payment-method-picker";
 import { createClient } from "@/lib/supabase/client";
 import { useMapLocation } from "@/hooks/use-map-location";
 
 const REVERSE_MIN_KM = 0.025;
+
+const EMPTY_PACKAGE: PackageDetailsInput = {
+  senderName: "",
+  senderPhone: "",
+  recipientName: "",
+  recipientPhone: "",
+  packageType: "Dokumen",
+  weightKg: 1,
+  lengthCm: 30,
+  widthCm: 20,
+  heightCm: 10,
+};
 
 async function fetchServiceArea(lat: number, lng: number) {
   const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
@@ -44,13 +63,16 @@ async function reverseGeocode(lat: number, lng: number): Promise<GeocodeHit | nu
   return json.results?.[0] ?? null;
 }
 
-/** State & logika bisnis NGOJEK — dipakai oleh `NgojekRideForm`. */
+/** State & logika bisnis transit (NGOJEK / NGOMOBIL / PAKET). */
 export function useNgojekRide() {
   const router = useRouter();
   const supabase = createClient();
 
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [serviceType, setServiceType] = useState<ServiceType>("NGOJEK");
+  const [packageDetails, setPackageDetails] =
+    useState<PackageDetailsInput>(EMPTY_PACKAGE);
 
   const [pickupAddress, setPickupAddress] = useState("Lokasi saya");
   const [pickupLat, setPickupLat] = useState(JALAN_WIRA.latitude);
@@ -76,6 +98,11 @@ export function useNgojekRide() {
   const [geocodingDest, setGeocodingDest] = useState(false);
   const [mapFlyTrigger, setMapFlyTrigger] = useState(0);
 
+  const [distanceKm, setDistanceKm] = useState(0);
+  const [rideFee, setRideFee] = useState(0);
+  const [feeDescription, setFeeDescription] = useState("Menghitung tarif...");
+  const [quoting, setQuoting] = useState(false);
+
   const skipForwardGeocodeRef = useRef(false);
   const destFromPinRef = useRef(false);
   const forwardGeocodeGenRef = useRef(0);
@@ -87,21 +114,25 @@ export function useNgojekRide() {
 
   const { fix: gpsFix, loading: gpsLoading } = useMapLocation(true);
 
-  const { distanceKm, rideFee } = useMemo(
-    () =>
-      quoteNgojekRide({
-        pickupLat,
-        pickupLng,
-        destLat,
-        destLng,
-      }),
-    [pickupLat, pickupLng, destLat, destLng]
-  );
-
   const areaAvailable = pickupAreaOk && destAreaOk && sameCityOk;
-  const feeDescription = useMemo(
-    () => describeDeliveryFee(distanceKm),
-    [distanceKm]
+
+  const packageVolume = useMemo(() => {
+    if (serviceType !== "PAKET") return 0;
+    return packageVolumeCm3(packageDetails);
+  }, [serviceType, packageDetails]);
+
+  const needsCargoVehicle = useMemo(() => {
+    if (serviceType !== "PAKET") return false;
+    return packageNeedsCargoVehicle(packageDetails);
+  }, [serviceType, packageDetails]);
+
+  const serviceLabel = SERVICE_TYPE_LABEL[serviceType];
+
+  const updatePackageField = useCallback(
+    <K extends keyof PackageDetailsInput>(key: K, value: PackageDetailsInput[K]) => {
+      setPackageDetails((prev) => ({ ...prev, [key]: value }));
+    },
+    []
   );
 
   useEffect(() => {
@@ -121,7 +152,60 @@ export function useNgojekRide() {
       .catch(() => {});
   }, [userId]);
 
-  /** Cek wilayah jemput + tujuan + kota layanan sama. */
+  /** Preview tarif dari server (regional_tariffs per service_type). */
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setQuoting(true);
+        try {
+          const res = await fetch("/api/orders/quote-transit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              pickupLat,
+              pickupLng,
+              destinationLat: destLat,
+              destinationLng: destLng,
+              serviceType,
+            }),
+          });
+          const json = (await res.json().catch(() => ({}))) as {
+            distanceKm?: number;
+            rideFee?: number;
+            feeDescription?: string;
+            areaAvailable?: boolean;
+            areaMessage?: string;
+            tooClose?: boolean;
+            tooFar?: boolean;
+          };
+          if (cancelled) return;
+
+          setDistanceKm(Number(json.distanceKm ?? 0));
+          setRideFee(Number(json.rideFee ?? 0));
+          if (json.feeDescription) setFeeDescription(json.feeDescription);
+          if (json.areaAvailable === false && json.areaMessage) {
+            setAreaMessage(json.areaMessage);
+          }
+        } catch {
+          if (!cancelled) {
+            const km = haversineKm(pickupLat, pickupLng, destLat, destLng);
+            setDistanceKm(km);
+            setFeeDescription("Gagal memuat tarif — coba lagi");
+          }
+        } finally {
+          if (!cancelled) setQuoting(false);
+        }
+      })();
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [pickupLat, pickupLng, destLat, destLng, serviceType]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -144,7 +228,7 @@ export function useNgojekRide() {
       if (!pickupOk) {
         setAreaMessage(pickup?.message ?? "Jemput di luar wilayah layanan");
       } else if (!destOk) {
-        setAreaMessage("Tujuan di luar wilayah layanan NGOJEK");
+        setAreaMessage("Tujuan di luar wilayah layanan");
       } else if (!sameCity) {
         setAreaMessage("Jemput dan tujuan harus dalam kota layanan yang sama");
       } else {
@@ -321,24 +405,30 @@ export function useNgojekRide() {
   const saveTrackSnapshot = useCallback(
     (orderId: string) => {
       try {
+        const addr = formatTransitAddressByService(
+          serviceType,
+          pickupAddress.trim() || "Lokasi jemput",
+          destAddress.trim()
+        );
         sessionStorage.setItem(
           `wira_track_${orderId}`,
           JSON.stringify({
             id: orderId,
             order_status: "paid",
-            delivery_address: `[NGOJEK] ${pickupAddress.trim() || "Lokasi jemput"} → ${destAddress.trim()}`,
+            delivery_address: addr,
           })
         );
       } catch {
         /* ignore */
       }
     },
-    [pickupAddress, destAddress]
+    [pickupAddress, destAddress, serviceType]
   );
 
   const bookRide = useCallback(async () => {
-    const validation = validateNgojekBooking({
+    const validation = validateTransitBooking({
       userId,
+      serviceType,
       destinationAddress: destAddress,
       distanceKm,
       pickupInServiceArea: pickupAreaOk,
@@ -347,6 +437,7 @@ export function useNgojekRide() {
       paymentMethod,
       walletBalance,
       rideFee,
+      packageDetails: serviceType === "PAKET" ? packageDetails : null,
     });
 
     if (!validation.ok) {
@@ -371,6 +462,8 @@ export function useNgojekRide() {
         destLng,
         paymentMethod,
         paymentBypass: isPaymentBypassEnabled(),
+        serviceType,
+        packageDetails: serviceType === "PAKET" ? packageDetails : undefined,
       });
 
       const res = await fetch("/api/orders/place-ride", {
@@ -389,7 +482,7 @@ export function useNgojekRide() {
       };
 
       if (!res.ok) {
-        setPlaceError(json.error ?? "Gagal memesan NGOJEK");
+        setPlaceError(json.error ?? `Gagal memesan ${serviceLabel}`);
         return;
       }
 
@@ -439,6 +532,8 @@ export function useNgojekRide() {
     }
   }, [
     userId,
+    serviceType,
+    serviceLabel,
     destAddress,
     distanceKm,
     pickupAreaOk,
@@ -447,6 +542,7 @@ export function useNgojekRide() {
     paymentMethod,
     walletBalance,
     rideFee,
+    packageDetails,
     pickupAddress,
     pickupLat,
     pickupLng,
@@ -466,6 +562,14 @@ export function useNgojekRide() {
   return {
     authReady,
     userId,
+    serviceType,
+    setServiceType,
+    serviceLabel,
+    packageDetails,
+    updatePackageField,
+    packageVolume,
+    needsCargoVehicle,
+    cargoVolumeThreshold: PAKET_CARGO_VOLUME_THRESHOLD_CM3,
     pickupAddress,
     setPickupAddress,
     pickupLat,
@@ -488,6 +592,7 @@ export function useNgojekRide() {
     geocodingDest,
     mapFlyTrigger,
     gpsLoading,
+    quoting,
     distanceKm,
     rideFee,
     feeDescription,

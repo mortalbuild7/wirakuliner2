@@ -16,7 +16,7 @@ import { isDriverAppEnabledClient } from "@/lib/feature-flags";
 import { LogIn, Store, Shield, UtensilsCrossed, Bike } from "lucide-react";
 
 const ROLE_REDIRECT: Record<UserRole, string> = {
-  admin: "/admin",
+  admin: "/admin/dashboard",
   merchant: "/merchant",
   customer: "/customer",
   driver: "/driver",
@@ -50,23 +50,9 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     try {
-      /** Login admin lewat API agar rate limit Upstash (3×/5 menit/IP) berlaku. */
+      /** Admin punya pintu login terpusat — `/admin/login`. */
       if (redirect.startsWith("/admin")) {
-        const res = await fetch("/api/admin/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ email, password }),
-        });
-        const json = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          redirect?: string;
-        };
-        if (!res.ok) {
-          alert(json.error ?? "Login admin gagal");
-          return;
-        }
-        window.location.assign(json.redirect ?? redirect);
+        window.location.assign(`/admin/login?redirect=${encodeURIComponent(redirect)}`);
         return;
       }
 

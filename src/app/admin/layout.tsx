@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { headers } from "next/headers";
-import { AdminSidebar } from "@/components/admin/admin-sidebar";
+import { Sidebar } from "@/components/admin/Sidebar";
 import { assertAdminPage } from "@/lib/admin-auth";
 
 /**
@@ -15,23 +15,21 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = (await headers()).get("x-pathname") ?? "";
-  const isMfaFlow =
+  const isAuthOnlyPage =
+    pathname.startsWith("/admin/login") ||
     pathname.startsWith("/admin/mfa-verify") ||
     pathname.startsWith("/admin/mfa-setup") ||
     pathname.startsWith("/admin/mfa-challenge");
 
-  const session = await assertAdminPage();
-
-  if (isMfaFlow) {
+  if (isAuthOnlyPage) {
     return <div className="min-h-screen bg-background">{children}</div>;
   }
 
-  const hiddenHrefs =
-    session.adminRole !== "SUPER_ADMIN" ? ["/admin/finance"] : [];
+  await assertAdminPage();
 
   return (
     <div className="min-h-screen md:flex">
-      <AdminSidebar hiddenHrefs={hiddenHrefs} />
+      <Sidebar />
       <div className="flex-1 bg-background">{children}</div>
     </div>
   );

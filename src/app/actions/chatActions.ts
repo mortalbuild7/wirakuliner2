@@ -9,7 +9,7 @@
  *
  * Lapisan keamanan:
  * 1. Zod strict — whitelist field, batas panjang
- * 2. sanitizePublicText — strip HTML/event handler (Anti-XSS)
+ * 2. Zod transform + sanitizeChatMessageForStorage — strip tag & escape HTML (Anti-XSS)
  * 3. Verifikasi partisipan (customer_id / driver_id) di server
  * 4. Cek status order aktif sebelum insert
  * 5. Insert via klien user → RLS + trigger DB sebagai belt-and-suspenders
@@ -17,7 +17,6 @@
 
 import { sendChatMessageSchema } from "@/lib/chat/chat-schemas";
 import { isOrderChatOpen } from "@/lib/order-chat";
-import { sanitizePublicText } from "@/lib/security/sanitize";
 import { createClient } from "@/lib/supabase/server";
 
 export type ChatActionResult =
@@ -34,10 +33,7 @@ export async function sendChatMessage(
     return { ok: false, error: msg || "Payload tidak valid", status: 400 };
   }
 
-  const cleaned = sanitizePublicText(parsed.data.message, 1000);
-  if (!cleaned) {
-    return { ok: false, error: "Pesan mengandung karakter tidak diizinkan", status: 400 };
-  }
+  const cleaned = parsed.data.message;
 
   const supabase = await createClient();
   const {

@@ -4,6 +4,7 @@ import {
   DISPATCH_SEARCH_RADIUS_KM,
   findPriorityDrivers,
   resolveDispatchOrigin,
+  resolveOrderDispatchContext,
 } from "@/lib/driver-dispatch-pick";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -62,23 +63,27 @@ async function pickNextDriver(
     return { driverId: null, changed: false };
   }
 
-  let drivers = await findPriorityDrivers(admin, {
+  const dispatchCtx = await resolveOrderDispatchContext(admin, orderId);
+
+  const driverOpts = {
     lat: origin.lat,
     lng: origin.lng,
     maxRadiusKm: DISPATCH_SEARCH_RADIUS_KM,
-    skipDriverIds: skipIds,
     serviceCityId: serviceCityId ?? origin.serviceCityId,
     limit: 1,
+    requestedService: dispatchCtx?.requestedService ?? ("NGOJEK" as const),
+    packageVolumeCm3: dispatchCtx?.packageVolumeCm3 ?? 0,
+  };
+
+  let drivers = await findPriorityDrivers(admin, {
+    ...driverOpts,
+    skipDriverIds: skipIds,
   });
 
   if (!drivers.length && skipIds.length > 0) {
     drivers = await findPriorityDrivers(admin, {
-      lat: origin.lat,
-      lng: origin.lng,
-      maxRadiusKm: DISPATCH_SEARCH_RADIUS_KM,
+      ...driverOpts,
       skipDriverIds: [],
-      serviceCityId: serviceCityId ?? origin.serviceCityId,
-      limit: 1,
     });
   }
 

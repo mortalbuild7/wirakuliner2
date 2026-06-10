@@ -42,8 +42,15 @@ export async function updateRegionalTariff(
     return { ok: false, error: msg || "Payload tidak valid" };
   }
 
-  const { provinceId, cityId, baseFare, pricePerKm, merchantMarkup, tariffId } =
-    parsed.data;
+  const {
+    provinceId,
+    cityId,
+    baseFare,
+    pricePerKm,
+    merchantMarkup,
+    tariffId,
+    serviceType,
+  } = parsed.data;
 
   if (
     auth.adminRole === "PROVINCE_ADMIN" &&
@@ -76,6 +83,7 @@ export async function updateRegionalTariff(
   const patch = {
     province_id: provinceId,
     city_id: cityId ?? null,
+    service_type: serviceType,
     base_fare: baseFare,
     price_per_km: pricePerKm,
     merchant_markup: merchantMarkup,
@@ -90,13 +98,31 @@ export async function updateRegionalTariff(
       .from("regional_tariffs")
       .update(patch)
       .eq("id", tariffId)
-      .eq("province_id", provinceId);
+      .eq("province_id", provinceId)
+      .eq("service_type", serviceType);
     errorMsg = error?.message ?? null;
   } else {
-    const { error } = await admin
+    let lookup = admin
       .from("regional_tariffs")
-      .upsert(patch, { onConflict: "province_id,city_id" });
-    errorMsg = error?.message ?? null;
+      .select("id")
+      .eq("province_id", provinceId)
+      .eq("service_type", serviceType);
+
+    lookup =
+      cityId == null ? lookup.is("city_id", null) : lookup.eq("city_id", cityId);
+
+    const { data: existing } = await lookup.maybeSingle();
+
+    if (existing?.id) {
+      const { error } = await admin
+        .from("regional_tariffs")
+        .update(patch)
+        .eq("id", existing.id);
+      errorMsg = error?.message ?? null;
+    } else {
+      const { error } = await admin.from("regional_tariffs").insert(patch);
+      errorMsg = error?.message ?? null;
+    }
   }
 
   if (errorMsg) {
@@ -108,10 +134,10 @@ export async function updateRegionalTariff(
     adminRole: auth.adminRole,
     action: "UPDATE_REGIONAL_TARIFF",
     entityTable: "regional_tariffs",
-    entityId: tariffId ?? `${provinceId}:${cityId ?? "provincial"}`,
+    entityId: tariffId ?? `${provinceId}:${cityId ?? "provincial"}:${serviceType}`,
     provinceId,
     cityId: cityId ?? null,
-    payload: { baseFare, pricePerKm, merchantMarkup },
+    payload: { serviceType, baseFare, pricePerKm, merchantMarkup },
   });
 
   revalidatePath("/admin/tariffs");

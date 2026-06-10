@@ -47,7 +47,7 @@ export function CustomerExploreNav({ active }: { active: ExploreSection }) {
         >
           <span className="flex items-center gap-1.5 text-sm font-bold">
             <Bike className="h-5 w-5" aria-hidden />
-            NGOJEK
+            WIRA Ride
           </span>
           <span
             className={cn(
@@ -55,7 +55,7 @@ export function CustomerExploreNav({ active }: { active: ExploreSection }) {
               active === "ngojek" ? "text-slate-800/80" : "text-muted-foreground"
             )}
           >
-            Ojek online
+            NGOJEK · Mobil · Paket
           </span>
         </Link>
       </div>

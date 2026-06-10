@@ -13,9 +13,12 @@ export default async function AdminTariffsPage() {
 
   let query = supabase
     .from("regional_tariffs")
-    .select("id, province_id, city_id, base_fare, price_per_km, merchant_markup")
+    .select(
+      "id, province_id, city_id, service_type, base_fare, price_per_km, merchant_markup"
+    )
     .order("province_id")
-    .order("city_id", { ascending: true, nullsFirst: true });
+    .order("city_id", { ascending: true, nullsFirst: true })
+    .order("service_type");
 
   if (session.adminRole === "PROVINCE_ADMIN" && session.provinceId != null) {
     query = query.eq("province_id", session.provinceId);
@@ -44,6 +47,7 @@ export default async function AdminTariffsPage() {
             id: string;
             province_id: number;
             city_id: number | null;
+            service_type: "NGOJEK" | "NGOMOBIL" | "PAKET";
             base_fare: number;
             price_per_km: number;
             merchant_markup: number;

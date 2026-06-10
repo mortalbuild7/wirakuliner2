@@ -1,4 +1,5 @@
 import { getAuthDriverFromRequest } from "@/lib/driver-server";
+import { redactCustomerProfileForDriver } from "@/lib/privacy/phone-mask";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   enforceMethod,
@@ -51,5 +52,5 @@ export async function GET(
     return secureJsonResponse({ error: "Pesanan tidak tersedia" }, { status: 403 });
   }
 
-  return secureJsonResponse({ order });
+  return secureJsonResponse({ order: redactCustomerProfileForDriver(order) });
 }

@@ -224,13 +224,9 @@ export default function DriverOrderDetailPage() {
               <p className="font-medium text-white">{isRide ? "Penumpang" : "Customer"}</p>
               <p className="text-sm font-semibold text-cyan-200">{customer.name}</p>
               {customer.phone && (
-                <a
-                  href={`tel:${customer.phone}`}
-                  className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-300 hover:underline"
-                >
-                  <Phone className="h-3 w-3" />
-                  {customer.phone}
-                </a>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  HP: {customer.phone} · gunakan chat in-app untuk kontak
+                </p>
               )}
             </div>
           </div>

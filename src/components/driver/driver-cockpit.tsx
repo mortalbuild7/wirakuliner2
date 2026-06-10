@@ -34,7 +34,6 @@ import {
   MapPin,
   Navigation,
   Package,
-  Phone,
   Store,
   User,
   Wallet,
@@ -55,6 +54,8 @@ import {
 import { offerSecondsLeft } from "@/lib/driver-order-offer";
 import { WalletWithdrawPanel } from "@/components/wallet/wallet-withdraw-panel";
 import { ReceivedReviewsPanel } from "@/components/ratings/received-reviews-panel";
+import { DriverOrderChatButton } from "@/components/driver/driver-order-chat-button";
+import { useDriverOrderChatNotify } from "@/hooks/use-driver-order-chat-notify";
 
 type Tab = "map" | "profile";
 
@@ -133,6 +134,11 @@ export function DriverCockpit() {
 
   const isOnline = driver?.status === "idle" || driver?.status === "delivering";
   const hasActive = Boolean(activeOrder);
+
+  const { unread: chatUnread } = useDriverOrderChatNotify(
+    activeOrder?.id,
+    userId
+  );
 
   const mapGps = useDriverMapLocation(Boolean(driver && tab === "map"));
 
@@ -682,6 +688,18 @@ export function DriverCockpit() {
             </div>
           )}
 
+          {hasActive && activeOrder && (
+            <div className="absolute right-4 top-3 z-20">
+              <DriverOrderChatButton
+                compact
+                orderId={activeOrder.id}
+                orderStatus={activeOrder.order_status}
+                driverId={activeOrder.driver_id}
+                unread={chatUnread}
+              />
+            </div>
+          )}
+
           {arrivedNotice && !navMode && (
             <div className="pointer-events-none absolute inset-x-4 top-3 z-10 rounded-2xl border border-emerald-400/50 bg-emerald-950/90 px-4 py-2.5 text-center shadow-lg">
               <p className="text-sm font-medium text-emerald-100">{arrivedNotice}</p>
@@ -733,7 +751,6 @@ export function DriverCockpit() {
               {offerCustomer && (
                 <p className="mt-2 text-sm font-medium text-cyan-200">
                   {offerIsNgojek ? "Penumpang" : "Customer"}: {offerCustomer.name}
-                  {offerCustomer.phone ? ` · ${offerCustomer.phone}` : ""}
                 </p>
               )}
               <div className="mt-2">
@@ -897,13 +914,9 @@ export function DriverCockpit() {
                     </p>
                     <p className="mt-0.5 font-medium text-white">{activeCustomer.name}</p>
                     {activeCustomer.phone && (
-                      <a
-                        href={`tel:${activeCustomer.phone}`}
-                        className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-300 hover:underline"
-                      >
-                        <Phone className="h-3 w-3" />
-                        {activeCustomer.phone}
-                      </a>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        HP: {activeCustomer.phone} · hubungi via chat in-app
+                      </p>
                     )}
                   </div>
                 )}
@@ -948,6 +961,14 @@ export function DriverCockpit() {
                   {activeIsNgojek ? "tarif ride" : "total"}
                 </span>
               </p>
+
+              <DriverOrderChatButton
+                className="mt-3"
+                orderId={activeOrder.id}
+                orderStatus={activeOrder.order_status}
+                driverId={activeOrder.driver_id}
+                unread={chatUnread}
+              />
 
               <div className="mt-3 flex flex-wrap gap-2">
                 {(activeIsNgojek
@@ -1002,13 +1023,9 @@ export function DriverCockpit() {
                       {activeCustomer?.name ?? "Penumpang"}
                     </p>
                     {activeCustomer?.phone && (
-                      <a
-                        href={`tel:${activeCustomer.phone}`}
-                        className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-300 hover:underline"
-                      >
-                        <Phone className="h-3 w-3" />
-                        {activeCustomer.phone}
-                      </a>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        HP: {activeCustomer.phone}
+                      </p>
                     )}
                   </div>
                   <Button

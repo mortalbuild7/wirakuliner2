@@ -12,9 +12,9 @@ export default function UnauthorizedPage() {
       <div className="max-w-md space-y-2">
         <h1 className="text-2xl font-semibold">Akses Ditolak</h1>
         <p className="text-muted-foreground">
-          Anda tidak memiliki hak SUPER_ADMIN untuk mengakses wilayah ini.
-          Status role diverifikasi di server — manipulasi dari browser tidak
-          berpengaruh.
+          Anda tidak memiliki hak admin untuk mengakses wilayah ini. Customer dan
+          driver tidak dapat membuka URL panel admin secara manual. Status role
+          diverifikasi di server — manipulasi dari browser tidak berpengaruh.
         </p>
       </div>
       <div className="flex gap-3">
@@ -22,7 +22,7 @@ export default function UnauthorizedPage() {
           <Link href="/">Beranda</Link>
         </Button>
         <Button asChild>
-          <Link href="/login?redirect=/admin">Login Admin</Link>
+          <Link href="/admin/login">Login Admin</Link>
         </Button>
       </div>
     </div>

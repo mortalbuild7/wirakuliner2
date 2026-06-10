@@ -4,7 +4,10 @@ import type { OrderStatus } from "@/types/database";
  * Status order saat chat customer ↔ driver boleh aktif.
  * Setara PICKING_UP / DELIVERING pada spesifikasi bisnis.
  */
+/** Chat aktif sejak driver ditugaskan hingga selesai perjalanan. */
 export const ORDER_CHAT_OPEN_STATUSES: OrderStatus[] = [
+  "paid",
+  "preparing",
   "ready_for_pickup",
   "on_the_way",
 ];
