@@ -33,30 +33,20 @@ export function customerPickupIcon(bearingDeg?: number): L.DivIcon {
   });
 }
 
-const MOTORCYCLE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="6.5" cy="17.5" r="3.25" fill="currentColor" stroke="none"/>
-  <circle cx="17.5" cy="17.5" r="3.25" fill="currentColor" stroke="none"/>
-  <circle cx="6.5" cy="17.5" r="1.4" fill="#047857" stroke="none"/>
-  <circle cx="17.5" cy="17.5" r="1.4" fill="#047857" stroke="none"/>
-  <path d="M9.5 17.5h2"/>
-  <path d="M13 17.5h1.5"/>
-  <path d="M6.5 14.2 9 8.5h3.5l1.8 3.2h4.2"/>
-  <path d="M14.3 8.5 17 5.5"/>
-  <path d="M12.5 5.5h2.8"/>
-  <path d="M11 8.5V6.2"/>
-</svg>`;
+/** PNG custom — lingkaran hijau + panah arah (public/markers/driver-gps.png). */
+const DRIVER_GPS_MARKER_URL = "/markers/driver-gps.png";
+const DRIVER_MARKER_SIZE = 48;
 
-/** Ikon motor driver — berputar mengikuti arah navigasi. */
+/** Marker driver — gambar GPS custom, berputar mengikuti arah navigasi. */
 export function driverMotorcycleIcon(bearingDeg?: number): L.DivIcon {
-  const rotation = bearingDeg != null ? `transform:rotate(${bearingDeg}deg);` : "";
+  const rotation =
+    bearingDeg != null ? `transform:rotate(${bearingDeg}deg);` : "";
   return L.divIcon({
     className: "",
-    html: `<div style="display:flex;height:50px;width:50px;align-items:center;justify-content:center;${rotation}">
-      <div style="display:flex;height:44px;width:44px;align-items:center;justify-content:center;border-radius:14px;background:linear-gradient(145deg,#10b981 0%,#047857 100%);color:#ecfdf5;box-shadow:0 4px 16px rgba(16,185,129,.55);border:2px solid #6ee7b7">
-        ${MOTORCYCLE_SVG}
-      </div>
+    html: `<div style="display:flex;width:${DRIVER_MARKER_SIZE}px;height:${DRIVER_MARKER_SIZE}px;align-items:center;justify-content:center;${rotation}">
+      <img src="${DRIVER_GPS_MARKER_URL}" alt="" width="${DRIVER_MARKER_SIZE}" height="${DRIVER_MARKER_SIZE}" draggable="false" style="display:block;pointer-events:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.35));" />
     </div>`,
-    iconSize: [50, 50],
-    iconAnchor: [25, 25],
+    iconSize: [DRIVER_MARKER_SIZE, DRIVER_MARKER_SIZE],
+    iconAnchor: [DRIVER_MARKER_SIZE / 2, DRIVER_MARKER_SIZE / 2],
   });
 }

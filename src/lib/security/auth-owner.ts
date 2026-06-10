@@ -5,16 +5,18 @@ import { secureJsonResponse } from "@/lib/security/enforce";
 import type { WalletOwnerType } from "@/lib/wallet";
 
 /**
- * IDOR / BOLA — JANGAN percaya owner_id / driver_id / merchant_id dari body frontend.
- * Field ini sering dikirim attacker untuk mengakses objek milik user lain.
+ * IDOR / BOLA — JANGAN percaya identitas pemilik dari body frontend.
+ * Field ini bisa disisipkan attacker untuk mengakses/mutasi objek milik user lain.
+ *
+ * Catatan: `merchantId` / `merchant_id` SENGAJA tidak masuk daftar ini —
+ * saat customer pesan kuliner, ID toko adalah data bisnis (toko mana yang dipesan),
+ * bukan identitas login. `customer_id` tetap diambil dari JWT di server.
  */
 const FORBIDDEN_OWNER_BODY_KEYS = [
   "ownerId",
   "owner_id",
   "driverId",
   "driver_id",
-  "merchantId",
-  "merchant_id",
   "customerId",
   "customer_id",
   "userId",
