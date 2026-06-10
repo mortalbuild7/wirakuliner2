@@ -77,43 +77,71 @@ export async function POST(req: Request) {
     });
   }
 
-  const admin = createAdminClient();
-  const serviceArea = await checkRideServiceAvailability(
-    admin,
-    pickupLat,
-    pickupLng,
-    destinationLat,
-    destinationLng
-  );
+  try {
+    const admin = createAdminClient();
+    const serviceArea = await checkRideServiceAvailability(
+      admin,
+      pickupLat,
+      pickupLng,
+      destinationLat,
+      destinationLng
+    );
 
-  if (!serviceArea.available) {
+    if (!serviceArea.available) {
+      return secureJsonResponse({
+        distanceKm,
+        rideFee: 0,
+        areaAvailable: false,
+        areaMessage: serviceArea.message ?? "Layanan tidak tersedia di wilayah ini",
+      });
+    }
+
+    const { provinceId, cityId } = await resolveRegionalIdsFromServiceCity(
+      admin,
+      serviceArea.cityId
+    );
+
+    const tariff =
+      provinceId != null
+        ? await fetchRegionalTransitTariff(admin, provinceId, cityId, serviceType)
+        : null;
+
+    const fallbackBase =
+      serviceType === "NGOMOBIL" ? 15_000 : serviceType === "PAKET" ? 12_000 : 10_000;
+    const fallbackPerKm =
+      serviceType === "NGOMOBIL" ? 2_700 : serviceType === "PAKET" ? 2_300 : 2_000;
+
+    const rideFee = computeTransitFareFromTariff(
+      tariff,
+      distanceKm,
+      fallbackBase,
+      fallbackPerKm
+    );
+    const base = tariff ? Number(tariff.base_fare) : fallbackBase;
+    const perKm = tariff ? Number(tariff.price_per_km) : fallbackPerKm;
+
     return secureJsonResponse({
       distanceKm,
-      rideFee: 0,
-      areaAvailable: false,
-      areaMessage: serviceArea.message ?? "Layanan tidak tersedia di wilayah ini",
+      rideFee,
+      serviceType,
+      areaAvailable: true,
+      feeDescription: `Rp ${base.toLocaleString("id-ID")} + Rp ${perKm.toLocaleString("id-ID")}/km × ${distanceKm.toFixed(2)} km`,
+    });
+  } catch (err) {
+    const fallbackBase =
+      serviceType === "NGOMOBIL" ? 15_000 : serviceType === "PAKET" ? 12_000 : 10_000;
+    const fallbackPerKm =
+      serviceType === "NGOMOBIL" ? 2_700 : serviceType === "PAKET" ? 2_300 : 2_000;
+    const rideFee = computeTransitFareFromTariff(null, distanceKm, fallbackBase, fallbackPerKm);
+
+    return secureJsonResponse({
+      distanceKm,
+      rideFee,
+      serviceType,
+      areaAvailable: true,
+      feeDescription: `Rp ${fallbackBase.toLocaleString("id-ID")} + Rp ${fallbackPerKm.toLocaleString("id-ID")}/km × ${distanceKm.toFixed(2)} km`,
+      warning:
+        err instanceof Error ? err.message : "Tarif estimasi — konfigurasi wilayah belum lengkap",
     });
   }
-
-  const { provinceId, cityId } = await resolveRegionalIdsFromServiceCity(
-    admin,
-    serviceArea.cityId
-  );
-
-  const tariff =
-    provinceId != null
-      ? await fetchRegionalTransitTariff(admin, provinceId, cityId, serviceType)
-      : null;
-
-  const rideFee = computeTransitFareFromTariff(tariff, distanceKm);
-  const base = tariff ? Number(tariff.base_fare) : 10_000;
-  const perKm = tariff ? Number(tariff.price_per_km) : 2_000;
-
-  return secureJsonResponse({
-    distanceKm,
-    rideFee,
-    serviceType,
-    areaAvailable: true,
-    feeDescription: `Rp ${base.toLocaleString("id-ID")} + Rp ${perKm.toLocaleString("id-ID")}/km × ${distanceKm.toFixed(2)} km`,
-  });
 }

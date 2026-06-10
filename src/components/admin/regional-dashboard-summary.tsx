@@ -83,7 +83,7 @@ export function RegionalDashboardSummary({
           </div>
           <div className="mt-4">
             <Button asChild variant="outline">
-              <Link href="/admin/dashboard/maps">Buka Peta Live Driver</Link>
+              <Link href="/admin/maps">Buka Peta Live Driver</Link>
             </Button>
           </div>
         </>
@@ -142,7 +142,7 @@ export function RegionalDashboardSummary({
               <Link href="/admin/drivers/verification">Proses Verifikasi Berkas</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/admin/dashboard/maps">Peta Live Kota</Link>
+              <Link href="/admin/maps">Peta Live Kota</Link>
             </Button>
           </div>
         </>

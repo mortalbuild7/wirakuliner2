@@ -91,7 +91,7 @@ export async function POST(req: Request) {
 
   return secureJsonResponse({
     ok: true,
-    redirect: "/admin/dashboard",
+    redirect: "/admin",
     userId: data.user.id,
   });
 }

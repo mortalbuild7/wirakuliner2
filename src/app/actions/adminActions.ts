@@ -77,7 +77,7 @@ export async function verifyMerchant(
     return { ok: false, error: updateErr.message };
   }
 
-  revalidatePath("/admin/dashboard/merchants");
+  revalidatePath("/admin/merchants");
   return { ok: true, message: "Status verifikasi merchant diperbarui" };
 }
 
@@ -132,6 +132,6 @@ export async function verifyDriver(raw: unknown): Promise<AdminActionResult> {
     return { ok: false, error: updateErr.message };
   }
 
-  revalidatePath("/admin/dashboard/drivers");
+  revalidatePath("/admin/drivers");
   return { ok: true, message: "Data driver diperbarui" };
 }

@@ -24,9 +24,26 @@ import {
 import type { QrisPaymentData } from "@/components/payment/qris-payment-panel";
 import type { PaymentMethodChoice } from "@/components/wallet/payment-method-picker";
 import { createClient } from "@/lib/supabase/client";
-import { useMapLocation } from "@/hooks/use-map-location";
 
 const REVERSE_MIN_KM = 0.025;
+/** Perubahan jemput di bawah ini tidak memicu ulang kalkulasi tarif (hindari jitter GPS). */
+const PICKUP_QUOTE_MIN_MOVE_KM = 0.03;
+const QUOTE_DEBOUNCE_MS = 600;
+const QUOTE_FETCH_TIMEOUT_MS = 12_000;
+
+function transitQuoteFallback(serviceType: ServiceType, distanceKm: number) {
+  const defaults: Record<ServiceType, { base: number; perKm: number }> = {
+    NGOJEK: { base: 10_000, perKm: 2_000 },
+    NGOMOBIL: { base: 15_000, perKm: 2_700 },
+    PAKET: { base: 12_000, perKm: 2_300 },
+  };
+  const { base, perKm } = defaults[serviceType];
+  const km = Math.max(0, distanceKm);
+  return {
+    rideFee: Math.round(base + perKm * km),
+    feeDescription: `Rp ${base.toLocaleString("id-ID")} + Rp ${perKm.toLocaleString("id-ID")}/km × ${km.toFixed(2)} km`,
+  };
+}
 
 const EMPTY_PACKAGE: PackageDetailsInput = {
   senderName: "",
@@ -111,8 +128,8 @@ export function useNgojekRide() {
   const lastForwardQueryRef = useRef("");
   const pickupGeoRef = useRef({ lat: pickupLat, lng: pickupLng });
   pickupGeoRef.current = { lat: pickupLat, lng: pickupLng };
-
-  const { fix: gpsFix, loading: gpsLoading } = useMapLocation(true);
+  const quoteGenRef = useRef(0);
+  const [gpsLoading, setGpsLoading] = useState(false);
 
   const areaAvailable = pickupAreaOk && destAreaOk && sameCityOk;
 
@@ -154,15 +171,22 @@ export function useNgojekRide() {
 
   /** Preview tarif dari server (regional_tariffs per service_type). */
   useEffect(() => {
-    let cancelled = false;
+    const gen = ++quoteGenRef.current;
     const timer = setTimeout(() => {
       void (async () => {
+        if (gen !== quoteGenRef.current) return;
         setQuoting(true);
+
+        const km = haversineKm(pickupLat, pickupLng, destLat, destLng);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), QUOTE_FETCH_TIMEOUT_MS);
+
         try {
           const res = await fetch("/api/orders/quote-transit", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
+            signal: controller.signal,
             body: JSON.stringify({
               pickupLat,
               pickupLng,
@@ -172,6 +196,7 @@ export function useNgojekRide() {
             }),
           });
           const json = (await res.json().catch(() => ({}))) as {
+            error?: string;
             distanceKm?: number;
             rideFee?: number;
             feeDescription?: string;
@@ -180,30 +205,36 @@ export function useNgojekRide() {
             tooClose?: boolean;
             tooFar?: boolean;
           };
-          if (cancelled) return;
+          if (gen !== quoteGenRef.current) return;
 
-          setDistanceKm(Number(json.distanceKm ?? 0));
+          if (!res.ok) {
+            const fallback = transitQuoteFallback(serviceType, km);
+            setDistanceKm(km);
+            setRideFee(fallback.rideFee);
+            setFeeDescription(json.error ?? fallback.feeDescription);
+            return;
+          }
+
+          setDistanceKm(Number(json.distanceKm ?? km));
           setRideFee(Number(json.rideFee ?? 0));
-          if (json.feeDescription) setFeeDescription(json.feeDescription);
+          setFeeDescription(json.feeDescription ?? transitQuoteFallback(serviceType, km).feeDescription);
           if (json.areaAvailable === false && json.areaMessage) {
             setAreaMessage(json.areaMessage);
           }
         } catch {
-          if (!cancelled) {
-            const km = haversineKm(pickupLat, pickupLng, destLat, destLng);
-            setDistanceKm(km);
-            setFeeDescription("Gagal memuat tarif — coba lagi");
-          }
+          if (gen !== quoteGenRef.current) return;
+          const fallback = transitQuoteFallback(serviceType, km);
+          setDistanceKm(km);
+          setRideFee(fallback.rideFee);
+          setFeeDescription(`${fallback.feeDescription} (estimasi lokal)`);
         } finally {
-          if (!cancelled) setQuoting(false);
+          clearTimeout(timeoutId);
+          if (gen === quoteGenRef.current) setQuoting(false);
         }
       })();
-    }, 400);
+    }, QUOTE_DEBOUNCE_MS);
 
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [pickupLat, pickupLng, destLat, destLng, serviceType]);
 
   useEffect(() => {
@@ -241,16 +272,24 @@ export function useNgojekRide() {
     };
   }, [pickupLat, pickupLng, destLat, destLng]);
 
+  /** GPS sekali saat buka halaman — hindari watchPosition yang memicu tarif mutar terus. */
   useEffect(() => {
-    if (!gpsFix) return;
-    setPickupLat(gpsFix.lat);
-    setPickupLng(gpsFix.lng);
-    setPickupAccuracyM(gpsFix.accuracy);
-
-    void reverseGeocode(gpsFix.lat, gpsFix.lng).then((hit) => {
-      if (hit) setPickupAddress(hit.label);
-    });
-  }, [gpsFix?.lat, gpsFix?.lng, gpsFix?.accuracy]);
+    if (!navigator.geolocation) return;
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setPickupLat(pos.coords.latitude);
+        setPickupLng(pos.coords.longitude);
+        setPickupAccuracyM(pos.coords.accuracy);
+        setGpsLoading(false);
+        void reverseGeocode(pos.coords.latitude, pos.coords.longitude).then((hit) => {
+          if (hit) setPickupAddress(hit.label);
+        });
+      },
+      () => setGpsLoading(false),
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 }
+    );
+  }, []);
 
   const applyDestinationCoords = useCallback((lat: number, lng: number, fly = true) => {
     setDestLat(lat);
@@ -380,18 +419,31 @@ export function useNgojekRide() {
       setPlaceError("GPS tidak tersedia di perangkat ini");
       return;
     }
+    setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setPickupLat(pos.coords.latitude);
-        setPickupLng(pos.coords.longitude);
+        const movedKm = haversineKm(
+          pickupGeoRef.current.lat,
+          pickupGeoRef.current.lng,
+          pos.coords.latitude,
+          pos.coords.longitude
+        );
         setPickupAccuracyM(pos.coords.accuracy);
         setPlaceError(null);
+        setGpsLoading(false);
+        if (movedKm >= PICKUP_QUOTE_MIN_MOVE_KM) {
+          setPickupLat(pos.coords.latitude);
+          setPickupLng(pos.coords.longitude);
+        }
         void reverseGeocode(pos.coords.latitude, pos.coords.longitude).then((hit) => {
           if (hit) setPickupAddress(hit.label);
         });
       },
-      () => setPlaceError("Gagal mengambil lokasi GPS. Izinkan akses lokasi."),
-      { enableHighAccuracy: true, timeout: 15_000 }
+      () => {
+        setGpsLoading(false);
+        setPlaceError("Gagal mengambil lokasi GPS. Izinkan akses lokasi.");
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 }
     );
   }, []);
 

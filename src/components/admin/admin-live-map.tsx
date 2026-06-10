@@ -45,7 +45,7 @@ export function AdminLiveMap({
     if (value) params.set(key, value);
     else params.delete(key);
     if (key === "provinceId") params.delete("cityId");
-    router.push(`/admin/dashboard/maps?${params.toString()}`);
+    router.push(`/admin/maps?${params.toString()}`);
   }
 
   return (

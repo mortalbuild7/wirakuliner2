@@ -7,7 +7,7 @@
  * 1. Form ini HANYA memanggil `POST /api/admin/auth/login` (bukan supabase client langsung).
  * 2. API memverifikasi `profiles.role === 'admin'` + `admin_role` tier valid.
  * 3. Rate limit Edge (middleware) + Upstash (API) mencegah brute force.
- * 4. Setelah sukses → redirect `/admin/dashboard`; middleware cek MFA TOTP (aal2).
+ * 4. Setelah sukses → redirect `/admin`; middleware cek MFA TOTP (aal2).
  * 5. Jika MFA belum selesai → `/admin/mfa-challenge` sebelum data sensitif.
  *
  * Customer/Driver yang mengetik URL admin manual ditangkap middleware → `/unauthorized`.
@@ -31,7 +31,7 @@ function AdminLoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const params = useSearchParams();
-  const redirect = params.get("redirect") ?? "/admin/dashboard";
+  const redirect = params.get("redirect") ?? "/admin";
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -58,7 +58,7 @@ function AdminLoginForm() {
 
       const target = json.redirect ?? redirect;
       window.location.assign(
-        target.startsWith("/admin") ? target : "/admin/dashboard"
+        target.startsWith("/admin") ? target : "/admin"
       );
     } catch {
       setError("Koneksi gagal. Periksa jaringan Anda.");

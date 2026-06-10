@@ -44,7 +44,7 @@ export async function verifyAdminSession(opts?: {
   } = await supabase.auth.getUser();
 
   if (authError || !user) {
-    redirect(`${ADMIN_LOGIN_PATH}?redirect=/admin/dashboard`);
+    redirect(`${ADMIN_LOGIN_PATH}?redirect=/admin`);
   }
 
   const { data: profile, error: profileError } = await supabase
@@ -83,7 +83,7 @@ export async function verifyAdminSession(opts?: {
       aal?.nextLevel === "aal2" &&
       aal.currentLevel !== "aal2"
     ) {
-      redirect(`${MFA_CHALLENGE_PATH}?redirect=/admin/dashboard`);
+      redirect(`${MFA_CHALLENGE_PATH}?redirect=/admin`);
     }
   }
 

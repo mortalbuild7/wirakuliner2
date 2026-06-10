@@ -20,9 +20,9 @@ export function getAppOrigin(): string {
 /** Path admin — relatif, aman di localhost maupun production. */
 export const ADMIN_PATHS = {
   login: "/admin/login",
-  dashboard: "/admin/dashboard",
-  drivers: "/admin/dashboard/drivers",
-  merchants: "/admin/dashboard/merchants",
+  dashboard: "/admin",
+  drivers: "/admin/drivers",
+  merchants: "/admin/merchants",
 } as const;
 
 export function adminUrl(path: keyof typeof ADMIN_PATHS): string {

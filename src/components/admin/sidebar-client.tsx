@@ -29,15 +29,15 @@ export type SidebarNavItem = {
 };
 
 const ICON_BY_HREF: Record<string, LucideIcon> = {
-  "/admin/dashboard": BarChart3,
-  "/admin/dashboard/maps": Map,
+  "/admin": BarChart3,
+  "/admin/maps": Map,
   "/admin/drivers/verification": FileCheck,
   "/admin/tariffs": SlidersHorizontal,
   "/admin/recruit": UserPlus,
   "/admin/company-bank": Landmark,
   "/admin/orders": ClipboardList,
-  "/admin/dashboard/merchants": Store,
-  "/admin/dashboard/drivers": Truck,
+  "/admin/merchants": Store,
+  "/admin/drivers": Truck,
   "/admin/customers": Users,
 };
 
@@ -80,7 +80,9 @@ export function SidebarClient({
   return (
     <aside className="flex w-full flex-col border-b border-stone-800 bg-stone-900 text-white md:min-h-screen md:w-60 md:border-b-0 md:border-r">
       <div className="border-b border-white/10 p-4">
-        <p className="font-bold tracking-tight">WIRA Admin</p>
+        <Link href="/admin" className="font-bold tracking-tight hover:text-amber-200">
+          WIRA Admin
+        </Link>
         <p className="mt-0.5 text-[10px] uppercase tracking-wider text-amber-300/90">
           {tierLabel}
         </p>

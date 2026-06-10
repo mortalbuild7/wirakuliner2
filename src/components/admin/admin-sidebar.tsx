@@ -21,7 +21,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: BarChart3, exact: true },
+  { href: "/admin", label: "Dashboard", icon: BarChart3, exact: true },
   { href: "/admin/orders", label: "Pesanan", icon: ClipboardList },
   { href: "/admin/tariffs", label: "Tarif Regional", icon: SlidersHorizontal },
   { href: "/admin/merchants", label: "Merchants", icon: Store },

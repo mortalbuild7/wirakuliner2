@@ -16,7 +16,7 @@ import { isDriverAppEnabledClient } from "@/lib/feature-flags";
 import { LogIn, Store, Shield, UtensilsCrossed, Bike } from "lucide-react";
 
 const ROLE_REDIRECT: Record<UserRole, string> = {
-  admin: "/admin/dashboard",
+  admin: "/admin",
   merchant: "/merchant",
   customer: "/customer",
   driver: "/driver",

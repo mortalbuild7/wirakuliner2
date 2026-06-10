@@ -42,14 +42,14 @@ export function buildSidebarMenu(session: SidebarSession): SidebarMenuItem[] {
 
   const items: SidebarMenuItem[] = [
     {
-      href: "/admin/dashboard",
+      href: "/admin",
       label: "Dashboard",
       icon: BarChart3,
       exact: true,
       visible: () => true,
     },
     {
-      href: "/admin/dashboard/maps",
+      href: "/admin/maps",
       label: "Peta Live & Lokasi Driver",
       icon: Map,
       visible: () => true,
@@ -75,13 +75,13 @@ export function buildSidebarMenu(session: SidebarSession): SidebarMenuItem[] {
       visible: () => role === "SUPER_ADMIN" || role === "PROVINCE_ADMIN",
     },
     {
-      href: "/admin/dashboard/drivers",
+      href: "/admin/drivers",
       label: "Data Driver (Add/Suspend)",
       icon: Truck,
       visible: () => true,
     },
     {
-      href: "/admin/dashboard/merchants",
+      href: "/admin/merchants",
       label: "Data Merchant (Add/Delete)",
       icon: Store,
       visible: () => true,
