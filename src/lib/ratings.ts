@@ -110,12 +110,22 @@ export async function submitOrderRating(
   return row as OrderRatingRow;
 }
 
+const MASKED_CUSTOMER_LABEL = "Pelanggan";
+
+export type ListReceivedReviewsOptions = {
+  /** Sembunyikan identitas customer (untuk panel driver — privasi pelanggan). */
+  maskCustomerIdentity?: boolean;
+};
+
 export async function listReceivedReviews(
   admin: SupabaseClient,
   targetType: RatingTargetType,
   targetId: string,
-  limit = 20
+  limit = 20,
+  options?: ListReceivedReviewsOptions
 ): Promise<ReceivedReview[]> {
+  const maskCustomer = options?.maskCustomerIdentity === true;
+
   const { data: ratings } = await admin
     .from("order_ratings")
     .select("*")
@@ -126,15 +136,21 @@ export async function listReceivedReviews(
 
   if (!ratings?.length) return [];
 
-  const customerIds = [...new Set(ratings.map((r) => r.customer_id as string))];
   const orderIds = [...new Set(ratings.map((r) => r.order_id as string))];
 
+  const profilePromise = maskCustomer
+    ? Promise.resolve({ data: null as { id: string; name: string }[] | null })
+    : admin
+        .from("profiles")
+        .select("id, name")
+        .in(
+          "id",
+          [...new Set(ratings.map((r) => r.customer_id as string))]
+        );
+
   const [{ data: profiles }, { data: orders }] = await Promise.all([
-    admin.from("profiles").select("id, name").in("id", customerIds),
-    admin
-      .from("orders")
-      .select("id, delivery_address")
-      .in("id", orderIds),
+    profilePromise,
+    admin.from("orders").select("id, delivery_address").in("id", orderIds),
   ]);
 
   const nameById = new Map(
@@ -144,11 +160,27 @@ export async function listReceivedReviews(
     (orders ?? []).map((o) => [o.id as string, o.delivery_address as string])
   );
 
-  return (ratings as OrderRatingRow[]).map((r) => ({
-    ...r,
-    customer_name: nameById.get(r.customer_id) ?? "Customer",
-    order_label: orderById.get(r.order_id) ?? null,
-  }));
+  return (ratings as OrderRatingRow[]).map((r) => {
+    const customerName = maskCustomer
+      ? MASKED_CUSTOMER_LABEL
+      : (nameById.get(r.customer_id) ?? "Customer");
+    const orderLabel = orderById.get(r.order_id) ?? null;
+
+    if (maskCustomer) {
+      const { customer_id: _hidden, ...safe } = r;
+      return {
+        ...safe,
+        customer_name: customerName,
+        order_label: orderLabel,
+      } as ReceivedReview;
+    }
+
+    return {
+      ...r,
+      customer_name: customerName,
+      order_label: orderLabel,
+    };
+  });
 }
 
 export async function getRatingSummary(

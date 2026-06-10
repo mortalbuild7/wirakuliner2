@@ -1,6 +1,5 @@
 import { getAuthDriver } from "@/lib/driver-server";
-import { declineDriverOffer } from "@/lib/driver-order-offer";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { declineAndRedispatch } from "@/lib/driver-dispatch";
 import {
   enforceMethod,
   enforceRateLimit,
@@ -29,8 +28,7 @@ export async function POST(req: Request) {
     return secureJsonResponse({ error: "Order tidak valid" }, { status: 400 });
   }
 
-  const admin = createAdminClient();
-  const result = await declineDriverOffer(admin, orderId, auth.driver.id);
+  const result = await declineAndRedispatch(orderId, auth.driver.id);
 
   if (!result.ok) {
     return secureJsonResponse({ error: result.error ?? "Gagal menolak" }, { status: 400 });

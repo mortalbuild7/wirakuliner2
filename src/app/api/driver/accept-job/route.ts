@@ -1,4 +1,5 @@
 import { getAuthDriver } from "@/lib/driver-server";
+import { recordDriverKpiEvent } from "@/lib/driver-kpi";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isNgojekOrder, isOnsiteOrder } from "@/lib/order-channel";
 import {
@@ -97,6 +98,8 @@ export async function POST(req: Request) {
     .from("drivers")
     .update({ status: "delivering" })
     .eq("id", auth.driver.id);
+
+  await recordDriverKpiEvent(admin, auth.driver.id, "offer_accepted");
 
   return secureJsonResponse({ ok: true });
 }

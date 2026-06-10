@@ -1,4 +1,5 @@
 export type UserRole = "admin" | "merchant" | "customer" | "driver";
+export type AdminTier = "SUPER_ADMIN" | "PROVINCE_ADMIN" | "CITY_ADMIN";
 export type AccountStatus = "active" | "warned" | "suspended" | "blocked";
 export type DriverStatus = "idle" | "delivering" | "offline";
 export type NegotiationStatus = "none" | "negotiating" | "agreed";
@@ -18,6 +19,9 @@ export interface Profile {
   phone: string | null;
   email: string | null;
   role: UserRole;
+  admin_role?: AdminTier | null;
+  province_id?: number | null;
+  city_id?: number | null;
   account_status?: AccountStatus;
   admin_note?: string | null;
   warned_at?: string | null;
@@ -45,6 +49,8 @@ export interface Merchant {
   approved_by?: string | null;
   rejection_note?: string | null;
   service_city_id?: string | null;
+  province_id?: number | null;
+  city_id?: number | null;
   rating_avg?: number;
   rating_count?: number;
 }
@@ -75,6 +81,8 @@ export interface Driver {
   created_at?: string;
   rating_avg?: number;
   rating_count?: number;
+  province_id?: number | null;
+  city_id?: number | null;
   gps_trust?: "OK" | "SUSPICIOUS";
   last_gps_ping_at?: string | null;
   last_gps_lat?: number | null;
@@ -131,6 +139,9 @@ export interface Order {
   pickup_lat?: number | null;
   pickup_lng?: number | null;
   distance_km: number | null;
+  service_city_id?: string | null;
+  province_id?: number | null;
+  city_id?: number | null;
   snap_token: string | null;
   payment_gateway?: string | null;
   created_at: string;
@@ -167,6 +178,15 @@ export interface Negotiation {
 }
 
 export interface ChatMessage {
+  id: string;
+  order_id: string;
+  sender_id: string;
+  message: string;
+  created_at: string;
+}
+
+/** Chat transaksional customer ↔ driver (tabel order_chats, terpisah dari nego chat_messages). */
+export interface OrderChatRow {
   id: string;
   order_id: string;
   sender_id: string;

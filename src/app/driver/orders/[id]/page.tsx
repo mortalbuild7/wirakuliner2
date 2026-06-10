@@ -24,7 +24,18 @@ import {
   DriverOrderRouteLine,
   driverCardBorderClass,
 } from "@/components/driver/driver-order-chrome";
-import { Bike, CheckCircle, MapPin, Package, Phone, Store, User } from "lucide-react";
+import {
+  Bike,
+  CheckCircle,
+  MapPin,
+  MessageCircle,
+  Package,
+  Phone,
+  Store,
+  User,
+} from "lucide-react";
+import Link from "next/link";
+import { isOrderChatClosed, isOrderChatOpen } from "@/lib/order-chat";
 
 export default function DriverOrderDetailPage() {
   const params = useParams();
@@ -279,6 +290,22 @@ export default function DriverOrderDetailPage() {
           </p>
         )}
       </section>
+
+      {isMine &&
+        order.driver_id &&
+        (isOrderChatOpen(order) || isOrderChatClosed(order)) && (
+          <Link
+            href={`/driver/orders/${orderId}/chat`}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-cyan-500/40 bg-cyan-500/10 font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+          >
+            <MessageCircle className="h-4 w-4" />
+            {isOrderChatOpen(order)
+              ? isRide
+                ? "Chat penumpang"
+                : "Chat customer"
+              : "Riwayat chat"}
+          </Link>
+        )}
 
       <div className="space-y-2 pb-4">
         {canAccept && (

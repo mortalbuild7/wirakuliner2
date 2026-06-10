@@ -14,23 +14,31 @@ import {
   Settings2,
   Loader2,
   Wallet,
+  ClipboardList,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/admin", label: "Analytics", icon: BarChart3, exact: true },
+  { href: "/admin/orders", label: "Pesanan", icon: ClipboardList },
+  { href: "/admin/tariffs", label: "Tarif Regional", icon: SlidersHorizontal },
   { href: "/admin/merchants", label: "Merchants", icon: Store },
   { href: "/admin/drivers", label: "Drivers", icon: Truck },
   { href: "/admin/cities", label: "Kota Layanan", icon: MapPin },
   { href: "/admin/customers", label: "Customers", icon: Users },
-  { href: "/admin/finance", label: "Keuangan", icon: Wallet },
+  { href: "/admin/finance", label: "Keuangan", icon: Wallet, superOnly: true },
   { href: "/admin/reports", label: "Laporan", icon: FileText },
   { href: "/admin/miscellaneous", label: "Miscellaneous", icon: Settings2 },
   { href: "/admin/security", label: "Keamanan & Sesi", icon: Shield },
 ] as const;
 
-export function AdminSidebar() {
+export function AdminSidebar({
+  hiddenHrefs = [],
+}: {
+  hiddenHrefs?: string[];
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -78,7 +86,7 @@ export function AdminSidebar() {
       </div>
 
       <nav className="flex flex-1 flex-wrap gap-1 px-2 pb-2 md:flex-col">
-        {NAV.map((item) => {
+        {NAV.filter((item) => !hiddenHrefs.includes(item.href)).map((item) => {
           const { href, label, icon: Icon } = item;
           const active =
             "exact" in item && item.exact ? pathname === href : pathname.startsWith(href);

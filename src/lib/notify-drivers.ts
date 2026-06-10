@@ -1,4 +1,4 @@
-import { assignDriverOffer } from "@/lib/driver-order-offer";
+import { dispatchOrderOffer } from "@/lib/driver-dispatch";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isOnsiteOrder } from "@/lib/order-channel";
 
@@ -19,7 +19,10 @@ async function callDriverPush(type: string, record: Record<string, unknown>) {
   return res.json().catch(() => ({ error: "notify_failed" }));
 }
 
-/** Kirim FCM ke driver idle saat order delivery terkonfirmasi (paid). */
+/**
+ * Kirim penawaran ke driver KPI terbaik saat order terkonfirmasi (paid).
+ * Dispatch + FCM ditangani oleh `dispatchOrderOffer` (KPI prioritas + rotasi 15 detik).
+ */
 export async function notifyDriversNewOrder(orderId: string) {
   const admin = createAdminClient();
   const { data: order } = await admin
@@ -30,24 +33,19 @@ export async function notifyDriversNewOrder(orderId: string) {
 
   if (
     !order ||
-    !["paid", "ready_for_pickup"].includes(order.order_status)
+    !["paid", "ready_for_pickup", "preparing"].includes(order.order_status)
   ) {
     return { skipped: true };
   }
   if (isOnsiteOrder(order.delivery_address)) return { skipped: true };
 
-  const offeredDriverId = await assignDriverOffer(orderId);
+  const result = await dispatchOrderOffer(orderId);
 
-  const type =
-    order.order_status === "ready_for_pickup" ? "ready_for_pickup" : "delivery_paid";
-
-  // FCM bisa lambat (OAuth + loop) — jangan blokir penugasan driver di DB.
-  void callDriverPush(type, {
-    ...order,
-    offered_driver_id: offeredDriverId,
-  });
-
-  return { offeredDriverId, pushed: true };
+  return {
+    offeredDriverId: result?.driverId ?? null,
+    priorityScore: result?.priorityScore,
+    pushed: Boolean(result?.driverId),
+  };
 }
 
 /** FCM ke driver yang sudah menerima order saat merchant tandai siap diambil. */

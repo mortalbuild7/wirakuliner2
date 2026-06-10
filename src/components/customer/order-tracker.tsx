@@ -9,7 +9,20 @@ import { OrderRatingPanel } from "@/components/ratings/order-rating-panel";
 import type { RatingTargetType } from "@/lib/ratings";
 import { CustomerOrderTrackMap } from "@/components/customer/customer-order-track-map";
 import Image from "next/image";
-import { Bike, Loader2, MapPin, Package, Phone, Search, Truck, User, Utensils } from "lucide-react";
+import {
+  Bike,
+  Loader2,
+  MapPin,
+  MessageCircle,
+  Package,
+  Phone,
+  Search,
+  Truck,
+  User,
+  Utensils,
+} from "lucide-react";
+import Link from "next/link";
+import { isOrderChatClosed, isOrderChatOpen } from "@/lib/order-chat";
 import type { DriverPublicInfo, Order, OrderStatus } from "@/types/database";
 
 const FOOD_STEPS: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
@@ -378,6 +391,18 @@ export function OrderTracker({ orderId }: { orderId: string }) {
           })()}
         />
       )}
+
+      {order.driver_id &&
+        isDelivery &&
+        (isOrderChatOpen(order) || isOrderChatClosed(order)) && (
+          <Link
+            href={`/customer/orders/${orderId}/chat`}
+            className="flex items-center justify-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/20"
+          >
+            <MessageCircle className="h-4 w-4" />
+            {isOrderChatOpen(order) ? "Chat dengan driver" : "Lihat riwayat chat"}
+          </Link>
+        )}
 
       {driverInfo && order.driver_id && !["pending_payment", "cancelled"].includes(order.order_status) && (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">

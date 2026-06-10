@@ -20,7 +20,9 @@ export async function GET(req: Request) {
 
   if (!("error" in driverAuth)) {
     const [reviews, summary] = await Promise.all([
-      listReceivedReviews(admin, "driver", driverAuth.driver.id),
+      listReceivedReviews(admin, "driver", driverAuth.driver.id, 20, {
+        maskCustomerIdentity: true,
+      }),
       getRatingSummary(admin, "driver", driverAuth.driver.id),
     ]);
 

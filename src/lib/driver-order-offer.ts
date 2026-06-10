@@ -1,8 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isOnsiteOrder } from "@/lib/order-channel";
+import {
+  DISPATCH_SEARCH_RADIUS_KM,
+  findPriorityDrivers,
+  resolveDispatchOrigin,
+} from "@/lib/driver-dispatch-pick";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export const DRIVER_OFFER_TIMEOUT_MS = 30_000;
+/** Jeda respons driver sebelum rotasi ke KPI berikutnya (15 detik). */
+export const DRIVER_OFFER_TIMEOUT_MS = 15_000;
 
 export type OfferableOrder = {
   id: string;
@@ -14,6 +20,13 @@ export type OfferableOrder = {
   delivery_address: string;
   negotiation_status: string;
   service_city_id?: string | null;
+};
+
+export type RotateOfferResult = {
+  driverId: string | null;
+  changed: boolean;
+  priorityScore?: number;
+  distanceKm?: number;
 };
 
 export function isOfferExpired(offeredAt: string | null | undefined): boolean {
@@ -33,75 +46,61 @@ export function orderNeedsOfferRotation(order: OfferableOrder): boolean {
   return ["paid", "preparing", "ready_for_pickup"].includes(order.order_status);
 }
 
-async function getBusyDriverIds(admin: SupabaseClient): Promise<Set<string>> {
-  const { data } = await admin
-    .from("orders")
-    .select("driver_id")
-    .not("driver_id", "is", null)
-    .in("order_status", ["paid", "preparing", "ready_for_pickup", "on_the_way"]);
-
-  return new Set(
-    (data ?? []).map((o) => o.driver_id as string).filter(Boolean)
-  );
-}
-
-async function getDriversWithPendingOffer(
-  admin: SupabaseClient,
-  excludeOrderId?: string
-): Promise<Set<string>> {
-  const cutoff = new Date(Date.now() - DRIVER_OFFER_TIMEOUT_MS).toISOString();
-  const { data } = await admin
-    .from("orders")
-    .select("id, offered_driver_id, offered_at")
-    .is("driver_id", null)
-    .not("offered_driver_id", "is", null)
-    .gt("offered_at", cutoff);
-
-  const ids = new Set<string>();
-  for (const row of data ?? []) {
-    if (excludeOrderId && row.id === excludeOrderId) continue;
-    if (row.offered_driver_id) ids.add(row.offered_driver_id);
-  }
-  return ids;
-}
-
+/**
+ * Pilih driver berikutnya via RPC KPI:
+ * - Filter ONLINE+AVAILABLE (status idle), radius Haversine, skip/busy/pending.
+ * - Urutkan Skor DESC → ambil indeks 0.
+ */
 async function pickNextDriver(
   admin: SupabaseClient,
+  orderId: string,
   skipIds: string[],
-  excludeOrderId?: string,
   serviceCityId?: string | null
-): Promise<string | null> {
-  const skip = new Set(skipIds);
-  const busy = await getBusyDriverIds(admin);
-  const pendingOffer = await getDriversWithPendingOffer(admin, excludeOrderId);
-
-  let query = admin
-    .from("drivers")
-    .select("id, status, updated_at, service_city_id")
-    .eq("status", "idle")
-    .order("updated_at", { ascending: true });
-
-  if (serviceCityId) {
-    query = query.eq("service_city_id", serviceCityId);
+): Promise<RotateOfferResult> {
+  const origin = await resolveDispatchOrigin(admin, orderId);
+  if (!origin) {
+    return { driverId: null, changed: false };
   }
 
-  const { data: drivers } = await query;
+  let drivers = await findPriorityDrivers(admin, {
+    lat: origin.lat,
+    lng: origin.lng,
+    maxRadiusKm: DISPATCH_SEARCH_RADIUS_KM,
+    skipDriverIds: skipIds,
+    serviceCityId: serviceCityId ?? origin.serviceCityId,
+    limit: 1,
+  });
 
-  for (const d of drivers ?? []) {
-    if (skip.has(d.id)) continue;
-    if (busy.has(d.id)) continue;
-    if (pendingOffer.has(d.id)) continue;
-    return d.id;
+  if (!drivers.length && skipIds.length > 0) {
+    drivers = await findPriorityDrivers(admin, {
+      lat: origin.lat,
+      lng: origin.lng,
+      maxRadiusKm: DISPATCH_SEARCH_RADIUS_KM,
+      skipDriverIds: [],
+      serviceCityId: serviceCityId ?? origin.serviceCityId,
+      limit: 1,
+    });
   }
-  return null;
+
+  const top = drivers[0];
+  if (!top) {
+    return { driverId: null, changed: false };
+  }
+
+  return {
+    driverId: top.driver_id,
+    changed: true,
+    priorityScore: Number(top.priority_score),
+    distanceKm: Number(top.distance_km),
+  };
 }
 
-/** Rotasi penawaran ke driver berikutnya (atau pertahankan jika masih dalam 30 detik). */
+/** Rotasi penawaran ke driver KPI berikutnya (atau pertahankan jika masih dalam 15 detik). */
 export async function rotateOfferForOrder(
   admin: SupabaseClient,
   order: OfferableOrder,
   forceRotate = false
-): Promise<string | null> {
+): Promise<RotateOfferResult> {
   if (!orderNeedsOfferRotation(order)) {
     if (order.offered_driver_id) {
       await admin
@@ -109,7 +108,7 @@ export async function rotateOfferForOrder(
         .update({ offered_driver_id: null, offered_at: null })
         .eq("id", order.id);
     }
-    return null;
+    return { driverId: null, changed: false };
   }
 
   let skipIds = [...(order.offer_skip_driver_ids ?? [])];
@@ -121,36 +120,30 @@ export async function rotateOfferForOrder(
   }
 
   if (!shouldRotate && order.offered_driver_id) {
-    return order.offered_driver_id;
+    return { driverId: order.offered_driver_id, changed: false };
   }
 
-  let nextDriver = await pickNextDriver(
+  const picked = await pickNextDriver(
     admin,
-    skipIds,
     order.id,
+    skipIds,
     order.service_city_id
   );
-  if (!nextDriver && skipIds.length > 0) {
-    skipIds = [];
-    nextDriver = await pickNextDriver(
-      admin,
-      skipIds,
-      order.id,
-      order.service_city_id
-    );
-  }
 
   await admin
     .from("orders")
     .update({
-      offered_driver_id: nextDriver,
-      offered_at: nextDriver ? new Date().toISOString() : null,
+      offered_driver_id: picked.driverId,
+      offered_at: picked.driverId ? new Date().toISOString() : null,
       offer_skip_driver_ids: skipIds,
     })
     .eq("id", order.id)
     .is("driver_id", null);
 
-  return nextDriver;
+  return {
+    ...picked,
+    changed: picked.driverId !== order.offered_driver_id,
+  };
 }
 
 /** Proses semua order tanpa driver — expire & rotasi penawaran. */
@@ -171,7 +164,9 @@ export async function processAllPendingOffers(admin: SupabaseClient): Promise<vo
 }
 
 /** Tugaskan penawaran pertama untuk order baru masuk pool. */
-export async function assignDriverOffer(orderId: string): Promise<string | null> {
+export async function assignDriverOffer(
+  orderId: string
+): Promise<RotateOfferResult | null> {
   const admin = createAdminClient();
   const { data: order } = await admin
     .from("orders")
@@ -185,7 +180,7 @@ export async function assignDriverOffer(orderId: string): Promise<string | null>
   return rotateOfferForOrder(admin, order as OfferableOrder, !order.offered_driver_id);
 }
 
-/** Driver menolak — langsung rotasi ke driver lain. */
+/** Driver menolak — langsung rotasi ke driver KPI berikutnya. */
 export async function declineDriverOffer(
   admin: SupabaseClient,
   orderId: string,
@@ -213,6 +208,6 @@ export async function declineDriverOffer(
     offered_at: order.offered_at,
   };
 
-  const nextDriverId = await rotateOfferForOrder(admin, patched, true);
-  return { ok: true, nextDriverId };
+  const result = await rotateOfferForOrder(admin, patched, true);
+  return { ok: true, nextDriverId: result.driverId };
 }

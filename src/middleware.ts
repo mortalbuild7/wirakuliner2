@@ -251,7 +251,8 @@ export async function middleware(request: NextRequest) {
     requiredRole === SUPER_ADMIN_DB_ROLE &&
     pathname.startsWith("/admin") &&
     !pathname.startsWith("/admin/mfa-verify") &&
-    !pathname.startsWith("/admin/mfa-setup")
+    !pathname.startsWith("/admin/mfa-setup") &&
+    !pathname.startsWith("/admin/mfa-challenge")
   ) {
     const needMfa = await requiresMfaStepUp(supabase);
     if (needMfa) {
@@ -263,7 +264,7 @@ export async function middleware(request: NextRequest) {
           )
         );
       }
-      const mfaUrl = new URL("/admin/mfa-verify", request.url);
+      const mfaUrl = new URL("/admin/mfa-challenge", request.url);
       mfaUrl.searchParams.set("redirect", pathname);
       return withSecurity(NextResponse.redirect(mfaUrl));
     }

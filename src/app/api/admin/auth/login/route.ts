@@ -1,5 +1,9 @@
+import { ADMIN_ROLES } from "@/app/utils/adminAuth";
 import { createClient } from "@/lib/supabase/server";
 import { SUPER_ADMIN_DB_ROLE } from "@/lib/admin-auth";
+import { syncAdminJwtMetadata } from "@/lib/sync-admin-jwt-metadata";
+import { getSupabaseAdmin } from "@/lib/supabase/supabaseAdmin";
+import type { AdminTier } from "@/app/utils/adminAuth";
 import {
   enforceMethod,
   readJsonBody,
@@ -53,16 +57,36 @@ export async function POST(req: Request) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, admin_role, province_id, city_id")
     .eq("id", data.user.id)
     .single();
 
   if (profile?.role !== SUPER_ADMIN_DB_ROLE) {
     await supabase.auth.signOut();
     return secureJsonResponse(
-      { error: "Akun ini bukan SUPER_ADMIN" },
+      { error: "Akun ini bukan admin panel" },
       { status: 403 }
     );
+  }
+
+  const adminRole = profile.admin_role as AdminTier | null;
+  if (!adminRole || !ADMIN_ROLES.includes(adminRole)) {
+    await supabase.auth.signOut();
+    return secureJsonResponse(
+      { error: "Tier admin tidak valid — hubungi SUPER_ADMIN" },
+      { status: 403 }
+    );
+  }
+
+  try {
+    const service = getSupabaseAdmin();
+    await syncAdminJwtMetadata(service, data.user.id, {
+      adminRole,
+      provinceId: profile.province_id,
+      cityId: profile.city_id,
+    });
+  } catch {
+    /* metadata sync best-effort; profiles tetap sumber fallback RLS */
   }
 
   return secureJsonResponse({

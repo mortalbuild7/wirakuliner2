@@ -96,7 +96,9 @@ export function ReceivedReviewsPanel({ driverMode = false, className }: Props) {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-white">{r.customer_name}</p>
+                        <p className="text-sm font-medium text-white">
+                          {driverMode ? "Pelanggan" : r.customer_name}
+                        </p>
                         {r.order_label && (
                           <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
                             {channelLabel(r.order_label)}

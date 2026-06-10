@@ -1,5 +1,5 @@
 import { FinanceDashboard } from "@/components/admin/finance-dashboard";
-import { assertSuperAdminPage } from "@/lib/admin-auth";
+import { verifyAdminSession } from "@/app/utils/adminAuth";
 import {
   fetchAppWithdrawals,
   fetchFinanceSummary,
@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
  * 3. Agregat dihitung di server; masking nominal dilakukan di Client Component
  */
 export default async function AdminFinancePage() {
-  await assertSuperAdminPage();
+  await verifyAdminSession({ requireSuperAdmin: true });
 
   const admin = getSupabaseAdmin();
 

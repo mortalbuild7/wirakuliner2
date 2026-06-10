@@ -1,9 +1,6 @@
 import { getAuthDriverFromRequest } from "@/lib/driver-server";
-import {
-  isOfferExpired,
-  offerSecondsLeft,
-  processAllPendingOffers,
-} from "@/lib/driver-order-offer";
+import { isOfferExpired, offerSecondsLeft } from "@/lib/driver-order-offer";
+import { processExpiredOffersAndDispatch } from "@/lib/driver-dispatch";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isOnsiteOrder } from "@/lib/order-channel";
 import {
@@ -13,7 +10,7 @@ import {
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
 
-/** Order aktif + penawaran masuk (1 order / 1 driver, rotasi 30 detik). */
+/** Order aktif + penawaran masuk (1 order / 1 driver, rotasi KPI 15 detik). */
 export async function GET(req: Request) {
   const methodBlock = enforceMethod(req, ["GET"]);
   if (methodBlock) return methodBlock;
@@ -28,7 +25,7 @@ export async function GET(req: Request) {
   const { driver } = auth;
   const admin = createAdminClient();
 
-  await processAllPendingOffers(admin);
+  await processExpiredOffersAndDispatch();
 
   const orderSelect =
     "*, merchants(name, latitude, longitude, address), profiles:customer_id(name, phone), order_items(id, product_name, quantity, price)";

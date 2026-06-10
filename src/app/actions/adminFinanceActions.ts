@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { recordAdminAudit } from "@/lib/admin-audit";
 import { requireSuperAdmin } from "@/lib/admin-auth";
 import { appWithdrawalSchema } from "@/lib/admin/finance-schemas";
 import { getSupabaseAdmin } from "@/lib/supabase/supabaseAdmin";
@@ -48,6 +49,14 @@ export async function recordAppWithdrawal(
   }
 
   const payload = (data ?? {}) as { balance_after?: number };
+  await recordAdminAudit(admin, {
+    adminId: auth.userId,
+    adminRole: "SUPER_ADMIN",
+    action: "APP_WITHDRAWAL_RECORDED",
+    entityTable: "app_withdrawals",
+    payload: { amount, bankName },
+  });
+
   revalidatePath("/admin/finance");
 
   return {

@@ -1,6 +1,7 @@
 import { getAuthDriver } from "@/lib/driver-server";
 import { DRIVER_REWARD_POINTS_PER_ORDER } from "@/lib/order-flow";
 import { settleOrderFinancials } from "@/lib/app-finance";
+import { recordDriverKpiEvent } from "@/lib/driver-kpi";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   enforceMethod,
@@ -72,6 +73,8 @@ export async function POST(req: Request) {
     .eq("order_id", orderId)
     .eq("driver_id", auth.driver.id)
     .maybeSingle();
+
+  await recordDriverKpiEvent(admin, auth.driver.id, "order_completed");
 
   if (!existing) {
     const current = auth.driver.reward_points ?? 0;
