@@ -1,6 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isNgojekOrder } from "@/lib/order-channel";
-import { splitDriverDeliveryFee } from "@/lib/revenue-split";
 
 export type WalletOwnerType = "customer" | "driver" | "merchant";
 export type WalletTopupMethod = "ewallet" | "va_bank";
@@ -115,118 +113,35 @@ export async function topupWallet(
   return { txId, balance };
 }
 
-/** Distribusi pendapatan setelah order selesai (hanya pembayaran saldo). */
+/**
+ * @deprecated Gunakan `settleOrderFinancials` dari `@/lib/app-finance`.
+ * Wrapper kompatibilitas — memanggil RPC `process_order_settlement` (atomik).
+ */
 export async function distributeWalletEarnings(
   admin: SupabaseClient,
   orderId: string
 ): Promise<{ distributed: boolean }> {
-  const { data: existing } = await admin
-    .from("wallet_transactions")
-    .select("id")
-    .eq("order_id", orderId)
-    .eq("tx_type", "order_earning")
-    .limit(1);
-
-  if (existing?.length) {
-    return { distributed: false };
-  }
-
-  const { data: order } = await admin
-    .from("orders")
-    .select(
-      "id, payment_method, delivery_address, delivery_fee, total_product_amount, merchant_product_amount, merchant_id, driver_id"
-    )
-    .eq("id", orderId)
-    .maybeSingle();
-
-  if (!order || order.payment_method !== "wallet" || !order.driver_id) {
-    return { distributed: false };
-  }
-
-  const deliveryFee = Number(order.delivery_fee ?? 0);
-  const driverSplit = splitDriverDeliveryFee(deliveryFee);
-  const merchantAmount = Number(
-    order.merchant_product_amount ?? order.total_product_amount ?? 0
-  );
-  const isNgojek = isNgojekOrder(order.delivery_address ?? "");
-
-  if (isNgojek) {
-    if (driverSplit.driverNet > 0) {
-      await applyWalletTx(
-        admin,
-        "driver",
-        order.driver_id,
-        driverSplit.driverNet,
-        "order_earning",
-        {
-          orderId,
-          note: `Pendapatan NGOJEK (90%, komisi platform ${driverSplit.platformFee})`,
-        }
-      );
-    }
-  } else if (order.merchant_id && merchantAmount > 0) {
-    await applyWalletTx(
-      admin,
-      "merchant",
-      order.merchant_id,
-      merchantAmount,
-      "order_earning",
-      { orderId, note: "Pendapatan pesanan kuliner (harga merchant)" }
-    );
-    if (driverSplit.driverNet > 0) {
-      await applyWalletTx(
-        admin,
-        "driver",
-        order.driver_id,
-        driverSplit.driverNet,
-        "order_earning",
-        {
-          orderId,
-          note: `Ongkos kirim kuliner (90%, komisi platform ${driverSplit.platformFee})`,
-        }
-      );
-    }
-  }
-
-  return { distributed: true };
+  const { settleOrderFinancials } = await import("@/lib/app-finance");
+  const result = await settleOrderFinancials(admin, orderId);
+  return { distributed: result.ok && !result.alreadySettled };
 }
 
-/** Kredit bagian driver dari pembayaran QRIS Midtrans setelah order selesai. */
+/** @deprecated Digabung ke `process_order_settlement` RPC. */
 export async function distributeMidtransDriverShare(
   admin: SupabaseClient,
   orderId: string,
-  driverId: string
+  _driverId: string
 ): Promise<{ distributed: boolean; amount: number }> {
-  const { data: pt } = await admin
-    .from("payment_transactions")
-    .select(
-      "id, payment_type, driver_share, driver_share_paid, status, platform_fee"
-    )
-    .eq("order_id", orderId)
-    .eq("status", "settlement")
-    .maybeSingle();
-
-  if (!pt || pt.driver_share_paid || Number(pt.driver_share ?? 0) <= 0) {
+  const { settleOrderFinancials } = await import("@/lib/app-finance");
+  const result = await settleOrderFinancials(admin, orderId);
+  if (!result.ok || result.alreadySettled) {
     return { distributed: false, amount: 0 };
   }
-
-  const amount = Number(pt.driver_share);
-  const note =
-    pt.payment_type === "ngojek"
-      ? `Pendapatan NGOJEK QRIS (neto setelah komisi ${Number(pt.platform_fee ?? 0)})`
-      : "Ongkos kirim kuliner QRIS";
-
-  await applyWalletTx(admin, "driver", driverId, amount, "order_earning", {
-    orderId,
-    note,
-  });
-
-  await admin
-    .from("payment_transactions")
-    .update({ driver_share_paid: true })
-    .eq("id", pt.id);
-
-  return { distributed: true, amount };
+  const payload = (result.payload ?? {}) as { driver_net?: number };
+  return {
+    distributed: Number(payload.driver_net ?? 0) > 0,
+    amount: Number(payload.driver_net ?? 0),
+  };
 }
 
 export async function withdrawWallet(

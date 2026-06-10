@@ -13,6 +13,7 @@ import {
   Users,
   Settings2,
   Loader2,
+  Wallet,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ const NAV = [
   { href: "/admin/drivers", label: "Drivers", icon: Truck },
   { href: "/admin/cities", label: "Kota Layanan", icon: MapPin },
   { href: "/admin/customers", label: "Customers", icon: Users },
+  { href: "/admin/finance", label: "Keuangan", icon: Wallet },
   { href: "/admin/reports", label: "Laporan", icon: FileText },
   { href: "/admin/miscellaneous", label: "Miscellaneous", icon: Settings2 },
   { href: "/admin/security", label: "Keamanan & Sesi", icon: Shield },

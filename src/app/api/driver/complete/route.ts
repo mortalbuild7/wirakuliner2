@@ -1,9 +1,6 @@
 import { getAuthDriver } from "@/lib/driver-server";
 import { DRIVER_REWARD_POINTS_PER_ORDER } from "@/lib/order-flow";
-import {
-  distributeMidtransDriverShare,
-  distributeWalletEarnings,
-} from "@/lib/wallet";
+import { settleOrderFinancials } from "@/lib/app-finance";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   enforceMethod,
@@ -62,18 +59,10 @@ export async function POST(req: Request) {
 
   let walletCredited = false;
   try {
-    const dist = await distributeWalletEarnings(admin, orderId);
-    walletCredited = dist.distributed;
-    if (!walletCredited) {
-      const midtransDist = await distributeMidtransDriverShare(
-        admin,
-        orderId,
-        auth.driver.id
-      );
-      walletCredited = midtransDist.distributed;
-    }
+    const settlement = await settleOrderFinancials(admin, orderId);
+    walletCredited = settlement.ok && !settlement.alreadySettled;
   } catch {
-    /* earnings best-effort; order tetap selesai */
+    /* settlement best-effort; order tetap selesai */
   }
 
   let pointsAwarded = 0;
