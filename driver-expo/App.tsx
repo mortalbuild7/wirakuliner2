@@ -23,8 +23,6 @@ import { playNativeIncomingOrderSound } from "./lib/incoming-order-sound";
 
 const ALLOWED_HOSTS = [
   "wirakuliner.web.id",
-  "wirakuliner.co.id",
-  "www.wirakuliner.co.id",
   "www.wirakuliner.web.id",
   "wirakuliner2.vercel.app",
   "localhost",
