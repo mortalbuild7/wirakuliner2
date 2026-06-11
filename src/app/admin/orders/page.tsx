@@ -5,6 +5,9 @@ import {
 } from "@/app/utils/adminAuth";
 import { formatIdr } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/server";
+import { isOrderCancellable } from "@/lib/admin-order-ops";
+import { CancelOrderButton } from "./cancel-order-button";
+import type { OrderStatus } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +21,11 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Dibatalkan",
 };
 
+const REFUND_LABEL: Record<string, string> = {
+  full_refund: "Refund penuh",
+  pending_midtrans: "Refund Midtrans (manual)",
+};
+
 /**
  * Daftar pesanan regional — Server Component.
  * Filter presisi server-side (city_id / province_id) mengurangi beban PostgreSQL.
@@ -29,7 +37,7 @@ export default async function AdminRegionalOrdersPage() {
   let query = supabase
     .from("orders")
     .select(
-      "id, order_status, total_product_amount, delivery_fee, delivery_address, created_at, province_id, city_id, merchants(name), profiles:customer_id(name)"
+      "id, order_status, total_product_amount, delivery_fee, delivery_address, created_at, province_id, city_id, refund_status, admin_cancel_reason, merchants(name), profiles:customer_id(name)"
     )
     .order("created_at", { ascending: false })
     .limit(100);
@@ -75,6 +83,7 @@ export default async function AdminRegionalOrdersPage() {
               <th className="px-4 py-3 text-right">Total</th>
               <th className="px-4 py-3">Wilayah</th>
               <th className="px-4 py-3">Waktu</th>
+              <th className="px-4 py-3">Aksi</th>
             </tr>
           </thead>
           <tbody>
@@ -95,7 +104,25 @@ export default async function AdminRegionalOrdersPage() {
                     {o.id.slice(0, 8).toUpperCase()}
                   </td>
                   <td className="px-4 py-3">
-                    {STATUS_LABEL[o.order_status] ?? o.order_status}
+                    <span
+                      className={
+                        o.order_status === "cancelled"
+                          ? "text-red-600"
+                          : undefined
+                      }
+                    >
+                      {STATUS_LABEL[o.order_status] ?? o.order_status}
+                    </span>
+                    {o.order_status === "cancelled" && o.refund_status && REFUND_LABEL[o.refund_status] && (
+                      <p className="mt-0.5 text-[11px] text-amber-600">
+                        {REFUND_LABEL[o.refund_status]}
+                      </p>
+                    )}
+                    {o.order_status === "cancelled" && o.admin_cancel_reason && (
+                      <p className="mt-0.5 max-w-[200px] truncate text-[11px] text-muted-foreground">
+                        Alasan: {o.admin_cancel_reason}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {(merchant as { name?: string } | null)?.name ?? "—"}
@@ -112,13 +139,24 @@ export default async function AdminRegionalOrdersPage() {
                   <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                     {new Date(o.created_at).toLocaleString("id-ID")}
                   </td>
+                  <td className="px-4 py-3">
+                    {isOrderCancellable(o.order_status as OrderStatus) ? (
+                      <CancelOrderButton
+                        orderId={o.id}
+                        orderStatus={o.order_status}
+                        total={total}
+                      />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}
             {!orders?.length && !error && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   Belum ada pesanan di wilayah Anda
