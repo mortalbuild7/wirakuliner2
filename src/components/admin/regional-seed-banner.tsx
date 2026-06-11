@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { runRegionalMigrationSeed } from "@/app/actions/seedActions";
 import { AlertTriangle, Database, Loader2 } from "lucide-react";
@@ -14,7 +13,6 @@ import { AlertTriangle, Database, Loader2 } from "lucide-react";
  * agar banner hilang otomatis setelah seed sukses.
  */
 export function RegionalSeedBanner() {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -26,8 +24,8 @@ export function RegionalSeedBanner() {
         setError(res.error);
         return;
       }
-      // Refresh Server Component — banner hilang jika tabel sudah terisi.
-      router.refresh();
+      // Reload penuh — memastikan semua halaman membaca data baru.
+      window.location.reload();
     });
   }
 
@@ -57,7 +55,7 @@ export function RegionalSeedBanner() {
             ) : (
               <Database className="mr-2 h-4 w-4" />
             )}
-            Jalankan Migrasi Basis Data Sekarang
+            Jalankan Migrasi Regional Admin Sekarang
           </Button>
         </div>
       </div>

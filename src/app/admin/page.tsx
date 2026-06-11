@@ -2,7 +2,7 @@ import { verifyAdminSession } from "@/app/utils/adminAuth";
 import { RegionalDashboardSummary } from "@/components/admin/regional-dashboard-summary";
 import { RegionalSeedBanner } from "@/components/admin/regional-seed-banner";
 import { fetchDashboardStats } from "@/lib/admin/dashboard-stats";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -16,15 +16,18 @@ export default async function AdminDashboardPage() {
   const session = await verifyAdminSession();
   const stats = await fetchDashboardStats(session);
 
-  const supabase = await createClient();
+  const admin = createAdminClient();
 
-  const [{ count: provinceCount }, { count: cityCount }] = await Promise.all([
-    supabase.from("provinces").select("*", { count: "exact", head: true }),
-    supabase.from("cities").select("*", { count: "exact", head: true }),
+  const [prov, city, svc] = await Promise.all([
+    admin.from("provinces").select("*", { count: "exact", head: true }),
+    admin.from("cities").select("*", { count: "exact", head: true }),
+    admin.from("service_cities").select("*", { count: "exact", head: true }),
   ]);
 
   const needsRegionalSeed =
-    (provinceCount ?? 0) === 0 || (cityCount ?? 0) === 0;
+    (prov.count ?? 0) < 4 ||
+    (city.count ?? 0) < 6 ||
+    (svc.count ?? 0) < 6;
 
   return (
     <>
