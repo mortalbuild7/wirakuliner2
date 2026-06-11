@@ -14,12 +14,15 @@ import { PaymentMethodPicker } from "@/components/wallet/payment-method-picker";
 import { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
 import { cn } from "@/lib/utils";
+import { LocationSearchBar } from "@/components/maps/LocationSearchBar";
+import { PickupMapContainer } from "@/components/maps/PickupMapContainer";
 import {
   Bike,
   Car,
   Crosshair,
   Loader2,
   MapPin,
+  MapPinned,
   Navigation,
   Package,
   Sparkles,
@@ -381,41 +384,98 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
         </Alert>
       )}
 
-      <section className="glass-card space-y-4 p-4">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
-            <Crosshair className="h-4 w-4" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <Label className="text-xs text-emerald-300">Titik jemput</Label>
-            <Input
-              value={ride.pickupAddress}
-              onChange={(e) => ride.setPickupAddress(e.target.value)}
-              placeholder="Lokasi jemput"
-              className="mt-1 border-white/10 bg-white/5"
-            />
+      {ride.showFlexiblePickup ? (
+        <section className="glass-card space-y-3 p-4">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
+              <MapPinned className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-xs font-medium text-emerald-300">Titik jemput</p>
+              <p className="text-[10px] text-muted-foreground">
+                Pesan untuk orang lain? Geser peta atau cari alamat manual.
+              </p>
+            </div>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0 border-emerald-500/40 text-emerald-200"
-            onClick={ride.refreshPickupGps}
-            disabled={ride.gpsLoading}
-          >
-            {ride.gpsLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Navigation className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-        {ride.pickupAccuracyM != null && (
+
+          <LocationSearchBar
+            label="Alamat jemput"
+            value={ride.pickupAddress}
+            onChange={ride.onPickupAddressChange}
+            onSelect={ride.handlePickupSearchSelect}
+            placeholder="Contoh: Bandara Soekarno-Hatta, Mall Parung…"
+            nearLat={ride.pickupLat}
+            nearLng={ride.pickupLng}
+            accentClass="text-emerald-300"
+          />
+
+          <PickupMapContainer
+            centerLat={ride.pickupLat}
+            centerLng={ride.pickupLng}
+            hubLat={ride.pickupLat}
+            hubLng={ride.pickupLng}
+            panTrigger={ride.pickupMapFlyTrigger}
+            onMapIdle={ride.handlePickupMapIdle}
+            height={220}
+          />
+
           <p className="text-[10px] text-muted-foreground">
-            Akurasi GPS ±{Math.round(ride.pickupAccuracyM)} m
+            Geser peta — pin hijau tetap di tengah; alamat diperbarui otomatis.
           </p>
-        )}
-      </section>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-emerald-500/40 text-emerald-200"
+              onClick={ride.applyPickupFromDevice}
+              disabled={ride.gpsLoading || !ride.currentDeviceLocation}
+            >
+              <Crosshair className="mr-1 h-3.5 w-3.5" />
+              Gunakan lokasi saya
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-white/20 text-muted-foreground"
+              onClick={ride.refreshPickupGps}
+              disabled={ride.gpsLoading}
+            >
+              {ride.gpsLoading ? (
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Navigation className="mr-1 h-3.5 w-3.5" />
+              )}
+              Refresh GPS
+            </Button>
+          </div>
+          {ride.currentDeviceLocation && ride.pickupAccuracyM != null && (
+            <p className="text-[10px] text-muted-foreground">
+              GPS perangkat: {ride.currentDeviceLocation.address} (±
+              {Math.round(ride.pickupAccuracyM)} m)
+            </p>
+          )}
+        </section>
+      ) : (
+        <section className="glass-card space-y-4 p-4">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
+              <Crosshair className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <Label className="text-xs text-emerald-300">Titik jemput paket</Label>
+              <Input
+                value={ride.pickupAddress}
+                onChange={(e) => ride.onPickupAddressChange(e.target.value)}
+                placeholder="Lokasi pengambilan paket"
+                className="mt-1 border-white/10 bg-white/5"
+              />
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="glass-card space-y-3 p-4">
         <div className="flex items-center gap-2">
@@ -423,41 +483,52 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
             <MapPin className="h-4 w-4" />
           </span>
           <div className="relative flex-1">
-            <Label className="text-xs text-cyan-300">
-              {ride.serviceType === "PAKET" ? "Alamat penerima" : "Tujuan"}
-            </Label>
-            <Input
-              value={ride.destAddress}
-              onChange={(e) => ride.onDestAddressChange(e.target.value)}
-              placeholder={
-                ride.serviceType === "PAKET"
-                  ? "Alamat pengantaran paket..."
-                  : "Ketik alamat tujuan..."
-              }
-              className="mt-1 border-white/10 bg-white/5 pr-9"
-            />
-            {ride.geocodingDest && (
-              <Loader2 className="absolute right-3 top-[2.15rem] h-4 w-4 animate-spin text-cyan-400" />
-            )}
-            {ride.destSuggestions.length > 0 && (
-              <ul className="absolute left-0 right-0 top-full z-40 mt-1 max-h-40 overflow-y-auto rounded-xl border border-white/15 bg-slate-950 shadow-xl">
-                {ride.destSuggestions.map((hit) => (
-                  <li key={`${hit.lat}-${hit.lng}-${hit.label}`}>
-                    <button
-                      type="button"
-                      className="w-full px-3 py-2.5 text-left text-xs text-white hover:bg-cyan-500/15"
-                      onClick={() => ride.applyDestinationHit(hit)}
-                    >
-                      {hit.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+            {ride.showFlexiblePickup ? (
+              <LocationSearchBar
+                label={ride.serviceType === "PAKET" ? "Alamat penerima" : "Tujuan"}
+                value={ride.destAddress}
+                onChange={ride.onDestAddressChange}
+                onSelect={ride.handleDestinationSearchSelect}
+                placeholder="Ketik alamat tujuan..."
+                nearLat={ride.pickupLat}
+                nearLng={ride.pickupLng}
+                accentClass="text-cyan-300"
+              />
+            ) : (
+              <>
+                <Label className="text-xs text-cyan-300">Alamat penerima</Label>
+                <Input
+                  value={ride.destAddress}
+                  onChange={(e) => ride.onDestAddressChange(e.target.value)}
+                  placeholder="Alamat pengantaran paket..."
+                  className="mt-1 border-white/10 bg-white/5 pr-9"
+                />
+                {ride.geocodingDest && (
+                  <Loader2 className="absolute right-3 top-[2.15rem] h-4 w-4 animate-spin text-cyan-400" />
+                )}
+                {ride.destSuggestions.length > 0 && (
+                  <ul className="absolute left-0 right-0 top-full z-40 mt-1 max-h-40 overflow-y-auto rounded-xl border border-white/15 bg-slate-950 shadow-xl">
+                    {ride.destSuggestions.map((hit) => (
+                      <li key={`${hit.lat}-${hit.lng}-${hit.label}`}>
+                        <button
+                          type="button"
+                          className="w-full px-3 py-2.5 text-left text-xs text-white hover:bg-cyan-500/15"
+                          onClick={() => ride.applyDestinationHit(hit)}
+                        >
+                          {hit.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </div>
         </div>
         <p className="text-[10px] text-muted-foreground">
-          Ketik alamat — pin biru mengikuti. Atau geser pin / ketuk peta.
+          {ride.showFlexiblePickup
+            ? "Pilih dari daftar atau geser pin biru di peta."
+            : "Ketik alamat — pin biru mengikuti. Atau geser pin / ketuk peta."}
         </p>
         <DestinationMap
           latitude={ride.destLat}

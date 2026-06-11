@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getAddressFromCoordinates } from "@/app/actions/geoActions";
 import type { GeocodeHit } from "@/lib/geocode";
-import { haversineKm, JALAN_WIRA } from "@/lib/geo-config";
+import { haversineKm } from "@/lib/geo-config";
+import { useOrderStore } from "@/store/useOrderStore";
+import type { GeoLocationPoint } from "@/types/geo-location";
 import {
   buildPlaceRidePayload,
   packageNeedsCargoVehicle,
@@ -125,14 +128,28 @@ export function useNgojekRide() {
   const [packageDetails, setPackageDetails] =
     useState<PackageDetailsInput>(EMPTY_PACKAGE);
 
-  const [pickupAddress, setPickupAddress] = useState("Lokasi saya");
-  const [pickupLat, setPickupLat] = useState(JALAN_WIRA.latitude);
-  const [pickupLng, setPickupLng] = useState(JALAN_WIRA.longitude);
-  const [pickupAccuracyM, setPickupAccuracyM] = useState<number | null>(null);
+  const pickupLocation = useOrderStore((s) => s.pickupLocation);
+  const destinationLocation = useOrderStore((s) => s.destinationLocation);
+  const currentDeviceLocation = useOrderStore((s) => s.currentDeviceLocation);
+  const deviceAccuracyM = useOrderStore((s) => s.deviceAccuracyM);
+  const pickupMapFlyTrigger = useOrderStore((s) => s.pickupMapFlyTrigger);
+  const destinationMapFlyTrigger = useOrderStore((s) => s.destinationMapFlyTrigger);
+  const setDeviceLocation = useOrderStore((s) => s.setDeviceLocation);
+  const patchPickupLocation = useOrderStore((s) => s.patchPickupLocation);
+  const setPickupLocation = useOrderStore((s) => s.setPickupLocation);
+  const patchDestinationLocation = useOrderStore((s) => s.patchDestinationLocation);
+  const setDestinationLocation = useOrderStore((s) => s.setDestinationLocation);
+  const applyDeviceLocationToPickup = useOrderStore((s) => s.applyDeviceLocationToPickup);
+  const bumpDestinationMapFly = useOrderStore((s) => s.bumpDestinationMapFly);
+  const bumpPickupMapFly = useOrderStore((s) => s.bumpPickupMapFly);
 
-  const [destAddress, setDestAddress] = useState("");
-  const [destLat, setDestLat] = useState(JALAN_WIRA.latitude + 0.01);
-  const [destLng, setDestLng] = useState(JALAN_WIRA.longitude + 0.01);
+  const pickupAddress = pickupLocation.address;
+  const pickupLat = pickupLocation.latitude;
+  const pickupLng = pickupLocation.longitude;
+  const destAddress = destinationLocation.address;
+  const destLat = destinationLocation.latitude;
+  const destLng = destinationLocation.longitude;
+  const mapFlyTrigger = destinationMapFlyTrigger;
 
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
@@ -147,7 +164,6 @@ export function useNgojekRide() {
 
   const [destSuggestions, setDestSuggestions] = useState<GeocodeHit[]>([]);
   const [geocodingDest, setGeocodingDest] = useState(false);
-  const [mapFlyTrigger, setMapFlyTrigger] = useState(0);
 
   const [distanceKm, setDistanceKm] = useState(0);
   const [rideFee, setRideFee] = useState(0);
@@ -158,6 +174,8 @@ export function useNgojekRide() {
   const destFromPinRef = useRef(false);
   const forwardGeocodeGenRef = useRef(0);
   const reverseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pickupReverseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pickupReverseGenRef = useRef(0);
   const lastReverseCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastForwardQueryRef = useRef("");
   const pickupGeoRef = useRef({ lat: pickupLat, lng: pickupLng });
@@ -340,7 +358,7 @@ export function useNgojekRide() {
     };
   }, [pickupLat, pickupLng, destLat, destLng]);
 
-  /** GPS sekali saat buka halaman — hindari watchPosition yang memicu tarif mutar terus. */
+  /** GPS sekali — hanya mengisi currentDeviceLocation, tidak mengunci pickup. */
   useEffect(() => {
     if (!navigator.geolocation) return;
     setGpsLoading(true);
@@ -348,26 +366,23 @@ export function useNgojekRide() {
       (pos) => {
         const lat = roundCoordForQuote(pos.coords.latitude);
         const lng = roundCoordForQuote(pos.coords.longitude);
-        const movedKm = haversineKm(
-          pickupGeoRef.current.lat,
-          pickupGeoRef.current.lng,
-          lat,
-          lng
-        );
-        setPickupAccuracyM(pos.coords.accuracy);
         setGpsLoading(false);
-        if (movedKm >= PICKUP_QUOTE_MIN_MOVE_KM) {
-          setPickupLat(lat);
-          setPickupLng(lng);
-        }
-        void reverseGeocode(pos.coords.latitude, pos.coords.longitude).then((hit) => {
-          if (hit) setPickupAddress(hit.label);
-        });
+        void (async () => {
+          const res = await getAddressFromCoordinates(lat, lng);
+          const address =
+            res.ok && res.location.address
+              ? res.location.address
+              : "Lokasi perangkat saya";
+          setDeviceLocation(
+            { address, latitude: lat, longitude: lng },
+            pos.coords.accuracy
+          );
+        })();
       },
       () => setGpsLoading(false),
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 }
     );
-  }, []);
+  }, [setDeviceLocation]);
 
   const applyDestinationCoords = useCallback((lat: number, lng: number, fly = true) => {
     const roundedLat = roundCoordForQuote(lat);
@@ -380,21 +395,24 @@ export function useNgojekRide() {
     );
     if (movedKm < COORD_QUOTE_MIN_MOVE_KM) return;
 
-    setDestLat(roundedLat);
-    setDestLng(roundedLng);
-    if (fly) setMapFlyTrigger((n) => n + 1);
-  }, []);
+    patchDestinationLocation({ latitude: roundedLat, longitude: roundedLng });
+    if (fly) bumpDestinationMapFly();
+  }, [patchDestinationLocation, bumpDestinationMapFly]);
 
   const applyDestinationHit = useCallback(
     (hit: GeocodeHit) => {
       forwardGeocodeGenRef.current += 1;
       destFromPinRef.current = true;
       skipForwardGeocodeRef.current = true;
-      setDestAddress(hit.label);
+      patchDestinationLocation({
+        address: hit.label,
+        latitude: hit.lat,
+        longitude: hit.lng,
+      });
       applyDestinationCoords(hit.lat, hit.lng);
       setDestSuggestions([]);
     },
-    [applyDestinationCoords]
+    [applyDestinationCoords, patchDestinationLocation]
   );
 
   const reverseGeocodeDest = useCallback(async (lat: number, lng: number) => {
@@ -402,10 +420,10 @@ export function useNgojekRide() {
     if (hit) {
       destFromPinRef.current = true;
       skipForwardGeocodeRef.current = true;
-      setDestAddress(hit.label);
+      patchDestinationLocation({ address: hit.label });
       lastReverseCoordsRef.current = { lat, lng };
     }
-  }, []);
+  }, [patchDestinationLocation]);
 
   useEffect(() => {
     if (destFromPinRef.current) {
@@ -502,6 +520,7 @@ export function useNgojekRide() {
   useEffect(() => {
     return () => {
       if (reverseTimerRef.current) clearTimeout(reverseTimerRef.current);
+      if (pickupReverseTimerRef.current) clearTimeout(pickupReverseTimerRef.current);
     };
   }, []);
 
@@ -513,22 +532,21 @@ export function useNgojekRide() {
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const movedKm = haversineKm(
-          pickupGeoRef.current.lat,
-          pickupGeoRef.current.lng,
-          pos.coords.latitude,
-          pos.coords.longitude
-        );
-        setPickupAccuracyM(pos.coords.accuracy);
+        const lat = roundCoordForQuote(pos.coords.latitude);
+        const lng = roundCoordForQuote(pos.coords.longitude);
         setPlaceError(null);
         setGpsLoading(false);
-        if (movedKm >= PICKUP_QUOTE_MIN_MOVE_KM) {
-          setPickupLat(roundCoordForQuote(pos.coords.latitude));
-          setPickupLng(roundCoordForQuote(pos.coords.longitude));
-        }
-        void reverseGeocode(pos.coords.latitude, pos.coords.longitude).then((hit) => {
-          if (hit) setPickupAddress(hit.label);
-        });
+        void (async () => {
+          const res = await getAddressFromCoordinates(lat, lng);
+          const address =
+            res.ok && res.location.address
+              ? res.location.address
+              : "Lokasi perangkat saya";
+          setDeviceLocation(
+            { address, latitude: lat, longitude: lng },
+            pos.coords.accuracy
+          );
+        })();
       },
       () => {
         setGpsLoading(false);
@@ -536,14 +554,79 @@ export function useNgojekRide() {
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 }
     );
-  }, []);
+  }, [setDeviceLocation]);
+
+  const applyPickupFromDevice = useCallback(() => {
+    if (!currentDeviceLocation) {
+      setPlaceError("Lokasi perangkat belum tersedia — izinkan GPS");
+      return;
+    }
+    applyDeviceLocationToPickup();
+    setPlaceError(null);
+  }, [currentDeviceLocation, applyDeviceLocationToPickup]);
 
   const onDestAddressChange = useCallback((value: string) => {
     destFromPinRef.current = false;
     lastForwardQueryRef.current = "";
     setPlaceError(null);
-    setDestAddress(value);
-  }, []);
+    patchDestinationLocation({ address: value });
+  }, [patchDestinationLocation]);
+
+  const reverseGeocodePickup = useCallback(async (lat: number, lng: number) => {
+    const gen = ++pickupReverseGenRef.current;
+    const res = await getAddressFromCoordinates(lat, lng);
+    if (gen !== pickupReverseGenRef.current) return;
+    if (res.ok) {
+      patchPickupLocation({
+        address: res.location.address,
+        latitude: res.location.latitude,
+        longitude: res.location.longitude,
+      });
+    } else {
+      patchPickupLocation({
+        latitude: lat,
+        longitude: lng,
+        address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+      });
+    }
+  }, [patchPickupLocation]);
+
+  const handlePickupMapIdle = useCallback(
+    (lat: number, lng: number) => {
+      const roundedLat = roundCoordForQuote(lat);
+      const roundedLng = roundCoordForQuote(lng);
+      const movedKm = haversineKm(
+        pickupGeoRef.current.lat,
+        pickupGeoRef.current.lng,
+        roundedLat,
+        roundedLng
+      );
+      if (movedKm < PICKUP_QUOTE_MIN_MOVE_KM) return;
+
+      patchPickupLocation({ latitude: roundedLat, longitude: roundedLng });
+
+      if (pickupReverseTimerRef.current) clearTimeout(pickupReverseTimerRef.current);
+      pickupReverseTimerRef.current = setTimeout(() => {
+        void reverseGeocodePickup(roundedLat, roundedLng);
+      }, 600);
+    },
+    [patchPickupLocation, reverseGeocodePickup]
+  );
+
+  const handlePickupSearchSelect = useCallback(
+    (loc: GeoLocationPoint) => {
+      setPickupLocation(loc);
+      bumpPickupMapFly();
+    },
+    [setPickupLocation, bumpPickupMapFly]
+  );
+
+  const onPickupAddressChange = useCallback(
+    (value: string) => {
+      patchPickupLocation({ address: value });
+    },
+    [patchPickupLocation]
+  );
 
   const saveTrackSnapshot = useCallback(
     (orderId: string) => {
@@ -702,6 +785,19 @@ export function useNgojekRide() {
     router.push(`/customer/orders/${oid}`);
   }, [qrisPayment?.orderId, router, saveTrackSnapshot]);
 
+  const handleDestinationSearchSelect = useCallback(
+    (loc: GeoLocationPoint) => {
+      setDestinationLocation(loc);
+      bumpDestinationMapFly();
+      setDestSuggestions([]);
+      setPlaceError(null);
+    },
+    [setDestinationLocation, bumpDestinationMapFly]
+  );
+
+  const showFlexiblePickup =
+    serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
+
   return {
     authReady,
     userId,
@@ -714,10 +810,15 @@ export function useNgojekRide() {
     needsCargoVehicle,
     cargoVolumeThreshold: PAKET_CARGO_VOLUME_THRESHOLD_CM3,
     pickupAddress,
-    setPickupAddress,
+    onPickupAddressChange,
     pickupLat,
     pickupLng,
-    pickupAccuracyM,
+    pickupAccuracyM: deviceAccuracyM,
+    currentDeviceLocation,
+    pickupMapFlyTrigger,
+    handlePickupMapIdle,
+    handlePickupSearchSelect,
+    applyPickupFromDevice,
     destAddress,
     onDestAddressChange,
     destLat,
@@ -742,6 +843,8 @@ export function useNgojekRide() {
     applyDestinationHit,
     handleDestMapChange,
     refreshPickupGps,
+    handleDestinationSearchSelect,
+    showFlexiblePickup,
     bookRide,
     onQrisPaid,
     paymentBypass: isPaymentBypassEnabled(),

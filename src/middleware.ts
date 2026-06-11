@@ -19,6 +19,7 @@ const ROLE_ROUTES: Record<string, UserRole> = {
 /** Satu pintu login admin — halaman ini tidak memerlukan sesi. */
 const ADMIN_AUTH_EXEMPT_PREFIXES = [
   "/admin/login",
+  "/admin/activate",
   "/admin/mfa-verify",
   "/admin/mfa-setup",
   "/admin/mfa-challenge",

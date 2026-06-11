@@ -17,6 +17,7 @@ export default async function AdminLayout({
   const pathname = (await headers()).get("x-pathname") ?? "";
   const isAuthOnlyPage =
     pathname.startsWith("/admin/login") ||
+    pathname.startsWith("/admin/activate") ||
     pathname.startsWith("/admin/mfa-verify") ||
     pathname.startsWith("/admin/mfa-setup") ||
     pathname.startsWith("/admin/mfa-challenge");
