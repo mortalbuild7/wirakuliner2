@@ -7,17 +7,19 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 /**
- * Dashboard utama WIRA Admin — https://wirakuliner.web.id/admin
+ * Dashboard utama admin — URL: /dashboard (route group `(admin)`).
  *
- * Jika tabel `provinces` / `cities` kosong, SUPER_ADMIN melihat banner
- * kuning untuk menjalankan seed regional via `runRegionalMigrationSeed()`.
+ * Deteksi kosong: jika `provinces` atau `cities` count = 0, tampilkan
+ * banner kuning SUPER_ADMIN dengan tombol seed `runRegionalMigrationSeed()`.
  */
 export default async function AdminDashboardPage() {
+  // ── 1. AUTENTIKASI: semua tier admin boleh melihat dashboard. ─────────────
   const session = await verifyAdminSession();
   const stats = await fetchDashboardStats(session);
 
   const supabase = await createClient();
 
+  // ── 2. DETEKSI KOSONG: hitung provinsi & kota referensi wilayah. ───────────
   const [{ count: provinceCount }, { count: cityCount }] = await Promise.all([
     supabase.from("provinces").select("*", { count: "exact", head: true }),
     supabase.from("cities").select("*", { count: "exact", head: true }),
@@ -28,6 +30,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <>
+      {/* Banner hanya SUPER_ADMIN — UI masking di server sebelum render. */}
       {session.adminRole === "SUPER_ADMIN" && needsRegionalSeed && (
         <div className="px-6 pt-6">
           <RegionalSeedBanner />
