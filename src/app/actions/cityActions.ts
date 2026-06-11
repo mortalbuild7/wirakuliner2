@@ -129,6 +129,7 @@ export async function createServiceCity(
       id: cityId,
       province_id: resolvedProvinceId,
       name: normalizedName,
+      is_active: true,
     });
 
     if (cityErr) {
@@ -179,10 +180,13 @@ export async function createServiceCity(
     };
   }
 
+  await admin.from("cities").update({ is_active: true }).eq("id", cityId);
+
   // ── 8. SINKRONISASI UI: dropdown kota di form driver & halaman ini. ────────
   revalidatePath("/admin/dashboard/cities");
   revalidatePath("/admin/drivers");
   revalidatePath("/admin/drivers/new");
+  revalidatePath("/dashboard/drivers/new");
 
   return {
     ok: true,

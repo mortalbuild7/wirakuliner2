@@ -83,7 +83,7 @@ export function SimDocumentUploader({ value, onChange, disabled }: Props) {
   return (
     <div className="sm:col-span-2">
       <Label>Foto fisik SIM (wajib)</Label>
-      <p className="mt-0.5 text-xs text-muted-foreground">
+      <p className="mt-0.5 text-xs text-slate-500">
         Unggah foto SIM asli yang jelas terbaca — disimpan di bucket{" "}
         <code className="text-[10px]">driver-documents</code>.
       </p>
@@ -101,7 +101,7 @@ export function SimDocumentUploader({ value, onChange, disabled }: Props) {
               unoptimized
             />
           ) : (
-            <span className="flex h-full w-full flex-col items-center justify-center text-muted-foreground">
+            <span className="flex h-full w-full flex-col items-center justify-center text-slate-500">
               {busy ? (
                 <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
               ) : (

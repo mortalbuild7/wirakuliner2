@@ -60,13 +60,13 @@ export default function AdminDashboardClientPage() {
     !checking && status?.needsSeed && status.isSuperAdmin;
 
   return (
-    <main className="min-h-screen bg-background p-6">
+    <main className="min-h-screen bg-slate-50/50 p-6 text-slate-800">
       <div className="mb-6">
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
+        <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
           <MapPin className="h-7 w-7 text-sky-600" />
           Dashboard Admin
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-slate-600">
           Panel kontrol WIRA — bypass migrasi regional tersedia di bawah.
         </p>
       </div>
@@ -78,7 +78,7 @@ export default function AdminDashboardClientPage() {
       )}
 
       {checking && (
-        <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="mb-4 flex items-center gap-2 text-sm text-slate-600">
           <Loader2 className="h-4 w-4 animate-spin" />
           Memeriksa basis data regional...
         </div>
@@ -157,7 +157,7 @@ export default function AdminDashboardClientPage() {
       {/* Fallback manual seed untuk SUPER_ADMIN jika deteksi status gagal */}
       {!checking && status?.isSuperAdmin && loadError && (
         <div className="mt-6 rounded-lg border border-dashed border-amber-400 p-4">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-600">
             Deteksi otomatis gagal — jalankan migrasi manual:
           </p>
           <Button

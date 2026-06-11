@@ -30,7 +30,7 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen wira-mesh md:flex">
       <Sidebar />
-      <div className="flex-1 text-slate-800">{children}</div>
+      <div className="flex-1 bg-slate-50/30 text-slate-800">{children}</div>
     </div>
   );
 }

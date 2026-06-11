@@ -54,15 +54,15 @@
   }
 
   .wira-table-wrap table {
-    @apply w-full border-collapse text-sm text-slate-700;
+    @apply w-full border-collapse text-sm text-slate-800;
   }
 
   .wira-table-wrap thead tr {
-    @apply border-b border-slate-100 bg-slate-50/80 text-left text-slate-500;
+    @apply border-b border-slate-100 bg-slate-50/80 text-left;
   }
 
   .wira-table-wrap th {
-    @apply px-4 py-3 font-medium;
+    @apply px-4 py-3 font-medium text-slate-700;
   }
 
   .wira-table-wrap tbody tr {
@@ -70,7 +70,7 @@
   }
 
   .wira-table-wrap td {
-    @apply px-4 py-3;
+    @apply px-4 py-3 text-slate-800;
   }
 
   /* Panel driver — kontras tinggi, touch target lebar, tidak menyilaukan */

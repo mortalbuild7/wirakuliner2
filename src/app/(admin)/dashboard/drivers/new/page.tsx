@@ -4,12 +4,10 @@ import { getDriverNewPageProps } from "@/lib/admin/driver-new-page-props";
 export const dynamic = "force-dynamic";
 
 /**
- * URL: /admin/drivers/new — form pendaftaran driver nasional.
- *
- * Kota cabang dimuat dinamis via getActiveCitiesByProvince (service role)
- * setiap kali admin mengubah provinsi — tidak lagi bergantung pada RLS client.
+ * URL: /dashboard/drivers/new — alias form pendaftaran driver (route group admin).
+ * Logika identik dengan /admin/drivers/new; kota cabang dimuat per provinsi.
  */
-export default async function AdminDriverNewPage() {
+export default async function DashboardDriverNewPage() {
   const props = await getDriverNewPageProps();
 
   return <DriverRegistrationForm {...props} />;

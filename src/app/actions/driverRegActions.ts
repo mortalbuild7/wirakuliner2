@@ -55,8 +55,15 @@ const DriverRegSchema = z.object({
   serviceCategory: z.enum(SERVICE_CATEGORIES, {
     message: "Kategori armada tidak valid",
   }),
-  // Kota layanan (zona operasi GPS) — divalidasi terhadap yurisdiksi admin.
-  serviceCityId: z.uuid({ message: "Kota layanan tidak valid" }),
+  // Wilayah operasional — provinceId + cityId (integer) dari dropdown form.
+  provinceId: z
+    .number({ message: "Provinsi wajib dipilih" })
+    .int("ID provinsi harus bilangan bulat")
+    .positive("Provinsi tidak valid"),
+  cityId: z
+    .number({ message: "Kota cabang wajib dipilih" })
+    .int("ID kota harus bilangan bulat")
+    .positive("Kota cabang tidak valid"),
 
   // ── LEGALITAS SIM (WAJIB) ───────────────────────────────────────────────
   // Nomor SIM: hanya digit (format nasional 8–16 digit) — non-digit ditolak.
@@ -91,6 +98,15 @@ export type DriverRegResult =
   | { ok: true; driverId: string; userId: string; message: string }
   | { ok: false; error: string };
 
+/** Normalisasi ID wilayah dari `<select>` (string) → integer sebelum zod. */
+function coerceRegionalIds(raw: DriverRegInput | Record<string, unknown>) {
+  return {
+    ...raw,
+    provinceId: Number((raw as { provinceId?: unknown }).provinceId),
+    cityId: Number((raw as { cityId?: unknown }).cityId),
+  };
+}
+
 export async function registerDriverNational(
   input: DriverRegInput
 ): Promise<DriverRegResult> {
@@ -98,7 +114,7 @@ export async function registerDriverNational(
   const session = await verifyAdminSession();
 
   // ── 2. VALIDASI PAYLOAD: tolak dini dengan pesan terarah per field. ──────
-  const parsed = DriverRegSchema.safeParse(input);
+  const parsed = DriverRegSchema.safeParse(coerceRegionalIds(input));
   if (!parsed.success) {
     return {
       ok: false,
@@ -113,15 +129,31 @@ export async function registerDriverNational(
   // ── 3. GEOFENCING: kota layanan harus aktif DAN dalam yurisdiksi admin. ──
   // Lookup dari DB (bukan dari input client) → client tidak bisa memalsukan
   // province_id/city_id untuk menembus pagar wilayah.
+  const { data: refCity } = await admin
+    .from("cities")
+    .select("id, name, province_id, is_active")
+    .eq("id", data.cityId)
+    .eq("province_id", data.provinceId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!refCity) {
+    return {
+      ok: false,
+      error: "Kota cabang tidak ditemukan atau tidak aktif di provinsi ini",
+    };
+  }
+
   const { data: city } = await admin
     .from("service_cities")
     .select("id, name, province_id, city_id")
-    .eq("id", data.serviceCityId)
+    .eq("province_id", data.provinceId)
+    .eq("city_id", data.cityId)
     .eq("is_active", true)
     .maybeSingle();
 
   if (!city) {
-    return { ok: false, error: "Kota layanan tidak ditemukan / nonaktif" };
+    return { ok: false, error: "Zona layanan GPS belum aktif untuk kota ini" };
   }
 
   // CITY_ADMIN → city.city_id wajib sama dengan session.cityId;
@@ -228,4 +260,11 @@ export async function registerDriverNational(
     userId: uid,
     message: `Driver ${data.name} (${data.serviceCategory}) terdaftar di ${city.name}.`,
   };
+}
+
+/** Alias operasional — sama dengan registerDriverNational. */
+export async function registerNewDriver(
+  input: DriverRegInput
+): Promise<DriverRegResult> {
+  return registerDriverNational(input);
 }

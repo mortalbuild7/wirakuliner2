@@ -83,13 +83,13 @@ export function CityManagementForm({
   }
 
   return (
-    <main className="p-6">
+    <main className="p-6 text-slate-800">
       <div className="mb-6">
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
+        <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
           <MapPin className="h-7 w-7 text-sky-600" />
           Manajemen Kota Layanan
         </h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+        <p className="mt-2 max-w-2xl text-sm text-slate-600">
           Tambahkan kota layanan baru agar driver dan merchant dapat didaftarkan di
           wilayah tersebut. Hanya Super Admin yang dapat mengelola data ini.
         </p>
@@ -117,7 +117,7 @@ export function CityManagementForm({
           <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label htmlFor="province">Provinsi Induk</Label>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <p className="mt-0.5 text-xs text-slate-500">
                 {provinces.length} provinsi Indonesia — data master dinamis.
               </p>
               {/* Render 38 provinsi via .map() — tanpa hardcode per baris */}
@@ -165,11 +165,11 @@ export function CityManagementForm({
       </Card>
 
       <section className="mt-8">
-        <h2 className="text-lg font-semibold">
+        <h2 className="text-lg font-semibold text-slate-800">
           Daftar Kota Layanan Aktif ({cities.length})
         </h2>
         {cities.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">
+          <p className="mt-4 text-sm text-slate-600">
             Belum ada kota layanan. Tambahkan kota pertama menggunakan form di atas.
           </p>
         ) : (
@@ -187,11 +187,11 @@ export function CityManagementForm({
               <tbody>
                 {cities.map((c) => (
                   <tr key={c.id}>
-                    <td className="px-4 py-3 font-medium">{c.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
+                    <td className="px-4 py-3 font-medium text-slate-800">{c.name}</td>
+                    <td className="px-4 py-3 text-slate-600">
                       {provinceLabel(c)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                    <td className="px-4 py-3 text-xs text-slate-500">
                       P{c.province_id ?? "—"} / K{c.city_id ?? "—"}
                     </td>
                     <td className="px-4 py-3">{c.radius_km} km</td>

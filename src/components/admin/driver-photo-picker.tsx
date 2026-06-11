@@ -62,7 +62,7 @@ export function DriverPhotoPicker({ value, onChange, disabled }: Props) {
   return (
     <div className="sm:col-span-2">
       <Label>Foto driver</Label>
-      <p className="mt-0.5 text-xs text-muted-foreground">
+      <p className="mt-0.5 text-xs text-slate-500">
         Ditampilkan di lacak pesanan customer. Ambil foto langsung atau pilih dari galeri.
       </p>
 
@@ -83,7 +83,7 @@ export function DriverPhotoPicker({ value, onChange, disabled }: Props) {
               unoptimized
             />
           ) : (
-            <span className="flex h-full w-full flex-col items-center justify-center text-muted-foreground">
+            <span className="flex h-full w-full flex-col items-center justify-center text-slate-500">
               {busy ? (
                 <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
               ) : (

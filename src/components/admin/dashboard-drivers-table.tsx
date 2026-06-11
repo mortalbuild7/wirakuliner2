@@ -75,7 +75,7 @@ const SIM_BADGE: Record<SimStatus, { label: string; className: string }> = {
   },
   MISSING: {
     label: "Belum Ada",
-    className: "border-border bg-muted/40 text-muted-foreground",
+    className: "border-slate-200 bg-slate-100 text-slate-600",
   },
 };
 
@@ -104,7 +104,7 @@ function SimStatusBadge({ d }: { d: DriverRow }) {
         {cfg.label}
       </span>
       {dateLabel && (
-        <span className="text-[10px] text-muted-foreground">s/d {dateLabel}</span>
+        <span className="text-[10px] text-slate-500">s/d {dateLabel}</span>
       )}
       {/* Tautan bukti fisik — buka Public URL dokumen di tab baru */}
       {d.sim_document_url && (
@@ -236,14 +236,14 @@ export function DashboardDriversTable({
   }
 
   return (
-    <main className="p-6">
+    <main className="p-6 text-slate-800">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
             <Bike className="h-7 w-7 text-emerald-600" />
             Data Driver
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-slate-600">
             {scopeHint} · Tier {adminTier}
           </p>
         </div>
@@ -300,7 +300,7 @@ export function DashboardDriversTable({
               <div>
                 <Label>Kota layanan</Label>
                 <select
-                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="mt-1 flex h-11 w-full rounded-2xl border border-slate-200/60 bg-slate-50 px-4 text-sm text-slate-800"
                   value={editForm.service_city_id}
                   onChange={(e) =>
                     setEditForm({ ...editForm, service_city_id: e.target.value })
@@ -344,13 +344,13 @@ export function DashboardDriversTable({
           <tbody>
             {listLoading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-600">
                   Memuat...
                 </td>
               </tr>
             ) : drivers.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-600">
                   Tidak ada driver di wilayah ini.
                 </td>
               </tr>
@@ -360,20 +360,20 @@ export function DashboardDriversTable({
                 const suspended = acct === "suspended" || acct === "blocked";
                 return (
                   <tr key={d.id}>
-                    <td className="px-4 py-3 font-medium">{d.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
+                    <td className="px-4 py-3 font-medium text-slate-800">{d.name}</td>
+                    <td className="px-4 py-3 text-slate-800">
                       {d.phone}
                       <br />
-                      <span className="text-xs">{d.profiles?.email ?? "—"}</span>
+                      <span className="text-xs text-slate-600">{d.profiles?.email ?? "—"}</span>
                     </td>
-                    <td className="px-4 py-3 text-xs">
+                    <td className="px-4 py-3 text-xs text-slate-800">
                       {FLEET_LABEL[d.service_category ?? ""] ?? "Motor Hybrid"}
                     </td>
                     <td className="px-4 py-3">
                       <SimStatusBadge d={d} />
                     </td>
-                    <td className="px-4 py-3">{cityName(d)}</td>
-                    <td className="px-4 py-3 capitalize">{d.status}</td>
+                    <td className="px-4 py-3 text-slate-800">{cityName(d)}</td>
+                    <td className="px-4 py-3 capitalize text-slate-800">{d.status}</td>
                     <td className="px-4 py-3">
                       <span
                         className={

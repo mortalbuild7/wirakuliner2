@@ -18,6 +18,11 @@ import {
   registerDriverNational,
   type DriverRegInput,
 } from "@/app/actions/driverRegActions";
+import {
+  getActiveCitiesByProvince,
+  type ActiveCityOption,
+} from "@/app/actions/locationActions";
+import type { IndonesiaProvince } from "@/app/utils/indonesiaProvinces";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -32,12 +37,8 @@ import {
 
 type ServiceCategory = "MOTOR_HYBRID" | "MOBIL_PASSENGER" | "MOBIL_CARGO";
 
-type ServiceCity = {
-  id: string;
-  name: string;
-  province_id: number | null;
-  city_id: number | null;
-};
+const SELECT_CLASS =
+  "mt-1 flex h-11 w-full rounded-2xl border border-slate-200/60 bg-slate-50 px-4 text-sm text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60";
 
 /**
  * Radio card armada fisik — satu driver satu kategori (anti-redundancy).
@@ -74,12 +75,15 @@ const FLEET_OPTIONS: {
 ];
 
 export function DriverRegistrationForm({
-  cities,
+  provinces,
+  defaultProvinceId,
   adminTier,
   scopeHint,
   regionLocked,
 }: {
-  cities: ServiceCity[];
+  provinces: IndonesiaProvince[];
+  /** Provinsi awal — dari yurisdiksi admin regional atau provinsi pertama. */
+  defaultProvinceId: number;
   adminTier: string;
   scopeHint: string;
   /** true untuk CITY/PROVINCE admin → pilihan wilayah dikunci server-side. */
@@ -88,66 +92,113 @@ export function DriverRegistrationForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  // State armada fisik — diubah otomatis oleh radio card.
   const [serviceCategory, setServiceCategory] =
     useState<ServiceCategory>("MOTOR_HYBRID");
 
-  const [form, setForm] = useState({
+  const [formData, setFormData] = useState({
     name: "",
     phone: "",
     email: "",
     password: "",
     vehiclePlate: "",
-    serviceCityId: "",
-    simNumber: "",     // nomor SIM — disanitasi hanya angka saat diketik
-    simExpiryDate: "", // tanggal masa berlaku — wajib di masa depan
+    provinceId: String(defaultProvinceId),
+    cityId: "",
+    simNumber: "",
+    simExpiryDate: "",
   });
+
+  const [branchCities, setBranchCities] = useState<ActiveCityOption[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [citiesError, setCitiesError] = useState<string | null>(null);
+
   const [photoDraft, setPhotoDraft] = useState<DriverPhotoDraft | null>(null);
-  // Public URL foto fisik SIM di bucket 'driver-documents' — di-set oleh
-  // SimDocumentUploader setelah upload sukses; wajib terisi sebelum submit.
   const [simDocumentUrl, setSimDocumentUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Batas bawah input tanggal: besok — SIM yang habis hari ini ditolak dini.
   const minSimDate = (() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
   })();
 
-  // CITY_ADMIN umumnya hanya punya satu kota → otomatis terpilih & terkunci.
-  useEffect(() => {
-    if (cities.length && !form.serviceCityId) {
-      setForm((f) => ({ ...f, serviceCityId: cities[0].id }));
-    }
-  }, [cities, form.serviceCityId]);
+  const provinceLocked =
+    regionLocked && adminTier === "PROVINCE_ADMIN";
+  const cityLockedToSingle =
+    regionLocked && adminTier === "CITY_ADMIN" && branchCities.length === 1;
 
-  const cityLockedToSingle = regionLocked && cities.length === 1;
-  const selectedCity = cities.find((c) => c.id === form.serviceCityId);
+  const selectedCity = branchCities.find(
+    (c) => String(c.cityId) === formData.cityId
+  );
+
+  // Muat ulang kota cabang setiap provinsi berubah — sinkron dengan Manajemen Kota.
+  useEffect(() => {
+    const provinceId = Number(formData.provinceId);
+    if (!Number.isInteger(provinceId) || provinceId <= 0) {
+      setBranchCities([]);
+      setFormData((f) => ({ ...f, cityId: "" }));
+      return;
+    }
+
+    let cancelled = false;
+    setCitiesLoading(true);
+    setCitiesError(null);
+
+    void getActiveCitiesByProvince(provinceId).then((res) => {
+      if (cancelled) return;
+      setCitiesLoading(false);
+
+      if (!res.ok) {
+        setBranchCities([]);
+        setFormData((f) => ({ ...f, cityId: "" }));
+        setCitiesError(res.error);
+        return;
+      }
+
+      setBranchCities(res.cities);
+      setFormData((f) => ({
+        ...f,
+        cityId:
+          res.cities.length === 1 ? String(res.cities[0].cityId) : "",
+      }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.provinceId]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    // Guard sisi client: dokumen SIM wajib terunggah sebelum kirim payload —
-    // validasi otoritatif tetap diulang server-side (zod + cek asal bucket).
     if (!simDocumentUrl) {
       setError("Foto fisik SIM wajib diunggah terlebih dahulu");
       return;
     }
 
-    // Payload dikirim ke Server Action — validasi otoritatif (zod +
-    // geofencing + anti-duplikat) berjalan di server, bukan di browser.
+    const provinceId = Number(formData.provinceId);
+    const cityId = Number(formData.cityId);
+
+    if (!Number.isInteger(provinceId) || provinceId <= 0) {
+      setError("Provinsi wajib dipilih");
+      return;
+    }
+    if (!Number.isInteger(cityId) || cityId <= 0) {
+      setError("Kota cabang wajib dipilih");
+      return;
+    }
+
     const payload: DriverRegInput = {
-      name: form.name.trim(),
-      phone: form.phone.trim(),
-      email: form.email.trim(),
-      password: form.password,
-      vehiclePlate: form.vehiclePlate.trim() || undefined,
+      name: formData.name.trim(),
+      phone: formData.phone.trim(),
+      email: formData.email.trim(),
+      password: formData.password,
+      vehiclePlate: formData.vehiclePlate.trim() || undefined,
       serviceCategory,
-      serviceCityId: form.serviceCityId,
-      simNumber: form.simNumber.trim(),
-      simExpiryDate: form.simExpiryDate,
+      provinceId,
+      cityId,
+      simNumber: formData.simNumber.trim(),
+      simExpiryDate: formData.simExpiryDate,
       simDocumentUrl,
     };
 
@@ -158,37 +209,35 @@ export function DriverRegistrationForm({
         return;
       }
 
-      // Foto opsional — diunggah SETELAH armada tercatat (butuh driverId).
       if (photoDraft) {
         try {
           await uploadDriverPhoto(res.driverId, photoDraft);
           if (photoDraft.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
         } catch {
-          /* foto opsional — kegagalan tidak membatalkan pendaftaran */
+          /* foto opsional */
         }
       }
 
       alert(res.message);
-      // Kembali ke tabel driver — data baru langsung tampil (revalidated).
       router.push("/admin/drivers");
     });
   }
 
   return (
-    <main className="p-6">
+    <main className="p-6 text-slate-800">
       <div className="mb-6">
         <Link
           href="/admin/drivers"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
         >
           <ArrowLeft className="h-4 w-4" />
           Kembali ke Data Driver
         </Link>
-        <h1 className="mt-2 flex items-center gap-2 text-2xl font-bold">
+        <h1 className="mt-2 flex items-center gap-2 text-2xl font-bold text-slate-900">
           <UserPlus className="h-7 w-7 text-emerald-600" />
           Pendaftaran Driver Baru
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-slate-600">
           {scopeHint} · Tier {adminTier}
           {regionLocked && (
             <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
@@ -211,7 +260,6 @@ export function DriverRegistrationForm({
             <CardTitle className="text-lg">Jenis Armada Fisik</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Radio card interaktif — klik kartu = ubah state serviceCategory */}
             <div className="grid gap-3 sm:grid-cols-3" role="radiogroup">
               {FLEET_OPTIONS.map((opt) => {
                 const Icon = opt.icon;
@@ -224,10 +272,10 @@ export function DriverRegistrationForm({
                     aria-checked={active}
                     onClick={() => setServiceCategory(opt.value)}
                     className={cn(
-                      "rounded-xl border-2 p-4 text-left transition",
+                      "rounded-2xl border-2 p-4 text-left transition shadow-[0_2px_8px_rgba(0,0,0,0.06)]",
                       active
                         ? `${opt.accent} shadow-sm`
-                        : "border-border bg-background hover:border-muted-foreground/40"
+                        : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
                     )}
                   >
                     <Icon className="h-6 w-6" />
@@ -248,8 +296,10 @@ export function DriverRegistrationForm({
             <div className="sm:col-span-2">
               <Label>Nama lengkap</Label>
               <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
                 placeholder="Nama sesuai KTP"
                 required
                 minLength={3}
@@ -258,8 +308,10 @@ export function DriverRegistrationForm({
             <div>
               <Label>Telepon (untuk klaim akun di app driver)</Label>
               <Input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
                 placeholder="08xxxxxxxxxx"
                 required
                 minLength={8}
@@ -271,9 +323,9 @@ export function DriverRegistrationForm({
                 {serviceCategory === "MOTOR_HYBRID" ? "(motor)" : "(mobil)"}
               </Label>
               <Input
-                value={form.vehiclePlate}
+                value={formData.vehiclePlate}
                 onChange={(e) =>
-                  setForm({ ...form, vehiclePlate: e.target.value })
+                  setFormData({ ...formData, vehiclePlate: e.target.value })
                 }
                 placeholder="F 1234 ABC (opsional)"
               />
@@ -282,8 +334,10 @@ export function DriverRegistrationForm({
               <Label>Email login</Label>
               <Input
                 type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                value={formData.email}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
                 required
               />
             </div>
@@ -291,8 +345,10 @@ export function DriverRegistrationForm({
               <Label>Password awal</Label>
               <Input
                 type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 minLength={6}
                 required
               />
@@ -315,13 +371,11 @@ export function DriverRegistrationForm({
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label>Nomor SIM</Label>
-              {/* inputMode numeric + sanitasi onChange: non-digit dibuang
-                  langsung saat diketik — hanya angka yang masuk state. */}
               <Input
-                value={form.simNumber}
+                value={formData.simNumber}
                 onChange={(e) =>
-                  setForm({
-                    ...form,
+                  setFormData({
+                    ...formData,
                     simNumber: e.target.value.replace(/\D/g, "").slice(0, 16),
                   })
                 }
@@ -332,28 +386,25 @@ export function DriverRegistrationForm({
                 minLength={8}
                 maxLength={16}
               />
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-[11px] text-slate-500">
                 Hanya angka, 8–16 digit sesuai kartu SIM.
               </p>
             </div>
             <div>
               <Label>Tanggal masa berlaku SIM</Label>
-              {/* min = besok: browser menolak tanggal lampau; server tetap
-                  memvalidasi ulang (zod refine masa depan). */}
               <Input
                 type="date"
-                value={form.simExpiryDate}
+                value={formData.simExpiryDate}
                 onChange={(e) =>
-                  setForm({ ...form, simExpiryDate: e.target.value })
+                  setFormData({ ...formData, simExpiryDate: e.target.value })
                 }
                 min={minSimDate}
                 required
               />
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-[11px] text-slate-500">
                 Sistem mengirim peringatan otomatis 30 hari sebelum habis.
               </p>
             </div>
-            {/* Upload bukti fisik → Public URL di-set ke state simDocumentUrl */}
             <SimDocumentUploader
               value={simDocumentUrl}
               onChange={setSimDocumentUrl}
@@ -366,48 +417,103 @@ export function DriverRegistrationForm({
           <CardHeader>
             <CardTitle className="text-lg">Zona Operasi</CardTitle>
           </CardHeader>
-          <CardContent>
-            <Label className="flex items-center gap-1.5">
-              Kota layanan
-              {cityLockedToSingle && <Lock className="h-3.5 w-3.5 text-amber-600" />}
-            </Label>
-            {/* Terkunci untuk admin regional: pilihan sudah difilter
-                server-side; CITY_ADMIN dengan satu kota tidak bisa mengubah. */}
-            <select
-              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-              value={form.serviceCityId}
-              onChange={(e) =>
-                setForm({ ...form, serviceCityId: e.target.value })
-              }
-              disabled={cityLockedToSingle || pending}
-              required
-            >
-              {cities.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label className="flex items-center gap-1.5">
+                Provinsi
+                {provinceLocked && (
+                  <Lock className="h-3.5 w-3.5 text-amber-600" />
+                )}
+              </Label>
+              <select
+                className={SELECT_CLASS}
+                value={formData.provinceId}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    provinceId: e.target.value,
+                    cityId: "",
+                  })
+                }
+                disabled={provinceLocked || pending}
+                required
+              >
+                {provinces.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label className="flex items-center gap-1.5">
+                Kota Cabang
+                {cityLockedToSingle && (
+                  <Lock className="h-3.5 w-3.5 text-amber-600" />
+                )}
+              </Label>
+              <select
+                className={SELECT_CLASS}
+                value={formData.cityId}
+                onChange={(e) =>
+                  setFormData({ ...formData, cityId: e.target.value })
+                }
+                disabled={
+                  cityLockedToSingle || pending || citiesLoading || branchCities.length === 0
+                }
+                required
+              >
+                <option value="">
+                  {citiesLoading
+                    ? "Memuat kota…"
+                    : branchCities.length === 0
+                      ? "— Pilih provinsi terlebih dahulu —"
+                      : "— Pilih kota cabang —"}
                 </option>
-              ))}
-            </select>
-            {selectedCity && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Kode wilayah: Provinsi {selectedCity.province_id ?? "—"} · Kota{" "}
-                {selectedCity.city_id ?? "—"}{" "}
-                {regionLocked && "(otomatis dari yurisdiksi admin)"}
-              </p>
-            )}
-            {cities.length === 0 && (
-              <p className="mt-2 text-xs text-red-600">
-                Tidak ada kota layanan aktif di wilayah Anda — tambahkan dulu di
-                menu Kota.
-              </p>
-            )}
+                {branchCities.map((c) => (
+                  <option key={c.cityId} value={c.cityId}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {citiesLoading && (
+                <p className="mt-2 flex items-center gap-1 text-xs text-slate-600">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Memuat daftar kota layanan…
+                </p>
+              )}
+              {citiesError && (
+                <p className="mt-2 text-xs text-red-600">{citiesError}</p>
+              )}
+              {selectedCity && (
+                <p className="mt-2 text-xs text-slate-600">
+                  Kode wilayah: Provinsi {selectedCity.provinceId} · Kota{" "}
+                  {selectedCity.cityId}
+                  {regionLocked && " (otomatis dari yurisdiksi admin)"}
+                </p>
+              )}
+              {!citiesLoading &&
+                !citiesError &&
+                branchCities.length === 0 &&
+                formData.provinceId && (
+                  <p className="mt-2 text-xs text-red-600">
+                    Tidak ada kota layanan aktif di provinsi ini — aktifkan dulu
+                    di menu Manajemen Kota.
+                  </p>
+                )}
+            </div>
           </CardContent>
         </Card>
 
         <div className="flex gap-2">
           <Button
             type="submit"
-            disabled={pending || cities.length === 0}
+            disabled={
+              pending ||
+              citiesLoading ||
+              branchCities.length === 0 ||
+              !formData.cityId
+            }
             className="gap-2"
           >
             {pending ? (
