@@ -10,6 +10,7 @@ import {
   Loader2,
   LogOut,
   Map,
+  MapPinned,
   SlidersHorizontal,
   Store,
   Truck,
@@ -21,12 +22,15 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { AdminTier } from "@/app/utils/adminAuth";
 
-export type SidebarNavItem = {
-  href: string;
-  label: string;
-  exact?: boolean;
-  badge?: string;
-};
+export type SidebarNavItem =
+  | { kind: "section"; label: string }
+  | {
+      kind: "item";
+      href: string;
+      label: string;
+      exact?: boolean;
+      badge?: string;
+    };
 
 const ICON_BY_HREF: Record<string, LucideIcon> = {
   "/admin": BarChart3,
@@ -39,6 +43,7 @@ const ICON_BY_HREF: Record<string, LucideIcon> = {
   "/admin/merchants": Store,
   "/admin/drivers": Truck,
   "/admin/customers": Users,
+  "/admin/dashboard/cities": MapPinned,
 };
 
 /** Client shell — pathname aktif + logout; item sudah difilter server-side. */
@@ -99,7 +104,19 @@ export function SidebarClient({
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 p-2">
-        {items.map((item) => {
+        {items.map((item, idx) => {
+          // Judul seksi non-klik — pemisah grup "Operasional Wilayah".
+          if (item.kind === "section") {
+            return (
+              <p
+                key={`section-${item.label}-${idx}`}
+                className="mt-3 px-3 text-[10px] font-semibold uppercase tracking-wider text-stone-500 first:mt-0"
+              >
+                {item.label}
+              </p>
+            );
+          }
+
           const active = item.exact
             ? pathname === item.href
             : pathname.startsWith(item.href);

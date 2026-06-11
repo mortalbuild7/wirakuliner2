@@ -30,15 +30,22 @@ export async function Sidebar() {
         ? session.provinceName
         : "Seluruh Indonesia";
 
-  const items = menu.map((item) => ({
-    href: item.href,
-    label: item.label,
-    exact: item.exact,
-    badge:
-      item.badge && item.badgeFor?.includes(session.adminRole)
-        ? item.badge
-        : undefined,
-  }));
+  // Map entri menu: seksi (judul grup) + link — sudah difilter visible() server-side.
+  const items = menu.map((entry) => {
+    if (entry.kind === "section") {
+      return { kind: "section" as const, label: entry.label };
+    }
+    return {
+      kind: "item" as const,
+      href: entry.href,
+      label: entry.label,
+      exact: entry.exact,
+      badge:
+        entry.badge && entry.badgeFor?.includes(session.adminRole)
+          ? entry.badge
+          : undefined,
+    };
+  });
 
   return (
     <SidebarClient
