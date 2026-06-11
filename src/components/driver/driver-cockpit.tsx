@@ -640,13 +640,13 @@ export function DriverCockpit() {
           </div>
         </div>
       )}
-      <header className="shrink-0 border-b border-white/10 glass-panel">
+      <header className="shrink-0 border-b border-slate-200/60 glass-panel">
         <div className="flex items-center justify-between gap-2 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-600">
-              <Bike className="h-4 w-4 text-slate-950" />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-emerald-500 shadow-md shadow-emerald-500/20">
+              <Bike className="h-5 w-5 text-white" />
             </span>
-            <div className="flex rounded-xl border border-white/10 bg-white/5 p-0.5">
+            <div className="flex rounded-xl border border-slate-200/60 bg-slate-50 p-0.5">
               {(
                 [
                   { id: "map" as Tab, label: "Peta", icon: Map },
@@ -658,10 +658,10 @@ export function DriverCockpit() {
                   type="button"
                   onClick={() => setTab(id)}
                   className={cn(
-                    "flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition",
+                    "flex items-center gap-1 rounded-2xl px-2.5 py-1.5 text-[11px] font-medium transition",
                     tab === id
-                      ? "bg-emerald-500/25 text-emerald-200"
-                      : "text-muted-foreground hover:text-white"
+                      ? "bg-emerald-100 text-emerald-800 shadow-sm"
+                      : "text-slate-500 hover:bg-white hover:text-slate-800"
                   )}
                 >
                   <Icon className={cn("h-3.5 w-3.5", tab === id && "text-emerald-400")} />
@@ -695,13 +695,13 @@ export function DriverCockpit() {
               >
                 Mode navigasi aktif
               </p>
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-slate-800">
                 Garis biru menuju {navDestination.label}
               </p>
               <button
                 type="button"
                 onClick={stopNavMode}
-                className="mt-2 rounded-lg border border-white/20 px-3 py-1 text-[10px] text-white/90"
+                className="mt-2 rounded-2xl border border-slate-200/80 px-3 py-1 text-[10px] text-slate-700"
               >
                 Hentikan navigasi
               </button>
@@ -735,7 +735,7 @@ export function DriverCockpit() {
           {incomingOffer && !hasActive && (
             <div
               className={cn(
-                `absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl border bg-slate-950/95 p-4 shadow-xl backdrop-blur`,
+                `absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl border bg-white/95 border-slate-100/80 p-4 shadow-xl backdrop-blur`,
                 driverCardBorderClass(offerAddr)
               )}
             >
@@ -750,7 +750,7 @@ export function DriverCockpit() {
                     Order masuk
                   </p>
                   <DriverChannelBadge deliveryAddress={offerAddr} />
-                  <p className="text-lg font-bold text-white">
+                  <p className="text-lg font-bold text-slate-800">
                     {offerIsTransit ? channelLabel(offerAddr) : (offerShop?.name ?? KULINER_FOOD_LABEL)}
                   </p>
                 </div>
@@ -792,7 +792,7 @@ export function DriverCockpit() {
                 </span>
               </p>
               {offerCountdown > 0 && (
-                <p className="mt-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-100">
+                <p className="mt-2 rounded-2xl bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-100">
                   Waktu terima:{" "}
                   <span className="font-mono font-bold text-amber-300">{offerCountdown} detik</span>
                   {" — "}
@@ -802,7 +802,7 @@ export function DriverCockpit() {
               <div className="mt-4 flex gap-2">
                 <Button
                   variant="outline"
-                  className="h-11 flex-1 rounded-xl border-red-500/40 text-red-300"
+                  className="h-12 min-h-[3rem] flex-1 rounded-xl border-red-500/40 text-red-300"
                   disabled={busy}
                   onClick={() => {
                     handleUserGesture();
@@ -812,7 +812,7 @@ export function DriverCockpit() {
                   Tolak
                 </Button>
                 <Button
-                  className="h-11 flex-1 rounded-xl bg-emerald-600 font-semibold"
+                  className="h-12 min-h-[3rem] flex-1 rounded-xl bg-emerald-600 font-semibold"
                   disabled={busy}
                   onClick={acceptOffer}
                 >
@@ -830,7 +830,7 @@ export function DriverCockpit() {
                 setOrderCardExpanded(true);
               }}
               className={cn(
-                `absolute inset-x-4 ${orderCardBottom} z-20 flex w-auto items-center justify-between gap-3 rounded-2xl border bg-slate-950/95 px-4 py-3 shadow-xl backdrop-blur`,
+                `absolute inset-x-4 ${orderCardBottom} z-20 flex w-auto items-center justify-between gap-3 rounded-2xl border bg-white/95 border-slate-100/80 px-4 py-3 shadow-xl backdrop-blur`,
                 activeIsTransit ? "border-cyan-400/50" : "border-orange-400/50"
               )}
             >
@@ -853,7 +853,7 @@ export function DriverCockpit() {
                         ? channelLabel(activeAddr)
                         : KULINER_FOOD_LABEL}
                 </p>
-                <p className="truncate text-sm font-semibold text-white">
+                <p className="truncate text-sm font-semibold text-slate-800">
                   {navDestination?.label ??
                     (activeIsTransit
                       ? activeCustomer?.name ?? "Penumpang"
@@ -867,7 +867,7 @@ export function DriverCockpit() {
           {activeOrder && orderCardExpanded && (
             <div
               className={cn(
-                `absolute inset-x-4 ${orderCardBottom} z-20 max-h-[min(70dvh,520px)] overflow-y-auto rounded-2xl border bg-slate-950/95 p-4 shadow-xl backdrop-blur`,
+                `absolute inset-x-4 ${orderCardBottom} z-20 max-h-[min(70dvh,520px)] overflow-y-auto rounded-2xl border bg-white/95 border-slate-100/80 p-4 shadow-xl backdrop-blur`,
                 driverCardBorderClass(activeAddr)
               )}
             >
@@ -889,7 +889,7 @@ export function DriverCockpit() {
                 {navMode && (
                   <button
                     type="button"
-                    className="rounded-lg border border-white/10 px-2 py-1 text-[10px] text-muted-foreground"
+                    className="rounded-2xl border border-slate-200/60 px-2 py-1 text-[10px] text-muted-foreground"
                     onClick={() => setOrderCardExpanded(false)}
                   >
                     Minimize
@@ -909,7 +909,7 @@ export function DriverCockpit() {
                         )}
                         {activeIsPaket ? "Pengirim" : "Jemput"}
                       </p>
-                      <p className="mt-0.5 line-clamp-2 text-sm font-medium text-white">
+                      <p className="mt-0.5 line-clamp-2 text-sm font-medium text-slate-800">
                         {transitLegs?.pickup ?? (activeIsPaket ? "Lokasi pengirim" : "Titik jemput")}
                       </p>
                     </div>
@@ -918,7 +918,7 @@ export function DriverCockpit() {
                         <MapPin className="h-3 w-3" />
                         {activeIsPaket ? "Penerima" : "Tujuan"}
                       </p>
-                      <p className="mt-0.5 line-clamp-2 text-sm font-medium text-white">
+                      <p className="mt-0.5 line-clamp-2 text-sm font-medium text-slate-800">
                         {transitLegs?.destination ??
                           (activeIsPaket ? "Lokasi penerima" : "Lokasi tujuan")}
                       </p>
@@ -930,18 +930,18 @@ export function DriverCockpit() {
                       <Store className="h-3 w-3" />
                       Restoran
                     </p>
-                    <p className="mt-0.5 font-medium text-white">{shop?.name ?? "Toko"}</p>
+                    <p className="mt-0.5 font-medium text-slate-800">{shop?.name ?? "Toko"}</p>
                     {shop?.address && (
                       <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{shop.address}</p>
                     )}
                   </div>
                 )}
                 {activeCustomer && (
-                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                  <div className="rounded-xl border border-slate-200/60 bg-slate-50 px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300/90">
                       Customer
                     </p>
-                    <p className="mt-0.5 font-medium text-white">{activeCustomer.name}</p>
+                    <p className="mt-0.5 font-medium text-slate-800">{activeCustomer.name}</p>
                     {activeCustomer.phone && (
                       <p className="mt-1 text-xs text-muted-foreground">
                         HP: {activeCustomer.phone} · hubungi via chat in-app
@@ -970,9 +970,9 @@ export function DriverCockpit() {
               )}
 
               {!activeIsTransit && orderItems.length > 0 && (
-                <ul className="mt-2 space-y-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">
+                <ul className="mt-2 space-y-1 rounded-xl border border-slate-200/60 bg-slate-50 px-3 py-2 text-xs">
                   {orderItems.map((item) => (
-                    <li key={item.id} className="flex justify-between gap-2 text-white/90">
+                    <li key={item.id} className="flex justify-between gap-2 text-slate-700">
                       <span>
                         {item.quantity}× {item.product_name}
                       </span>
@@ -1048,7 +1048,7 @@ export function DriverCockpit() {
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
                       Temui penumpang di titik jemput
                     </p>
-                    <p className="mt-1 text-sm font-bold text-white">
+                    <p className="mt-1 text-sm font-bold text-slate-800">
                       {activeCustomer?.name ?? "Penumpang"}
                     </p>
                     {activeCustomer?.phone && (
@@ -1058,7 +1058,7 @@ export function DriverCockpit() {
                     )}
                   </div>
                   <Button
-                    className="mt-3 h-11 w-full rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 font-semibold text-slate-950"
+                    className="mt-3 h-12 min-h-[3rem] w-full rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 font-semibold text-slate-950"
                     disabled={busy}
                     onClick={() => {
                       handleUserGesture();
@@ -1077,7 +1077,7 @@ export function DriverCockpit() {
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-200">
                       Ambil paket di lokasi pengirim
                     </p>
-                    <p className="mt-1 line-clamp-2 text-sm font-medium text-white">
+                    <p className="mt-1 line-clamp-2 text-sm font-medium text-slate-800">
                       {transitLegs?.pickup ?? "Lokasi pengirim"}
                     </p>
                     {activeCustomer && (
@@ -1088,7 +1088,7 @@ export function DriverCockpit() {
                     )}
                   </div>
                   <Button
-                    className="mt-3 h-11 w-full rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 font-semibold text-slate-950"
+                    className="mt-3 h-12 min-h-[3rem] w-full rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 font-semibold text-slate-950"
                     disabled={busy}
                     onClick={() => {
                       handleUserGesture();
@@ -1107,7 +1107,7 @@ export function DriverCockpit() {
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-200">
                       Sebutkan ke kasir restoran
                     </p>
-                    <p className="mt-1 text-sm font-bold text-white">
+                    <p className="mt-1 text-sm font-bold text-slate-800">
                       Nama: {activeCustomer?.name ?? "—"}
                     </p>
                     <p className="text-sm font-mono text-orange-100">
@@ -1115,7 +1115,7 @@ export function DriverCockpit() {
                     </p>
                   </div>
                   <Button
-                    className="mt-3 h-11 w-full rounded-xl bg-orange-500 font-semibold"
+                    className="mt-3 h-12 min-h-[3rem] w-full rounded-xl bg-orange-500 font-semibold"
                     disabled={busy}
                     onClick={() => {
                       handleUserGesture();
@@ -1133,7 +1133,7 @@ export function DriverCockpit() {
                   <Button
                     type="button"
                     className={cn(
-                      "mt-3 h-11 w-full rounded-xl font-semibold",
+                      "mt-3 h-12 min-h-[3rem] w-full rounded-xl font-semibold",
                       navMode === "customer"
                         ? "border border-sky-400/50 bg-sky-950 text-sky-100"
                         : "bg-gradient-to-r from-sky-500 to-cyan-500 text-slate-950"
@@ -1152,7 +1152,7 @@ export function DriverCockpit() {
                         : "Navigasi ke customer"}
                   </Button>
                   <Button
-                    className="mt-2 h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 font-semibold text-slate-950"
+                    className="mt-2 h-12 min-h-[3rem] w-full rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 font-semibold text-slate-950"
                     disabled={busy}
                     onClick={() => {
                       handleUserGesture();
@@ -1176,7 +1176,7 @@ export function DriverCockpit() {
             <p className="text-sm text-muted-foreground">Profil driver</p>
             <div className="mt-2 flex items-center gap-3">
               {driver.photo_url ? (
-                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-white/20">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-slate-200/80">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={driver.photo_url}
@@ -1190,7 +1190,7 @@ export function DriverCockpit() {
                 </span>
               )}
               <div>
-                <h1 className="text-xl font-bold text-white">{driver.name}</h1>
+                <h1 className="text-xl font-bold text-slate-800">{driver.name}</h1>
                 <p className="text-xs text-muted-foreground">{driver.phone}</p>
               </div>
             </div>
@@ -1220,7 +1220,7 @@ export function DriverCockpit() {
               <Wallet className="h-5 w-5 shrink-0 text-amber-400" />
               <p className="text-xs text-muted-foreground">Saldo</p>
             </div>
-            <p className="shrink-0 text-sm font-bold tabular-nums text-white">
+            <p className="shrink-0 text-sm font-bold tabular-nums text-slate-800">
               {walletBalance == null ? "—" : formatIdr(walletBalance)}
             </p>
           </section>
@@ -1228,12 +1228,12 @@ export function DriverCockpit() {
           <section className="grid grid-cols-2 gap-3">
             <div className="glass-card p-4 text-center">
               <Package className="mx-auto h-5 w-5 text-emerald-400" />
-              <p className="mt-2 text-2xl font-bold text-white">{todayCount}</p>
+              <p className="mt-2 text-2xl font-bold text-slate-800">{todayCount}</p>
               <p className="text-[10px] text-muted-foreground">Selesai hari ini</p>
             </div>
             <div className="glass-card p-4 text-center">
               <Award className="mx-auto h-5 w-5 text-cyan-400" />
-              <p className="mt-2 text-2xl font-bold text-white">{driver.reward_points ?? 0}</p>
+              <p className="mt-2 text-2xl font-bold text-slate-800">{driver.reward_points ?? 0}</p>
               <p className="text-[10px] text-muted-foreground">Poin reward</p>
             </div>
           </section>
@@ -1247,7 +1247,7 @@ export function DriverCockpit() {
           <ReceivedReviewsPanel driverMode />
 
           <section className="glass-card space-y-3 p-4">
-            <p className="text-sm font-medium text-white">Ketersediaan</p>
+            <p className="text-sm font-medium text-slate-800">Ketersediaan</p>
             <DriverStatusToggle
               status={driver.status}
               onChange={setStatus}

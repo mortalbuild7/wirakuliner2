@@ -10,10 +10,8 @@ import {
   createServiceCity,
   type CreateCityInput,
 } from "@/app/actions/cityActions";
+import type { IndonesiaProvince } from "@/app/utils/indonesiaProvinces";
 import { Loader2, MapPin, Plus } from "lucide-react";
-
-/** Baris provinsi induk dari tabel `provinces` — dipakai dropdown form. */
-type Province = { id: number; name: string };
 
 /** Baris zona layanan dari tabel `service_cities` — ditampilkan di tabel bawah. */
 type ServiceCityRow = {
@@ -31,14 +29,13 @@ export function CityManagementForm({
   provinces,
   initialCities,
 }: {
-  provinces: Province[];
+  /** 38 provinsi dari `INDONESIA_PROVINCES` — di-map ke `<option>` dropdown. */
+  provinces: IndonesiaProvince[];
   initialCities: ServiceCityRow[];
 }) {
   const [pending, startTransition] = useTransition();
   const [cities, setCities] = useState(initialCities);
-  const [provinceId, setProvinceId] = useState(
-    provinces[0] ? String(provinces[0].id) : ""
-  );
+  const [provinceId, setProvinceId] = useState(String(provinces[0]?.id ?? 1));
   const [cityName, setCityName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -118,20 +115,23 @@ export function CityManagementForm({
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-            <div>
+            <div className="sm:col-span-2">
               <Label htmlFor="province">Provinsi Induk</Label>
-              {/* provinceId → foreign key ke tabel `provinces.id` */}
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {provinces.length} provinsi Indonesia — data master dinamis.
+              </p>
+              {/* Render 38 provinsi via .map() — tanpa hardcode per baris */}
               <select
                 id="province"
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="mt-1 flex h-11 w-full rounded-2xl border border-slate-200/60 bg-slate-50 px-4 text-sm text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)]"
                 value={provinceId}
                 onChange={(e) => setProvinceId(e.target.value)}
                 required
-                disabled={pending || provinces.length === 0}
+                disabled={pending}
               >
                 {provinces.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name}
+                    {p.id}. {p.name}
                   </option>
                 ))}
               </select>
@@ -151,11 +151,7 @@ export function CityManagementForm({
               />
             </div>
             <div className="sm:col-span-2">
-              <Button
-                type="submit"
-                disabled={pending || provinces.length === 0}
-                className="gap-2"
-              >
+              <Button type="submit" disabled={pending} className="gap-2">
                 {pending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -165,11 +161,6 @@ export function CityManagementForm({
               </Button>
             </div>
           </form>
-          {provinces.length === 0 && (
-            <p className="mt-3 text-xs text-red-600">
-              Tabel provinsi kosong — jalankan migrasi regional admin terlebih dahulu.
-            </p>
-          )}
         </CardContent>
       </Card>
 
@@ -182,10 +173,10 @@ export function CityManagementForm({
             Belum ada kota layanan. Tambahkan kota pertama menggunakan form di atas.
           </p>
         ) : (
-          <div className="mt-4 overflow-x-auto rounded-xl border">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
+          <div className="wira-table-wrap mt-4 min-w-[640px]">
+            <table>
               <thead>
-                <tr className="border-b bg-muted/40 text-left text-muted-foreground">
+                <tr>
                   <th className="px-4 py-3">Nama Zona</th>
                   <th className="px-4 py-3">Provinsi</th>
                   <th className="px-4 py-3">Kode Kota</th>
@@ -195,7 +186,7 @@ export function CityManagementForm({
               </thead>
               <tbody>
                 {cities.map((c) => (
-                  <tr key={c.id} className="border-b last:border-0 hover:bg-muted/20">
+                  <tr key={c.id}>
                     <td className="px-4 py-3 font-medium">{c.name}</td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {provinceLabel(c)}

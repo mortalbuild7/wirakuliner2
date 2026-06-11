@@ -46,7 +46,6 @@ const ICON_BY_HREF: Record<string, LucideIcon> = {
   "/admin/dashboard/cities": MapPinned,
 };
 
-/** Client shell — pathname aktif + logout; item sudah difilter server-side. */
 export function SidebarClient({
   items,
   tierLabel,
@@ -83,34 +82,36 @@ export function SidebarClient({
   }
 
   return (
-    <aside className="flex w-full flex-col border-b border-stone-800 bg-stone-900 text-white md:min-h-screen md:w-60 md:border-b-0 md:border-r">
-      <div className="border-b border-white/10 p-4">
-        <Link href="/admin" className="font-bold tracking-tight hover:text-amber-200">
+    <aside className="flex w-full flex-col border-b border-slate-200/80 bg-white text-slate-800 shadow-[0_8px_30px_rgb(0,0,0,0.04)] md:min-h-screen md:w-64 md:border-b-0 md:border-r">
+      <div className="border-b border-slate-100 p-5">
+        <Link
+          href="/admin"
+          className="text-lg font-bold tracking-tight text-slate-800 hover:text-emerald-600"
+        >
           WIRA Admin
         </Link>
-        <p className="mt-0.5 text-[10px] uppercase tracking-wider text-amber-300/90">
+        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-600">
           {tierLabel}
         </p>
-        <p className="text-[11px] text-stone-400">{scopeLabel}</p>
+        <p className="text-xs text-slate-500">{scopeLabel}</p>
         <button
           type="button"
           onClick={() => void endSession()}
           disabled={loggingOut}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-red-600/90 px-3 py-2 text-xs font-medium md:hidden"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-red-500 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-red-500/20 transition-all active:scale-95 md:hidden"
         >
           {loggingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
           Keluar
         </button>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 p-2">
+      <nav className="flex flex-1 flex-col gap-1 p-3">
         {items.map((item, idx) => {
-          // Judul seksi non-klik — pemisah grup "Operasional Wilayah".
           if (item.kind === "section") {
             return (
               <p
                 key={`section-${item.label}-${idx}`}
-                className="mt-3 px-3 text-[10px] font-semibold uppercase tracking-wider text-stone-500 first:mt-0"
+                className="mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 first:mt-0"
               >
                 {item.label}
               </p>
@@ -127,16 +128,18 @@ export function SidebarClient({
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm transition",
-                active ? "bg-amber-500/20 text-amber-50" : "text-stone-300 hover:bg-white/10 hover:text-white"
+                "flex items-center justify-between gap-2 rounded-2xl px-3 py-3 text-sm font-medium transition-all",
+                active
+                  ? "bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200/60"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
               )}
             >
-              <span className="flex min-w-0 items-center gap-2">
-                <Icon className="h-4 w-4 shrink-0 opacity-80" />
+              <span className="flex min-w-0 items-center gap-2.5">
+                <Icon className={cn("h-4 w-4 shrink-0", active ? "text-emerald-600" : "text-slate-400")} />
                 <span className="truncate">{item.label}</span>
               </span>
               {item.badge && (
-                <span className="shrink-0 rounded-full bg-emerald-500/25 px-2 py-0.5 text-[9px] font-semibold uppercase text-emerald-200">
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-semibold uppercase text-amber-800">
                   {item.badge}
                 </span>
               )}
@@ -145,12 +148,12 @@ export function SidebarClient({
         })}
       </nav>
 
-      <div className="hidden border-t border-white/10 p-3 md:block">
+      <div className="hidden border-t border-slate-100 p-4 md:block">
         <button
           type="button"
           onClick={() => void endSession()}
           disabled={loggingOut}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600/90 px-3 py-2.5 text-sm font-medium transition hover:bg-red-600 disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-600 active:scale-95 disabled:opacity-60"
         >
           {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
           Keluar

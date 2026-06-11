@@ -327,10 +327,10 @@ export function DashboardDriversTable({
         </Card>
       )}
 
-      <div className="overflow-x-auto rounded-xl border">
-        <table className="w-full min-w-[800px] border-collapse text-sm">
+      <div className="wira-table-wrap min-w-[800px]">
+        <table>
           <thead>
-            <tr className="border-b bg-muted/40 text-left text-muted-foreground">
+            <tr>
               <th className="px-4 py-3">Nama</th>
               <th className="px-4 py-3">Kontak</th>
               <th className="px-4 py-3">Armada</th>
@@ -359,7 +359,7 @@ export function DashboardDriversTable({
                 const acct = d.profiles?.account_status ?? "active";
                 const suspended = acct === "suspended" || acct === "blocked";
                 return (
-                  <tr key={d.id} className="border-b last:border-0 hover:bg-muted/20">
+                  <tr key={d.id}>
                     <td className="px-4 py-3 font-medium">{d.name}</td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {d.phone}

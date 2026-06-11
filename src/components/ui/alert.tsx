@@ -12,10 +12,13 @@ export function Alert({
     <div
       role="alert"
       className={cn(
-        "relative flex gap-3 rounded-lg border p-4",
-        variant === "destructive" && "border-destructive/50 bg-destructive/10 text-destructive",
-        variant === "warning" && "border-amber-300 bg-amber-50 text-amber-900",
-        variant === "default" && "border-border bg-muted/50",
+        "relative flex gap-3 rounded-2xl border p-4 shadow-sm",
+        variant === "destructive" &&
+          "border-red-200/80 bg-red-50 text-red-800",
+        variant === "warning" &&
+          "border-amber-200/80 bg-amber-50 text-amber-900",
+        variant === "default" &&
+          "border-slate-200/80 bg-white text-slate-700",
         className
       )}
       {...props}

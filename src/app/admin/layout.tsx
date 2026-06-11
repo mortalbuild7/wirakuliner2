@@ -22,15 +22,15 @@ export default async function AdminLayout({
     pathname.startsWith("/admin/mfa-challenge");
 
   if (isAuthOnlyPage) {
-    return <div className="min-h-screen bg-background">{children}</div>;
+    return <div className="min-h-screen wira-mesh">{children}</div>;
   }
 
   await assertAdminPage();
 
   return (
-    <div className="min-h-screen md:flex">
+    <div className="min-h-screen wira-mesh md:flex">
       <Sidebar />
-      <div className="flex-1 bg-background">{children}</div>
+      <div className="flex-1 text-slate-800">{children}</div>
     </div>
   );
 }

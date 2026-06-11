@@ -21,11 +21,10 @@ export function DriverStatusToggle({
   status: DriverStatus;
   onChange: (s: DriverStatus) => void;
   loading?: boolean;
-  /** Saat sedang antar, jangan izinkan offline/idle */
   lockDelivering?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-3 gap-2.5">
       {OPTIONS.map(({ value, icon: Icon }) => {
         const active = status === value;
         const disabled =
@@ -39,11 +38,12 @@ export function DriverStatusToggle({
             disabled={disabled}
             onClick={() => onChange(value)}
             className={cn(
-              "h-auto flex-col gap-1 rounded-2xl border-white/10 py-3 text-[10px]",
-              active && "border-emerald-500/50 bg-emerald-500/15 text-emerald-200"
+              "driver-touch-btn h-auto min-h-[3.5rem] flex-col gap-1.5 rounded-2xl border-slate-200/80 bg-white py-3.5 text-xs font-semibold text-slate-600",
+              active &&
+                "border-emerald-400/60 bg-emerald-50 text-emerald-800 shadow-lg shadow-emerald-500/15"
             )}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-5 w-5" />
             {DRIVER_STATUS_LABEL[value]}
           </Button>
         );

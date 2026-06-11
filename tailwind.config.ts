@@ -36,9 +36,9 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))",
         },
         wira: {
-          orange: "#f97316",
-          cyan: "#22d3ee",
-          dark: "#0f172a",
+          emerald: "#10b981",
+          amber: "#fbbf24",
+          slate: "#1e293b",
         },
       },
       borderRadius: {

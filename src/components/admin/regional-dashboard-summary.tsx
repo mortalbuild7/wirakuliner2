@@ -31,12 +31,12 @@ function StatCard({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <CardTitle className="text-sm font-medium text-slate-500">{title}</CardTitle>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-bold">{value}</p>
-        {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+        <p className="text-2xl font-bold text-slate-800">{value}</p>
+        {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
       </CardContent>
     </Card>
   );
@@ -53,12 +53,14 @@ export function RegionalDashboardSummary({
   const tier = session.adminRole;
 
   return (
-    <main className="p-6">
+    <main className="p-6 text-slate-800">
       <div className="mb-6">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">
           {stats.scopeLabel}
         </p>
-        <h1 className="text-2xl font-bold">{regionalDashboardTitle(session)}</h1>
+        <h1 className="text-2xl font-bold text-slate-800">
+          {regionalDashboardTitle(session)}
+        </h1>
       </div>
 
       {tier === "SUPER_ADMIN" && (

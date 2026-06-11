@@ -52,17 +52,19 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   return (
-    <div className="wira-mesh min-h-[100dvh]">
-      <header className="sticky top-0 z-50 border-b border-white/10 glass-panel">
+    <div className="wira-mesh min-h-[100dvh] text-slate-800">
+      <header className="sticky top-0 z-50 glass-panel">
         <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <Link href="/customer" className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-orange-500 shadow-lg">
-              <Sparkles className="h-4 w-4 text-slate-950" />
+          <Link href="/customer" className="flex items-center gap-2.5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/25">
+              <Sparkles className="h-5 w-5 text-white" />
             </span>
             <div className="flex flex-col gap-0.5">
               <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
-                <p className="text-sm font-bold tracking-tight text-white">WIRA</p>
-                <p className="text-[10px] uppercase tracking-widest text-cyan-400/90">Kuliner</p>
+                <p className="text-sm font-bold tracking-tight text-slate-800">WIRA</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">
+                  Kuliner
+                </p>
               </div>
               <PoweredByDaffacell variant="header" />
             </div>
@@ -72,10 +74,10 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
             <WalletBalanceBadge href="/customer/wallet" />
             {customerName ? (
               <span
-                className="flex max-w-[9rem] items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-medium text-cyan-300 sm:max-w-[12rem]"
+                className="flex max-w-[9rem] items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50 px-3 py-1.5 text-[11px] font-medium text-emerald-800 sm:max-w-[12rem]"
                 title={customerName}
               >
-                <User className="h-3 w-3 shrink-0" />
+                <User className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{customerName}</span>
               </span>
             ) : null}
@@ -86,8 +88,8 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
       <CustomerModerationBanner />
       <div className="safe-pb-nav mx-auto max-w-mobile">{children}</div>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 glass-panel pb-[env(safe-area-inset-bottom,0px)]">
-        <div className="mx-auto flex max-w-mobile justify-around px-2 py-2">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 glass-panel pb-[env(safe-area-inset-bottom,0px)]">
+        <div className="mx-auto flex max-w-mobile justify-around px-3 py-2">
           {NAV.map(({ href, label, icon: Icon, match }) => {
             const active = match(pathname);
             return (
@@ -95,13 +97,13 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
                 key={href}
                 href={href}
                 className={cn(
-                  "flex min-w-[4.5rem] flex-col items-center gap-0.5 rounded-2xl px-3 py-2 text-[10px] font-medium transition",
+                  "flex min-w-[4.5rem] flex-col items-center gap-1 rounded-2xl px-3 py-2.5 text-[11px] font-semibold transition-all active:scale-95",
                   active
-                    ? "bg-cyan-500/20 text-cyan-300 glow-ring"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-emerald-50 text-emerald-700 glow-ring"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                 )}
               >
-                <Icon className={cn("h-5 w-5", active && "text-cyan-400")} />
+                <Icon className={cn("h-5 w-5", active && "text-emerald-600")} />
                 {label}
               </Link>
             );

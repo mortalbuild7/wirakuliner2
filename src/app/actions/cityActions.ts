@@ -3,6 +3,10 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/app/utils/adminAuth";
+import {
+  getIndonesiaProvinceById,
+  INDONESIA_PROVINCE_IDS,
+} from "@/app/utils/indonesiaProvinces";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { JALAN_WIRA } from "@/lib/geo-config";
 
@@ -27,7 +31,10 @@ const CreateCitySchema = z.object({
   provinceId: z
     .number({ message: "Provinsi wajib dipilih" })
     .int("ID provinsi harus bilangan bulat")
-    .positive("ID provinsi tidak valid"),
+    .refine(
+      (id) => INDONESIA_PROVINCE_IDS.has(id),
+      "Provinsi tidak valid — pilih dari daftar 38 provinsi"
+    ),
   cityName: z
     .string()
     .trim()
@@ -70,22 +77,38 @@ export async function createServiceCity(
 
   const admin = createAdminClient();
 
-  // ── 3. PROVINSI INDUK: lookup dari DB, bukan dari teks bebas client. ──────
-  const { data: province } = await admin
-    .from("provinces")
-    .select("id, name")
-    .eq("id", provinceId)
-    .maybeSingle();
-
-  if (!province) {
-    return { ok: false, error: "Provinsi induk tidak ditemukan" };
+  // ── 3. MASTER PROVINSI: resolve nama dari konstanta (bukan input bebas). ───
+  const provinceMeta = getIndonesiaProvinceById(provinceId);
+  if (!provinceMeta) {
+    return { ok: false, error: "Provinsi induk tidak valid" };
   }
 
-  // ── 4. REFERENSI `cities`: pakai baris existing atau buat baru. ───────────
+  // ── 4. UPSERT PROVINSI: pastikan baris ada sebelum FK `cities` — anti duplikat
+  //    nama & hindari pelanggaran foreign key (`onConflict: 'name'`). ─────────
+  const { data: province, error: provUpsertErr } = await admin
+    .from("provinces")
+    .upsert(
+      { id: provinceMeta.id, name: provinceMeta.name },
+      { onConflict: "name" }
+    )
+    .select("id, name")
+    .single();
+
+  if (provUpsertErr || !province) {
+    return {
+      ok: false,
+      error: provUpsertErr?.message ?? "Gagal menyimpan provinsi induk",
+    };
+  }
+
+  // ID efektif dari DB setelah upsert — dipakai semua FK berikutnya.
+  const resolvedProvinceId = province.id;
+
+  // ── 5. REFERENSI `cities`: pakai baris existing atau buat baru. ───────────
   const { data: existingCity } = await admin
     .from("cities")
     .select("id, name")
-    .eq("province_id", provinceId)
+    .eq("province_id", resolvedProvinceId)
     .ilike("name", normalizedName)
     .maybeSingle();
 
@@ -104,7 +127,7 @@ export async function createServiceCity(
 
     const { error: cityErr } = await admin.from("cities").insert({
       id: cityId,
-      province_id: provinceId,
+      province_id: resolvedProvinceId,
       name: normalizedName,
     });
 
@@ -113,11 +136,11 @@ export async function createServiceCity(
     }
   }
 
-  // ── 5. ANTI-DUPLIKAT `service_cities` per pasangan province_id + city_id. ─
+  // ── 6. ANTI-DUPLIKAT `service_cities` per pasangan province_id + city_id. ─
   const { data: existingService } = await admin
     .from("service_cities")
     .select("id, name")
-    .eq("province_id", provinceId)
+    .eq("province_id", resolvedProvinceId)
     .eq("city_id", cityId)
     .maybeSingle();
 
@@ -128,7 +151,7 @@ export async function createServiceCity(
     };
   }
 
-  // ── 6. ZONA OPERASIONAL: baris service_cities agar driver bisa didaftarkan. ─
+  // ── 7. ZONA OPERASIONAL: baris service_cities agar driver bisa didaftarkan. ─
   const displayName = `${normalizedName}, ${province.name}`;
   const baseSlug = slugifyCity(`${normalizedName}-${province.name}`);
   const slug = `${baseSlug}-${cityId}`;
@@ -138,7 +161,7 @@ export async function createServiceCity(
     .insert({
       name: displayName,
       slug,
-      province_id: provinceId,
+      province_id: resolvedProvinceId,
       city_id: cityId,
       // Koordinat default — admin dapat sesuaikan nanti di halaman detail peta.
       center_lat: JALAN_WIRA.latitude,
@@ -156,7 +179,7 @@ export async function createServiceCity(
     };
   }
 
-  // ── 7. SINKRONISASI UI: dropdown kota di form driver & halaman ini. ────────
+  // ── 8. SINKRONISASI UI: dropdown kota di form driver & halaman ini. ────────
   revalidatePath("/admin/dashboard/cities");
   revalidatePath("/admin/drivers");
   revalidatePath("/admin/drivers/new");

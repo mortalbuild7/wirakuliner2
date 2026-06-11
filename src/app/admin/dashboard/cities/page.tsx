@@ -1,4 +1,5 @@
 import { verifyAdminSession } from "@/app/utils/adminAuth";
+import { INDONESIA_PROVINCES } from "@/app/utils/indonesiaProvinces";
 import { CityManagementForm } from "@/components/admin/city-management-form";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -17,11 +18,6 @@ export default async function AdminDashboardCitiesPage() {
   // ── 2. SERVICE ROLE: bypass RLS untuk baca `provinces` / `service_cities`. ─
   const admin = createAdminClient();
 
-  const { data: provinces } = await admin
-    .from("provinces")
-    .select("id, name")
-    .order("name");
-
   const { data: cities } = await admin
     .from("service_cities")
     .select(
@@ -31,7 +27,7 @@ export default async function AdminDashboardCitiesPage() {
 
   return (
     <CityManagementForm
-      provinces={provinces ?? []}
+      provinces={[...INDONESIA_PROVINCES]}
       initialCities={cities ?? []}
     />
   );
