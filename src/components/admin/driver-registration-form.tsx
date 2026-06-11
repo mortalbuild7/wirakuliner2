@@ -13,6 +13,7 @@ import {
   uploadDriverPhoto,
   type DriverPhotoDraft,
 } from "@/components/admin/driver-photo-picker";
+import { SimDocumentUploader } from "@/components/admin/sim-document-uploader";
 import {
   registerDriverNational,
   type DriverRegInput,
@@ -22,6 +23,7 @@ import {
   ArrowLeft,
   Bike,
   Car,
+  IdCard,
   Loader2,
   Lock,
   Truck,
@@ -97,9 +99,21 @@ export function DriverRegistrationForm({
     password: "",
     vehiclePlate: "",
     serviceCityId: "",
+    simNumber: "",     // nomor SIM — disanitasi hanya angka saat diketik
+    simExpiryDate: "", // tanggal masa berlaku — wajib di masa depan
   });
   const [photoDraft, setPhotoDraft] = useState<DriverPhotoDraft | null>(null);
+  // Public URL foto fisik SIM di bucket 'driver-documents' — di-set oleh
+  // SimDocumentUploader setelah upload sukses; wajib terisi sebelum submit.
+  const [simDocumentUrl, setSimDocumentUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Batas bawah input tanggal: besok — SIM yang habis hari ini ditolak dini.
+  const minSimDate = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
 
   // CITY_ADMIN umumnya hanya punya satu kota → otomatis terpilih & terkunci.
   useEffect(() => {
@@ -115,6 +129,13 @@ export function DriverRegistrationForm({
     e.preventDefault();
     setError(null);
 
+    // Guard sisi client: dokumen SIM wajib terunggah sebelum kirim payload —
+    // validasi otoritatif tetap diulang server-side (zod + cek asal bucket).
+    if (!simDocumentUrl) {
+      setError("Foto fisik SIM wajib diunggah terlebih dahulu");
+      return;
+    }
+
     // Payload dikirim ke Server Action — validasi otoritatif (zod +
     // geofencing + anti-duplikat) berjalan di server, bukan di browser.
     const payload: DriverRegInput = {
@@ -125,6 +146,9 @@ export function DriverRegistrationForm({
       vehiclePlate: form.vehiclePlate.trim() || undefined,
       serviceCategory,
       serviceCityId: form.serviceCityId,
+      simNumber: form.simNumber.trim(),
+      simExpiryDate: form.simExpiryDate,
+      simDocumentUrl,
     };
 
     startTransition(async () => {
@@ -276,6 +300,63 @@ export function DriverRegistrationForm({
             <DriverPhotoPicker
               value={photoDraft}
               onChange={setPhotoDraft}
+              disabled={pending}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="border-emerald-500/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <IdCard className="h-5 w-5 text-emerald-600" />
+              Legalitas SIM (Wajib)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label>Nomor SIM</Label>
+              {/* inputMode numeric + sanitasi onChange: non-digit dibuang
+                  langsung saat diketik — hanya angka yang masuk state. */}
+              <Input
+                value={form.simNumber}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    simNumber: e.target.value.replace(/\D/g, "").slice(0, 16),
+                  })
+                }
+                inputMode="numeric"
+                pattern="[0-9]{8,16}"
+                placeholder="Contoh: 12345678901234"
+                required
+                minLength={8}
+                maxLength={16}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Hanya angka, 8–16 digit sesuai kartu SIM.
+              </p>
+            </div>
+            <div>
+              <Label>Tanggal masa berlaku SIM</Label>
+              {/* min = besok: browser menolak tanggal lampau; server tetap
+                  memvalidasi ulang (zod refine masa depan). */}
+              <Input
+                type="date"
+                value={form.simExpiryDate}
+                onChange={(e) =>
+                  setForm({ ...form, simExpiryDate: e.target.value })
+                }
+                min={minSimDate}
+                required
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Sistem mengirim peringatan otomatis 30 hari sebelum habis.
+              </p>
+            </div>
+            {/* Upload bukti fisik → Public URL di-set ke state simDocumentUrl */}
+            <SimDocumentUploader
+              value={simDocumentUrl}
+              onChange={setSimDocumentUrl}
               disabled={pending}
             />
           </CardContent>

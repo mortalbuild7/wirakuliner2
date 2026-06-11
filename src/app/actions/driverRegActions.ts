@@ -57,6 +57,32 @@ const DriverRegSchema = z.object({
   }),
   // Kota layanan (zona operasi GPS) — divalidasi terhadap yurisdiksi admin.
   serviceCityId: z.uuid({ message: "Kota layanan tidak valid" }),
+
+  // ── LEGALITAS SIM (WAJIB) ───────────────────────────────────────────────
+  // Nomor SIM: hanya digit (format nasional 8–16 digit) — non-digit ditolak.
+  simNumber: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{8,16}$/, "Nomor SIM wajib 8–16 digit angka"),
+  // Masa berlaku: format ISO yyyy-mm-dd dan HARUS tanggal di masa depan —
+  // SIM yang sudah/akan kedaluwarsa hari ini ditolak sejak pendaftaran.
+  simExpiryDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Format tanggal SIM tidak valid")
+    .refine((d) => {
+      const expiry = new Date(`${d}T00:00:00`);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return expiry.getTime() > today.getTime();
+    }, "Masa berlaku SIM harus tanggal di masa depan"),
+  // Bukti fisik: Public URL hasil upload ke bucket Storage 'driver-documents'.
+  // Dikunci ke path bucket resmi → URL eksternal sembarang tidak diterima.
+  simDocumentUrl: z
+    .url({ message: "Dokumen SIM wajib diunggah" })
+    .refine(
+      (u) => u.includes("/storage/v1/object/public/driver-documents/"),
+      "URL dokumen SIM harus berasal dari penyimpanan resmi driver-documents"
+    ),
 });
 
 export type DriverRegInput = z.infer<typeof DriverRegSchema>;
@@ -169,6 +195,11 @@ export async function registerDriverNational(
       name: data.name,
       phone,
       vehicle_plate: data.vehiclePlate?.trim() || null,
+      // Legalitas SIM — dasar perhitungan sim_status (ACTIVE / EXPIRING_SOON /
+      // EXPIRED) dan sapuan notifikasi otomatis sweep_driver_sim_notices().
+      sim_number: data.simNumber,
+      sim_expiry_date: data.simExpiryDate,
+      sim_document_url: data.simDocumentUrl,
       service_category: data.serviceCategory,
       service_city_id: city.id,
       province_id: city.province_id,

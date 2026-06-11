@@ -77,6 +77,12 @@ export interface Driver {
   phone: string;
   vehicle_plate: string | null;
   photo_url?: string | null;
+  /** Legalitas SIM — nomor kartu (digit saja). */
+  sim_number?: string | null;
+  /** Tanggal habis berlaku SIM (ISO yyyy-mm-dd) — dasar perhitungan status. */
+  sim_expiry_date?: string | null;
+  /** Public URL foto fisik SIM di bucket Storage 'driver-documents'. */
+  sim_document_url?: string | null;
   status: DriverStatus;
   current_lat: number | null;
   current_lng: number | null;

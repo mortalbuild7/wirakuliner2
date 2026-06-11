@@ -9,7 +9,7 @@ import { Alert } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Driver } from "@/types/database";
 import { ACCOUNT_STATUS_LABEL } from "@/lib/account-status";
-import { Bike, Pencil, Plus, UserX } from "lucide-react";
+import { Bike, Pencil, Plus, ShieldCheck, UserX } from "lucide-react";
 
 type ServiceCity = { id: string; name: string };
 
@@ -36,6 +36,90 @@ const FLEET_LABEL: Record<string, string> = {
   MOBIL_PASSENGER: "Mobil Penumpang",
   MOBIL_CARGO: "Mobil Cargo",
 };
+
+/** Status legalitas SIM — selaras dengan fungsi SQL driver_sim_status(). */
+type SimStatus = "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "MISSING";
+
+/**
+ * Hitung status SIM dari tanggal masa berlaku (aturan masa tenggang 30 hari):
+ *   tanpa tanggal      → MISSING        (data lama / belum diunggah)
+ *   < hari ini         → EXPIRED        (merah — dilarang beroperasi)
+ *   ≤ 30 hari ke depan → EXPIRING_SOON  (kuning — masa tenggang, segera urus)
+ *   selain itu         → ACTIVE         (hijau — legalitas aman)
+ */
+function simStatus(expiry?: string | null): SimStatus {
+  if (!expiry) return "MISSING";
+  const exp = new Date(`${expiry}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (exp.getTime() < today.getTime()) return "EXPIRED";
+  const graceEnd = new Date(today);
+  graceEnd.setDate(graceEnd.getDate() + 30);
+  if (exp.getTime() <= graceEnd.getTime()) return "EXPIRING_SOON";
+  return "ACTIVE";
+}
+
+/** Konfigurasi visual badge per status — Hijau / Kuning / Merah / Abu. */
+const SIM_BADGE: Record<SimStatus, { label: string; className: string }> = {
+  ACTIVE: {
+    label: "SIM Aktif",
+    className: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  },
+  EXPIRING_SOON: {
+    label: "Segera Habis",
+    className: "border-amber-300 bg-amber-50 text-amber-700",
+  },
+  EXPIRED: {
+    label: "Kedaluwarsa",
+    className: "border-red-300 bg-red-50 text-red-700",
+  },
+  MISSING: {
+    label: "Belum Ada",
+    className: "border-border bg-muted/40 text-muted-foreground",
+  },
+};
+
+/** Format tanggal SIM ringkas untuk baris tabel (mis. "12 Agu 2027"). */
+function formatSimDate(expiry?: string | null): string | null {
+  if (!expiry) return null;
+  return new Date(`${expiry}T00:00:00`).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** Badge indikator legalitas SIM — pantauan visual sekilas mata untuk admin. */
+function SimStatusBadge({ d }: { d: DriverRow }) {
+  const status = simStatus(d.sim_expiry_date);
+  const cfg = SIM_BADGE[status];
+  const dateLabel = formatSimDate(d.sim_expiry_date);
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <span
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${cfg.className}`}
+        title={d.sim_number ? `No. SIM ${d.sim_number}` : "Nomor SIM belum tercatat"}
+      >
+        <ShieldCheck className="h-3 w-3" />
+        {cfg.label}
+      </span>
+      {dateLabel && (
+        <span className="text-[10px] text-muted-foreground">s/d {dateLabel}</span>
+      )}
+      {/* Tautan bukti fisik — buka Public URL dokumen di tab baru */}
+      {d.sim_document_url && (
+        <a
+          href={d.sim_document_url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[10px] text-sky-600 underline-offset-2 hover:underline"
+        >
+          Lihat dokumen
+        </a>
+      )}
+    </div>
+  );
+}
 
 export function DashboardDriversTable({
   initialDrivers,
@@ -250,6 +334,7 @@ export function DashboardDriversTable({
               <th className="px-4 py-3">Nama</th>
               <th className="px-4 py-3">Kontak</th>
               <th className="px-4 py-3">Armada</th>
+              <th className="px-4 py-3">Legalitas SIM</th>
               <th className="px-4 py-3">Kota</th>
               <th className="px-4 py-3">Status GPS</th>
               <th className="px-4 py-3">Akun</th>
@@ -259,13 +344,13 @@ export function DashboardDriversTable({
           <tbody>
             {listLoading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   Memuat...
                 </td>
               </tr>
             ) : drivers.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   Tidak ada driver di wilayah ini.
                 </td>
               </tr>
@@ -283,6 +368,9 @@ export function DashboardDriversTable({
                     </td>
                     <td className="px-4 py-3 text-xs">
                       {FLEET_LABEL[d.service_category ?? ""] ?? "Motor Hybrid"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <SimStatusBadge d={d} />
                     </td>
                     <td className="px-4 py-3">{cityName(d)}</td>
                     <td className="px-4 py-3 capitalize">{d.status}</td>
