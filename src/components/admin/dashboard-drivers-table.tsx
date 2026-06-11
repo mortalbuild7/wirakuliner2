@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,27 +9,13 @@ import { Alert } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Driver } from "@/types/database";
 import { ACCOUNT_STATUS_LABEL } from "@/lib/account-status";
-import {
-  DriverPhotoPicker,
-  uploadDriverPhoto,
-  type DriverPhotoDraft,
-} from "@/components/admin/driver-photo-picker";
-import { Bike, Loader2, Pencil, Plus, UserX } from "lucide-react";
+import { Bike, Pencil, Plus, UserX } from "lucide-react";
 
 type ServiceCity = { id: string; name: string };
 
 type DriverRow = Driver & {
   profiles: { email: string | null; account_status?: string | null } | null;
   service_cities?: { name: string } | { name: string }[] | null;
-};
-
-const EMPTY_FORM = {
-  name: "",
-  phone: "",
-  plate: "",
-  email: "",
-  password: "",
-  service_city_id: "",
 };
 
 type Props = {
@@ -43,6 +30,13 @@ function cityName(d: DriverRow): string {
   return d.service_cities?.name ?? "—";
 }
 
+/** Label armada fisik — pemisahan MOTOR_HYBRID / MOBIL_PASSENGER / MOBIL_CARGO. */
+const FLEET_LABEL: Record<string, string> = {
+  MOTOR_HYBRID: "Motor Hybrid",
+  MOBIL_PASSENGER: "Mobil Penumpang",
+  MOBIL_CARGO: "Mobil Cargo",
+};
+
 export function DashboardDriversTable({
   initialDrivers,
   initialCities,
@@ -50,22 +44,13 @@ export function DashboardDriversTable({
   adminTier,
 }: Props) {
   const [drivers, setDrivers] = useState<DriverRow[]>(initialDrivers);
-  const [cities, setCities] = useState(initialCities);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [photoDraft, setPhotoDraft] = useState<DriverPhotoDraft | null>(null);
+  const [cities] = useState(initialCities);
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", phone: "", plate: "", service_city_id: "" });
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (cities.length && !form.service_city_id) {
-      setForm((f) => ({ ...f, service_city_id: cities[0].id }));
-    }
-  }, [cities, form.service_city_id]);
 
   const load = useCallback(async () => {
     setListLoading(true);
@@ -78,55 +63,6 @@ export function DashboardDriversTable({
     else setDrivers(json.drivers ?? []);
     setListLoading(false);
   }, []);
-
-  async function registerDriver(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    const res = await fetch("/api/admin/drivers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        name: form.name.trim(),
-        phone: form.phone.trim(),
-        vehicle_plate: form.plate.trim() || undefined,
-        email: form.email.trim(),
-        password: form.password,
-        service_city_id: form.service_city_id,
-      }),
-    });
-
-    const body = (await res.json().catch(() => ({}))) as {
-      error?: string;
-      driverId?: string;
-      email?: string;
-    };
-
-    if (!res.ok) {
-      setLoading(false);
-      setError(body.error ?? "Gagal mendaftarkan driver");
-      return;
-    }
-
-    if (photoDraft && body.driverId) {
-      try {
-        await uploadDriverPhoto(body.driverId, photoDraft);
-        if (photoDraft.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
-        setPhotoDraft(null);
-      } catch {
-        /* foto opsional */
-      }
-    }
-
-    setLoading(false);
-    setSuccess(`Driver ${form.name} berhasil dibuat.`);
-    setForm(EMPTY_FORM);
-    setShowAdd(false);
-    load();
-  }
 
   function openEdit(d: DriverRow) {
     setEditId(d.id);
@@ -227,9 +163,12 @@ export function DashboardDriversTable({
             {scopeHint} · Tier {adminTier}
           </p>
         </div>
-        <Button onClick={() => setShowAdd((v) => !v)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Tambah Driver Baru
+        {/* Redirect ke form pendaftaran nasional (armada MOTOR/MOBIL/CARGO) */}
+        <Button asChild className="gap-2">
+          <Link href="/admin/drivers/new">
+            <Plus className="h-4 w-4" />
+            Daftarkan Driver Baru
+          </Link>
         </Button>
       </div>
 
@@ -242,85 +181,6 @@ export function DashboardDriversTable({
         <Alert className="mb-4 border-emerald-500/40 bg-emerald-500/10 text-emerald-900">
           {success}
         </Alert>
-      )}
-
-      {showAdd && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-lg">Pendaftaran Driver Baru</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={registerDriver} className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <Label>Nama lengkap</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Telepon</Label>
-                <Input
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Plat (opsional)</Label>
-                <Input
-                  value={form.plate}
-                  onChange={(e) => setForm({ ...form, plate: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Email login</Label>
-                <Input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Password</Label>
-                <Input
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  minLength={6}
-                  required
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <Label>Kota layanan</Label>
-                <select
-                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={form.service_city_id}
-                  onChange={(e) => setForm({ ...form, service_city_id: e.target.value })}
-                  required
-                >
-                  {cities.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <DriverPhotoPicker value={photoDraft} onChange={setPhotoDraft} disabled={loading} />
-              <div className="flex gap-2 sm:col-span-2">
-                <Button type="submit" disabled={loading}>
-                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Simpan
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>
-                  Batal
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
       )}
 
       {editId && (
@@ -389,6 +249,7 @@ export function DashboardDriversTable({
             <tr className="border-b bg-muted/40 text-left text-muted-foreground">
               <th className="px-4 py-3">Nama</th>
               <th className="px-4 py-3">Kontak</th>
+              <th className="px-4 py-3">Armada</th>
               <th className="px-4 py-3">Kota</th>
               <th className="px-4 py-3">Status GPS</th>
               <th className="px-4 py-3">Akun</th>
@@ -398,13 +259,13 @@ export function DashboardDriversTable({
           <tbody>
             {listLoading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   Memuat...
                 </td>
               </tr>
             ) : drivers.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   Tidak ada driver di wilayah ini.
                 </td>
               </tr>
@@ -419,6 +280,9 @@ export function DashboardDriversTable({
                       {d.phone}
                       <br />
                       <span className="text-xs">{d.profiles?.email ?? "—"}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {FLEET_LABEL[d.service_category ?? ""] ?? "Motor Hybrid"}
                     </td>
                     <td className="px-4 py-3">{cityName(d)}</td>
                     <td className="px-4 py-3 capitalize">{d.status}</td>

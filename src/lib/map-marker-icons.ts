@@ -33,10 +33,10 @@ export function customerPickupIcon(bearingDeg?: number): L.DivIcon {
   });
 }
 
-/** PNG custom — lingkaran hijau + panah arah (public/markers/driver-gps.png, 60×60). */
+/** PNG custom — lingkaran hijau + panah arah (public/markers/driver-gps.png, 40×40). */
 const DRIVER_GPS_MARKER_URL = "/markers/driver-gps.png";
 /** Ukuran tampilan marker driver di peta. */
-const DRIVER_MARKER_SIZE = 60;
+const DRIVER_MARKER_SIZE = 40;
 
 /** Marker driver — gambar GPS custom, berputar mengikuti arah navigasi. */
 export function driverMotorcycleIcon(bearingDeg?: number): L.DivIcon {
