@@ -61,6 +61,21 @@ function injectSession(webRef: React.RefObject<WebView | null>, session: Session
   return true;
 }
 
+function nativeToolbarBootstrapScript() {
+  return `
+    (function() {
+      window.__WIRA_APK_WEBVIEW__ = true;
+      window.__WIRA_NATIVE_TOOLBAR__ = true;
+      try {
+        var root = document.documentElement;
+        root.classList.add('wira-apk-webview', 'wira-native-toolbar-apk');
+        root.style.backgroundColor = '#ffffff';
+        if (document.body) document.body.style.backgroundColor = '#ffffff';
+      } catch (e) {}
+    })();
+  `;
+}
+
 function webErrorGuardScript() {
   return `
     (function() {
@@ -266,8 +281,11 @@ function DriverWebShell({
         )}
         </View>
       </View>
-      <SafeAreaView style={styles.toolbarWrap} edges={["bottom"]}>
-        <View style={styles.toolbar}>
+      <SafeAreaView
+        style={[styles.toolbarWrap, { backgroundColor: "#ffffff" }]}
+        edges={["bottom"]}
+      >
+        <View style={[styles.toolbar, { backgroundColor: "#ffffff" }]}>
           <Pressable
             style={[
               styles.toggleBtn,
@@ -298,7 +316,10 @@ function DriverWebShell({
                   : "Tidak menerima order"}
             </Text>
           </Pressable>
-          <Pressable style={styles.logoutBtn} onPress={onLogout}>
+          <Pressable
+            style={[styles.logoutBtn, { backgroundColor: "#fef2f2", borderColor: "#fecaca" }]}
+            onPress={onLogout}
+          >
             <Text style={styles.logoutText}>Keluar</Text>
           </Pressable>
         </View>
@@ -413,8 +434,9 @@ export default function App() {
   }, []);
 
   const beforeLoadScript = useMemo(() => {
-    if (!session) return webErrorGuardScript();
-    return sessionBootstrapScript(session) + webErrorGuardScript();
+    const bootstrap = nativeToolbarBootstrapScript();
+    if (!session) return bootstrap + webErrorGuardScript();
+    return bootstrap + sessionBootstrapScript(session) + webErrorGuardScript();
   }, [session?.access_token, session?.refresh_token]);
 
   useEffect(() => {
@@ -803,10 +825,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   toggleTextOn: {
-    color: "#065f46",
+    color: "#0f172a",
   },
   toggleTextOff: {
-    color: "#1e293b",
+    color: "#0f172a",
   },
   toggleHint: {
     fontSize: 10,

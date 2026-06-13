@@ -685,7 +685,7 @@ export function DriverCockpit() {
   const orderCardBottom = isApk
     ? apkWebBottomPad
       ? "bottom-[max(9rem,calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px)))]"
-      : "bottom-[max(1rem,env(safe-area-inset-bottom))]"
+      : "bottom-[max(1.75rem,env(safe-area-inset-bottom))]"
     : "bottom-[max(7rem,calc(0.75rem+env(safe-area-inset-bottom)))]";
   const deliveryLottieBottom = isApk
     ? apkWebBottomPad

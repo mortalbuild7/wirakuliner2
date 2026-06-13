@@ -193,6 +193,14 @@
 
   html.wira-native-toolbar-apk .driver-apk-bottom-bar {
     display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  html.wira-native-toolbar-apk [data-driver-bottom-panel] {
+    display: none !important;
   }
 
   html.wira-native-toolbar-apk body {
@@ -202,6 +210,11 @@
   html.wira-native-toolbar-apk .driver-panel.wira-mesh {
     background-color: #ffffff;
     background-image: none;
+  }
+
+  /* Leaflet attribution tetap di atas area native — kartu order tidak menumpuk bar web */
+  html.wira-native-toolbar-apk .leaflet-control-attribution {
+    margin-bottom: 0 !important;
   }
 
   .safe-pb-merchant {

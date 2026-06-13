@@ -7,21 +7,23 @@ import { isCapacitorNative } from "@/lib/capacitor";
 import { cn } from "@/lib/utils";
 import { Loader2, LogOut, Power } from "lucide-react";
 
-function detectApkWebView(): boolean {
+type ApkWindow = Window & {
+  ReactNativeWebView?: unknown;
+  __WIRA_APK_WEBVIEW__?: boolean;
+  __WIRA_NATIVE_TOOLBAR__?: boolean;
+};
+
+/** WebView Expo / toolbar native — bar bawah ditangani di luar WebView (App.tsx). */
+export function usesNativeBottomToolbar(): boolean {
   if (typeof window === "undefined") return false;
-  const w = window as Window & {
-    ReactNativeWebView?: unknown;
-    __WIRA_APK_WEBVIEW__?: boolean;
-    __WIRA_NATIVE_TOOLBAR__?: boolean;
-  };
-  return Boolean(w.__WIRA_APK_WEBVIEW__ || w.ReactNativeWebView || isCapacitorNative());
+  const w = window as ApkWindow;
+  return Boolean(w.__WIRA_NATIVE_TOOLBAR__ || w.ReactNativeWebView);
 }
 
-function hasNativeToolbar(): boolean {
+function detectApkWebView(): boolean {
   if (typeof window === "undefined") return false;
-  return Boolean(
-    (window as Window & { __WIRA_NATIVE_TOOLBAR__?: boolean }).__WIRA_NATIVE_TOOLBAR__
-  );
+  const w = window as ApkWindow;
+  return Boolean(w.__WIRA_APK_WEBVIEW__ || w.ReactNativeWebView || isCapacitorNative());
 }
 
 function postNativeMessage(payload: Record<string, unknown>) {
@@ -46,26 +48,34 @@ export function useDriverApkWebView(): boolean {
   return isApk;
 }
 
-/** Padding bawah konten — hanya jika bar web (bukan toolbar native Expo) aktif. */
-export function useDriverApkBottomPadding(): boolean {
+/**
+ * Bar bawah web hanya untuk Capacitor APK tanpa toolbar native.
+ * Expo APK memakai toolbar native — tidak perlu padding / bar duplikat di dalam peta.
+ */
+export function useWebDriverBottomBarVisible(): boolean {
   const isApk = useDriverApkWebView();
-  const [needsPadding, setNeedsPadding] = useState(
-    () => detectApkWebView() && !hasNativeToolbar()
+  const [visible, setVisible] = useState(
+    () => detectApkWebView() && isCapacitorNative() && !usesNativeBottomToolbar()
   );
 
   useEffect(() => {
-    const sync = () => setNeedsPadding(detectApkWebView() && !hasNativeToolbar());
+    const sync = () =>
+      setVisible(detectApkWebView() && isCapacitorNative() && !usesNativeBottomToolbar());
     sync();
     const timer = window.setInterval(sync, 200);
     return () => window.clearInterval(timer);
   }, [isApk]);
 
-  return needsPadding;
+  return visible;
+}
+
+/** @deprecated Gunakan useWebDriverBottomBarVisible — padding hanya jika bar web aktif. */
+export function useDriverApkBottomPadding(): boolean {
+  return useWebDriverBottomBarVisible();
 }
 
 /**
- * Outer wrapper panel bawah driver (setara DashboardClient bottom status).
- * Wajib putih solid — tanpa blur/transparansi agar peta gelap tidak tembus.
+ * Panel bawah statis (Capacitor saja). Expo APK: toolbar native di App.tsx — tidak dirender di WebView.
  */
 function DriverBottomStatusPanel({
   children,
@@ -102,10 +112,9 @@ function DriverBottomStatusPanel({
   );
 }
 
-/** Panel bawah APK: switch ONLINE/OFF + tombol Keluar — outer wrapper putih bersih. */
+/** Bar bawah Capacitor: ONLINE/OFF + Keluar. Tidak dipakai di Expo (toolbar native). */
 export function DriverApkBottomBar() {
-  const isApk = useDriverApkWebView();
-  const [hideForNativeToolbar, setHideForNativeToolbar] = useState(hasNativeToolbar);
+  const showWebBar = useWebDriverBottomBarVisible();
   const { driver, loading: profileLoading, refresh } = useDriverProfile();
   const { loading, isOnline, isDelivering, setOnline, logout } = useDriverStatusActions(
     driver,
@@ -113,24 +122,16 @@ export function DriverApkBottomBar() {
   );
 
   useEffect(() => {
-    if (!isApk) return;
-    const timer = window.setInterval(() => {
-      setHideForNativeToolbar(hasNativeToolbar());
-    }, 200);
-    return () => window.clearInterval(timer);
-  }, [isApk]);
-
-  useEffect(() => {
-    if (!isApk) return;
+    if (!detectApkWebView()) return;
     postNativeMessage({
       type: "WIRA_DRIVER_STATE",
       online: isOnline,
       delivering: isDelivering,
       hasDriver: Boolean(driver),
     });
-  }, [isApk, isOnline, isDelivering, driver]);
+  }, [isOnline, isDelivering, driver]);
 
-  if (!isApk || hideForNativeToolbar) return null;
+  if (!showWebBar) return null;
 
   if (profileLoading) {
     return (
@@ -185,7 +186,7 @@ export function DriverApkBottomBar() {
           <span
             className={cn(
               "text-sm font-bold",
-              isOnline ? "text-emerald-800" : "text-slate-800"
+              isOnline ? "text-slate-800" : "text-slate-800"
             )}
           >
             {loading ? "Memuat..." : isOnline ? "● ONLINE" : "○ OFFLINE"}
@@ -194,7 +195,7 @@ export function DriverApkBottomBar() {
         <span
           className={cn(
             "mt-0.5 block pl-6 text-[10px] font-medium",
-            isOnline ? "text-emerald-700" : "text-slate-600"
+            isOnline ? "text-emerald-800" : "text-slate-700"
           )}
         >
           {statusHint}
