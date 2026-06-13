@@ -123,6 +123,28 @@ export function DriverOrderRouteLine({
   );
 }
 
+export function transitHeaderTextClass(kind: TransitKind | null) {
+  if (kind === "ngomobil") return "text-sky-700";
+  if (kind === "paket") return "text-amber-800";
+  if (kind === "ngojek") return "text-cyan-700";
+  return "text-orange-700";
+}
+
+export function transitStatusBadgeClass(kind: TransitKind | null, isTransit = true) {
+  if (!isTransit) return "border-orange-300 bg-orange-50 text-orange-900";
+  if (kind === "ngomobil") return "border-sky-300 bg-sky-50 text-sky-900";
+  if (kind === "paket") return "border-amber-300 bg-amber-50 text-amber-950";
+  if (kind === "ngojek") return "border-cyan-300 bg-cyan-50 text-cyan-900";
+  return "border-orange-300 bg-orange-50 text-orange-900";
+}
+
+export function transitActiveStatusTextClass(kind: TransitKind | null) {
+  if (kind === "ngomobil") return "text-sky-800";
+  if (kind === "paket") return "text-amber-900";
+  if (kind === "ngojek") return "text-cyan-800";
+  return "text-emerald-800";
+}
+
 export function driverCardBorderClass(deliveryAddress: string) {
   const kind = getTransitKind(deliveryAddress);
   if (kind === "paket") return "border-amber-400";

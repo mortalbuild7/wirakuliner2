@@ -17,6 +17,7 @@ import {
   DriverOrderRouteLine,
   driverCardBorderClass,
   driverCardGlowClass,
+  transitStatusBadgeClass,
 } from "@/components/driver/driver-order-chrome";
 
 export function DriverJobCard({
@@ -67,10 +68,8 @@ export function DriverJobCard({
           className={cn(
             "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold",
             isTransit
-              ? transitKind === "paket"
-                ? "border-amber-700 bg-amber-50 text-amber-950"
-                : "border-cyan-700 bg-cyan-50 text-cyan-900"
-              : "border-emerald-700 bg-emerald-50 text-emerald-900"
+              ? transitStatusBadgeClass(transitKind, true)
+              : "border-emerald-300 bg-emerald-50 text-emerald-900"
           )}
         >
           {statusLabel}

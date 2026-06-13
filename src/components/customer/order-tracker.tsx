@@ -270,12 +270,12 @@ export function OrderTracker({ orderId }: { orderId: string }) {
   useSubscribeDriverGps(driverId, trackDriverLive, onBroadcastPosition);
 
   if (loading) {
-    return <p className="text-muted-foreground">Memuat pelacakan...</p>;
+    return <p className="text-slate-600">Memuat pelacakan...</p>;
   }
 
   if (error || !order) {
     return (
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm font-medium text-amber-900">
         {error ?? "Pesanan tidak ditemukan"}
       </div>
     );
@@ -337,16 +337,16 @@ export function OrderTracker({ orderId }: { orderId: string }) {
   return (
     <div className="space-y-6">
       {searchingDriver && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20">
-              <Search className="h-5 w-5 animate-pulse text-amber-300" />
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+              <Search className="h-5 w-5 animate-pulse text-amber-700" />
             </span>
             <div>
-              <p className="font-medium text-amber-100">
+              <p className="font-semibold text-amber-950">
                 {isPaket ? "Mencari kurir" : "Mencari driver"}
               </p>
-              <p className="mt-0.5 text-xs text-amber-200/80">
+              <p className="mt-0.5 text-xs text-amber-800">
                 {isPaket
                   ? "Pesanan paket sudah masuk. Kurir terdekat akan segera menerima penawaran."
                   : isTransit
@@ -354,26 +354,26 @@ export function OrderTracker({ orderId }: { orderId: string }) {
                     : "Pesanan sudah masuk ke sistem. Driver terdekat akan segera menerima penawaran."}
               </p>
             </div>
-            <Loader2 className="ml-auto h-5 w-5 animate-spin text-amber-300" />
+            <Loader2 className="ml-auto h-5 w-5 animate-spin text-amber-700" />
           </div>
         </div>
       )}
 
-      <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm">
-        <p className="text-muted-foreground">
+      <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm">
+        <p className="text-slate-600">
           {isTransit ? channelLabelFromRecord(channelRecord) : "Status saat ini"}
         </p>
-        <p className="mt-1 font-medium text-white">{statusLabel}</p>
+        <p className="mt-1 font-semibold text-slate-900">{statusLabel}</p>
         {isTransit && transitLegs && (
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-2 text-xs text-slate-600">
             {transitLegs.pickup} → {transitLegs.destination}
           </p>
         )}
       </div>
 
       {showTrackingMap && (
-        <div className="relative overflow-hidden rounded-lg border border-white/10">
-          <p className="border-b border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white">
+        <div className="relative overflow-hidden rounded-lg border border-slate-200">
+          <p className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900">
             {hasDriverOnMap
               ? isPaket && order.order_status === "ready_for_pickup"
                 ? "Kurir menuju pengirim"
@@ -405,12 +405,12 @@ export function OrderTracker({ orderId }: { orderId: string }) {
             isDelivery={isDelivery}
           />
           {!hasDriverOnMap && order.driver_id && (
-            <p className="px-3 py-2 text-xs text-muted-foreground">
+            <p className="px-3 py-2 text-xs text-slate-600">
               Menunggu lokasi GPS driver...
             </p>
           )}
           {searchingDriver && (
-            <p className="px-3 py-2 text-xs text-amber-200/80">
+            <p className="px-3 py-2 text-xs text-amber-800">
               {isPaket
                 ? "Hijau = pengirim, biru = penerima. Garis biru = rute kurir."
                 : isTransit
@@ -465,10 +465,10 @@ export function OrderTracker({ orderId }: { orderId: string }) {
         )}
 
       {driverInfo && order.driver_id && !["pending_payment", "cancelled"].includes(order.order_status) && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
-          <p className="text-sm font-medium text-emerald-200">Driver Anda</p>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm font-semibold text-emerald-900">Driver Anda</p>
           <div className="mt-3 flex items-center gap-3">
-            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full border border-white/20 bg-muted">
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
               {driverInfo.photo_url ? (
                 <Image
                   src={driverInfo.photo_url}
@@ -478,19 +478,19 @@ export function OrderTracker({ orderId }: { orderId: string }) {
                   sizes="56px"
                 />
               ) : (
-                <span className="flex h-full w-full items-center justify-center text-muted-foreground">
+                <span className="flex h-full w-full items-center justify-center text-slate-500">
                   <User className="h-6 w-6" />
                 </span>
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-white">{driverInfo.name}</p>
+              <p className="font-semibold text-slate-900">{driverInfo.name}</p>
               {driverInfo.vehicle_plate && (
-                <p className="text-xs text-muted-foreground">{driverInfo.vehicle_plate}</p>
+                <p className="text-xs text-slate-600">{driverInfo.vehicle_plate}</p>
               )}
               <a
                 href={`tel:${driverInfo.phone}`}
-                className="mt-1 inline-flex items-center gap-1 text-xs text-cyan-300 hover:underline"
+                className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline"
               >
                 <Phone className="h-3 w-3" />
                 {driverInfo.phone}
@@ -498,7 +498,7 @@ export function OrderTracker({ orderId }: { orderId: string }) {
             </div>
           </div>
           {driverPos && ["on_the_way", "ready_for_pickup", "preparing", "paid"].includes(order.order_status) && (
-            <p className="mt-3 text-xs text-muted-foreground">
+            <p className="mt-3 text-xs text-slate-600">
               {order.order_status === "on_the_way"
                 ? isPaket
                   ? "Kurir sedang mengantar paket ke penerima"

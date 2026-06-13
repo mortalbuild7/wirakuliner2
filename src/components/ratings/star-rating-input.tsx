@@ -23,7 +23,7 @@ export function StarRatingInput({ value, onChange, disabled, size = "md" }: Prop
           onClick={() => onChange(star)}
           className={cn(
             "rounded p-0.5 transition hover:scale-110 disabled:opacity-50",
-            star <= value ? "text-amber-400" : "text-white/25"
+            star <= value ? "text-amber-400" : "text-slate-300"
           )}
           aria-label={`${star} bintang`}
           aria-checked={star === value}

@@ -79,7 +79,7 @@ export default function CustomerOrderChatPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
-        <h1 className="text-lg font-bold text-white">
+        <h1 className="text-lg font-bold text-slate-900">
           {ride ? "Chat dengan Driver" : "Chat Driver"}
         </h1>
       </div>

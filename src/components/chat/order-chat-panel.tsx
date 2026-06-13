@@ -160,41 +160,41 @@ export function OrderChatPanel({
   }
 
   const endedBanner = chatClosed ? (
-    <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
       Sesi chat telah berakhir karena pesanan telah selesai.
     </div>
   ) : !driverId ? (
-    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-muted-foreground">
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
       Chat akan aktif setelah driver ditugaskan pada pesanan ini.
     </div>
   ) : !chatOpen && !chatClosed ? (
-    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-muted-foreground">
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
       Chat belum aktif untuk status pesanan saat ini.
     </div>
   ) : null;
 
   return (
-    <div className="flex min-h-[70vh] flex-col rounded-xl border border-white/10 bg-[#0d1117]">
-      <header className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-        <MessageCircle className="h-5 w-5 text-cyan-400" />
+    <div className="flex min-h-[70vh] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <header className="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
+        <MessageCircle className="h-5 w-5 text-cyan-600" />
         <div>
-          <p className="text-sm font-semibold text-white">Chat Pesanan</p>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-sm font-semibold text-slate-900">Chat Pesanan</p>
+          <p className="text-[10px] text-slate-500">
             Room unik per transaksi · ID {orderId.slice(0, 8)}…
           </p>
         </div>
       </header>
 
-      <div className="space-y-2 border-b border-white/10 px-3 py-2">{endedBanner}</div>
+      <div className="space-y-2 border-b border-slate-200 px-3 py-2">{endedBanner}</div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
+      <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50/50 px-3 py-3">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-600">
+            <Loader2 className="h-4 w-4 animate-spin text-cyan-600" />
             Memuat pesan...
           </div>
         ) : messages.length === 0 ? (
-          <p className="py-8 text-center text-xs text-muted-foreground">
+          <p className="py-8 text-center text-xs text-slate-500">
             Belum ada pesan. Mulai percakapan dengan {peerLabel.toLowerCase()}.
           </p>
         ) : (
@@ -208,12 +208,12 @@ export function OrderChatPanel({
                 <div
                   className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                     mine
-                      ? "rounded-br-md bg-cyan-600/90 text-white"
-                      : "rounded-bl-md bg-white/10 text-white"
+                      ? "rounded-br-md bg-cyan-600 text-white"
+                      : "rounded-bl-md border border-slate-200 bg-white text-slate-900"
                   }`}
                 >
                   {!mine && (
-                    <p className="mb-0.5 text-[10px] font-medium text-cyan-200/90">
+                    <p className="mb-0.5 text-[10px] font-medium text-cyan-700">
                       {peerLabel}
                     </p>
                   )}
@@ -221,7 +221,7 @@ export function OrderChatPanel({
                     {decodeStoredChatEntities(m.message)}
                   </p>
                   <p
-                    className={`mt-1 text-[10px] ${mine ? "text-cyan-100/70" : "text-muted-foreground"}`}
+                    className={`mt-1 text-[10px] ${mine ? "text-cyan-100" : "text-slate-500"}`}
                   >
                     {new Date(m.created_at).toLocaleTimeString("id-ID", {
                       hour: "2-digit",
@@ -237,14 +237,14 @@ export function OrderChatPanel({
       </div>
 
       {error && (
-        <p className="px-3 pb-1 text-xs text-red-300" role="alert">
+        <p className="px-3 pb-1 text-xs text-red-600" role="alert">
           {error}
         </p>
       )}
 
       <form
         onSubmit={handleSend}
-        className="flex gap-2 border-t border-white/10 p-3"
+        className="flex gap-2 border-t border-slate-200 bg-white p-3"
       >
         <Input
           value={text}
@@ -254,7 +254,7 @@ export function OrderChatPanel({
           }
           disabled={!chatOpen || sending}
           maxLength={1000}
-          className="flex-1 border-white/15 bg-white/5"
+          className="flex-1 border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
           aria-label="Pesan chat"
         />
         <Button

@@ -125,7 +125,7 @@ export default function OrderChatPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
-        <h1 className="text-lg font-bold text-white">Chat Perjalanan</h1>
+        <h1 className="text-lg font-bold text-slate-900">Chat Perjalanan</h1>
       </div>
 
       <OrderChatPanel

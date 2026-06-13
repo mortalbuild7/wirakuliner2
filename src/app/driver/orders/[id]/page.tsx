@@ -207,7 +207,7 @@ export default function DriverOrderDetailPage() {
   }
 
   if (profileLoading || !order) {
-    return <p className="p-6 text-center text-muted-foreground">Memuat order...</p>;
+    return <p className="p-6 text-center text-slate-600">Memuat order...</p>;
   }
 
   const title = isTransit ? channelLabel(addr) : (shop?.name ?? KULINER_FOOD_LABEL);
@@ -217,8 +217,8 @@ export default function DriverOrderDetailPage() {
     <main className="space-y-4 px-4 py-4">
       <div className={cn("glass-card space-y-2 border p-4", driverCardBorderClass(addr))}>
         <DriverChannelBadge deliveryAddress={addr} />
-        <h1 className="text-xl font-bold text-white">{title}</h1>
-        <p className="text-xs text-muted-foreground">
+        <h1 className="text-xl font-bold text-slate-900">{title}</h1>
+        <p className="text-xs font-medium text-slate-600">
           {driverOrderStatusLabel(addr, order.order_status)}
         </p>
       </div>
@@ -237,12 +237,12 @@ export default function DriverOrderDetailPage() {
       {customer && (
         <section className="glass-card p-4 text-sm">
           <div className="flex items-start gap-2">
-            <User className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
+            <User className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
             <div>
-              <p className="font-medium text-white">{customerRole}</p>
-              <p className="text-sm font-semibold text-cyan-200">{customer.name}</p>
+              <p className="font-semibold text-slate-700">{customerRole}</p>
+              <p className="text-sm font-bold text-slate-900">{customer.name}</p>
               {customer.phone && (
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-slate-600">
                   HP: {customer.phone} · gunakan chat in-app untuk kontak
                 </p>
               )}
@@ -257,17 +257,17 @@ export default function DriverOrderDetailPage() {
         ) : (
           <>
             <div className="flex items-start gap-2">
-              <Store className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+              <Store className="mt-0.5 h-4 w-4 shrink-0 text-orange-700" />
               <div>
-                <p className="font-medium text-white">Ambil di toko</p>
-                <p className="text-xs text-muted-foreground">{shop?.address ?? "—"}</p>
+                <p className="font-semibold text-slate-900">Ambil di toko</p>
+                <p className="text-xs text-slate-600">{shop?.address ?? "—"}</p>
               </div>
             </div>
             <div className="flex items-start gap-2">
-              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
               <div>
-                <p className="font-medium text-white">Antar ke</p>
-                <p className="text-xs text-muted-foreground">{order.delivery_address}</p>
+                <p className="font-semibold text-slate-900">Antar ke</p>
+                <p className="text-xs text-slate-600">{order.delivery_address}</p>
               </div>
             </div>
           </>
@@ -276,10 +276,10 @@ export default function DriverOrderDetailPage() {
 
       {isFood && items.length > 0 && (
         <section className="glass-card p-4">
-          <p className="text-sm font-medium text-white">Item pesanan</p>
+          <p className="text-sm font-semibold text-slate-900">Item pesanan</p>
           <ul className="mt-2 space-y-1 text-sm">
             {items.map((i) => (
-              <li key={i.id} className="flex justify-between text-muted-foreground">
+              <li key={i.id} className="flex justify-between text-slate-700">
                 <span>
                   {i.quantity}× {i.product_name}
                 </span>
@@ -291,12 +291,12 @@ export default function DriverOrderDetailPage() {
       )}
 
       <section className="glass-card p-4">
-        <div className="flex justify-between font-bold text-white">
+        <div className="flex justify-between font-bold text-slate-900">
           <span>{isTransit ? "Tarif layanan" : "Total"}</span>
-          <span className="text-cyan-300">{formatIdr(total)}</span>
+          <span className="text-sky-800">{formatIdr(total)}</span>
         </div>
         {isFood && (
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-xs text-slate-600">
             Ongkir: {formatIdr(Number(order.delivery_fee))}
           </p>
         )}
