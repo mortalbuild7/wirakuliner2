@@ -533,8 +533,8 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
-        <StatusBar style="dark" />
+      <SafeAreaView style={styles.root} edges={["top"]}>
+        <StatusBar style="dark" backgroundColor="#f8fafc" />
         <WebView
           key={`${session?.user?.id ?? "webview"}-${webUrlIndex}`}
           ref={webRef}
@@ -615,41 +615,43 @@ export default function App() {
             )}
           </View>
         )}
-        <View style={styles.toolbar}>
-          <Pressable
-            style={[
-              styles.toggleBtn,
-              driverState.online ? styles.toggleOn : styles.toggleOff,
-              driverState.delivering && driverState.online && styles.toggleDisabled,
-            ]}
-            onPress={handleToggle}
-            disabled={driverState.delivering && driverState.online}
-          >
-            <Text
+        <SafeAreaView style={styles.toolbarWrap} edges={["bottom"]}>
+          <View style={styles.toolbar}>
+            <Pressable
               style={[
-                styles.toggleText,
-                driverState.online ? styles.toggleTextOn : styles.toggleTextOff,
+                styles.toggleBtn,
+                driverState.online ? styles.toggleOn : styles.toggleOff,
+                driverState.delivering && driverState.online && styles.toggleDisabled,
               ]}
+              onPress={handleToggle}
+              disabled={driverState.delivering && driverState.online}
             >
-              {driverState.online ? "● ONLINE" : "○ OFFLINE"}
-            </Text>
-            <Text
-              style={[
-                styles.toggleHint,
-                driverState.online ? styles.toggleHintOn : styles.toggleHintOff,
-              ]}
-            >
-              {driverState.delivering
-                ? "Mengantar"
-                : driverState.online
-                  ? "Siap terima order"
-                  : "Tidak menerima order"}
-            </Text>
-          </Pressable>
-          <Pressable style={styles.logoutBtn} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Keluar</Text>
-          </Pressable>
-        </View>
+              <Text
+                style={[
+                  styles.toggleText,
+                  driverState.online ? styles.toggleTextOn : styles.toggleTextOff,
+                ]}
+              >
+                {driverState.online ? "● ONLINE" : "○ OFFLINE"}
+              </Text>
+              <Text
+                style={[
+                  styles.toggleHint,
+                  driverState.online ? styles.toggleHintOn : styles.toggleHintOff,
+                ]}
+              >
+                {driverState.delivering
+                  ? "Mengantar"
+                  : driverState.online
+                    ? "Siap terima order"
+                    : "Tidak menerima order"}
+              </Text>
+            </Pressable>
+            <Pressable style={styles.logoutBtn} onPress={handleLogout}>
+              <Text style={styles.logoutText}>Keluar</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -676,36 +678,34 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(248,250,252,0.92)",
   },
+  toolbarWrap: {
+    backgroundColor: "#ffffff",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(226,232,240,0.9)",
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "#ffffff",
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    paddingBottom: Platform.OS === "ios" ? 4 : 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 8,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "ios" ? 6 : 12,
   },
   toggleBtn: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
   toggleOn: {
-    borderColor: "rgba(16,185,129,0.45)",
-    backgroundColor: "rgba(236,253,245,0.95)",
+    borderColor: "#a7f3d0",
+    backgroundColor: "#ecfdf5",
   },
   toggleOff: {
-    borderColor: "rgba(203,213,225,0.9)",
-    backgroundColor: "rgba(248,250,252,0.95)",
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
   },
   toggleDisabled: {
     opacity: 0.72,
@@ -718,7 +718,7 @@ const styles = StyleSheet.create({
     color: "#065f46",
   },
   toggleTextOff: {
-    color: "#0f172a",
+    color: "#334155",
   },
   toggleHint: {
     fontSize: 10,
@@ -729,18 +729,18 @@ const styles = StyleSheet.create({
     color: "#047857",
   },
   toggleHintOff: {
-    color: "#475569",
+    color: "#64748b",
   },
   logoutBtn: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(252,165,165,0.9)",
-    backgroundColor: "rgba(254,242,242,0.95)",
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
     paddingVertical: 14,
     paddingHorizontal: 16,
   },
   logoutText: {
-    color: "#b91c1c",
+    color: "#dc2626",
     fontSize: 12,
     fontWeight: "700",
   },

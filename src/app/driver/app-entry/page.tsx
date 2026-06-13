@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { storeDriverTokens } from "@/lib/driver-native-session";
 import { postNativeDriverBoot } from "@/lib/driver-session-sync";
+import { markFreshLogin } from "@/lib/hello-welcome";
 
 const STORAGE_KEY = "wira_bridge_tokens";
 
@@ -114,6 +115,7 @@ export default function DriverAppEntryPage() {
         postNativeDriverBoot("session_ok");
         postNativeDriverBoot("redirecting");
 
+        markFreshLogin();
         await new Promise((r) => setTimeout(r, 350));
         window.location.replace("/driver");
       } finally {

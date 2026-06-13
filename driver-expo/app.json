@@ -5,7 +5,7 @@
     "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "scheme": "wiradriver",
     "ios": {
       "supportsTablet": false,
@@ -14,9 +14,13 @@
     "android": {
       "package": "id.web.wirakuliner.driver",
       "adaptiveIcon": {
-        "backgroundColor": "#0f172a",
+        "backgroundColor": "#f8fafc",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png"
+      },
+      "navigationBar": {
+        "backgroundColor": "#ffffff",
+        "barStyle": "dark-content"
       },
       "permissions": [
         "INTERNET",
@@ -31,7 +35,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0f172a",
+          "backgroundColor": "#f8fafc",
           "image": "./assets/splash-icon.png",
           "imageWidth": 280
         }

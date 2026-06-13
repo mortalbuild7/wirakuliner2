@@ -14,6 +14,7 @@ import {
 } from "@/components/auth/auth-layout";
 import type { UserRole } from "@/types/database";
 import { UserPlus } from "lucide-react";
+import { markFreshLogin } from "@/lib/hello-welcome";
 
 const ROLE_REDIRECT: Record<UserRole, string> = {
   admin: "/admin",
@@ -87,6 +88,7 @@ function RegisterForm() {
         return;
       }
 
+      markFreshLogin();
       window.location.assign(ROLE_REDIRECT[role]);
     } finally {
       setLoading(false);

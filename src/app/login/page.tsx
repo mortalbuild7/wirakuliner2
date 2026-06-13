@@ -13,6 +13,7 @@ import {
 } from "@/components/auth/auth-layout";
 import type { UserRole } from "@/types/database";
 import { isDriverAppEnabledClient } from "@/lib/feature-flags";
+import { markFreshLogin } from "@/lib/hello-welcome";
 import { LogIn, Store, Shield, UtensilsCrossed, Bike } from "lucide-react";
 
 const ROLE_REDIRECT: Record<UserRole, string> = {
@@ -66,6 +67,8 @@ function LoginForm() {
         alert("Aplikasi driver sementara ditutup. Hubungi admin WIRA Kuliner.");
         return;
       }
+
+      markFreshLogin();
 
       // Fast path: middleware handles role & setup checks (reliable in WebView/APK)
       if (redirect) {

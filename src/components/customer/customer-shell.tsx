@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { CustomerModerationBanner } from "@/components/customer/customer-moderation-banner";
 import { WalletBalanceBadge } from "@/components/wallet/wallet-balance-badge";
+import { HelloWelcome } from "@/components/shared/HelloWelcome";
 
 const NAV = [
   {
@@ -54,6 +55,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="wira-mesh min-h-[100dvh] text-slate-900">
+      <HelloWelcome />
       <header className="sticky top-0 z-50 glass-panel">
         <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <Link href="/customer" className="flex items-center gap-2.5">

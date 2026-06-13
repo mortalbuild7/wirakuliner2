@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Bike } from "lucide-react";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { DriverHeaderControls } from "@/components/driver/driver-header-controls";
+import { HelloWelcome } from "@/components/shared/HelloWelcome";
 
 export function DriverShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -18,6 +19,7 @@ export function DriverShell({ children }: { children: React.ReactNode }) {
   if (isCockpit) {
     return (
       <div className="driver-panel wira-mesh flex min-h-[100dvh] flex-col">
+        <HelloWelcome />
         <div className="mx-auto flex w-full max-w-mobile min-h-0 flex-1 flex-col">{children}</div>
       </div>
     );
@@ -25,6 +27,7 @@ export function DriverShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="driver-panel wira-mesh min-h-[100dvh]">
+      <HelloWelcome />
       <header className="sticky top-0 z-50 glass-panel">
         <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3.5 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="flex items-center gap-2.5">

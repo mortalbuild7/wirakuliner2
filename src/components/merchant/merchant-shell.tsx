@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { MerchantOrderAlert } from "@/components/merchant/merchant-order-alert";
 import { MerchantOrderAlertProvider, useMerchantOrderAlertContext } from "@/contexts/merchant-order-alert-context";
+import { HelloWelcome } from "@/components/shared/HelloWelcome";
 
 const NAV = [
   { href: "/merchant", label: "Home", icon: LayoutDashboard, exact: true },
@@ -103,6 +104,7 @@ function MerchantShellContent({
 
   return (
     <div className="wira-mesh min-h-[100dvh] text-slate-800 md:flex">
+      <HelloWelcome />
       <aside className="hidden border-r border-slate-200/80 bg-white shadow-sm md:flex md:w-56 md:flex-col md:shrink-0">
         <div className="flex items-center gap-2 border-b border-slate-100 p-4">
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 shadow-lg shadow-amber-400/25">
