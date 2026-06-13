@@ -89,7 +89,7 @@ export function DriverMapViewInner({
       userAccuracyM={hasDriver ? driverAccuracyM : null}
       hubLat={JALAN_WIRA.latitude}
       hubLng={JALAN_WIRA.longitude}
-      hubLabel="W"
+      showHubMarker={false}
       showRadius={!hasRoute && !navigationMode}
       followGps={hasDriver && (followDriver || navigationMode)}
       lockZoom={hasDriver && (followDriver || navigationMode) && lockDriverZoom}

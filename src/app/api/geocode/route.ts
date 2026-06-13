@@ -1,4 +1,5 @@
 import { formatGeocodeLabel, type GeocodeHit } from "@/lib/geocode";
+import { gpsCoordFallbackAddress } from "@/lib/geocode-resilient";
 import {
   geocodeCacheKey,
   getGeocodeCache,
@@ -51,7 +52,14 @@ export async function GET(req: Request) {
 
     const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
     if (!res.ok) {
-      return secureJsonResponse({ error: "Gagal mencari alamat" }, { status: 502 });
+      const hit: GeocodeHit = {
+        lat,
+        lng,
+        label: gpsCoordFallbackAddress(lat, lng),
+      };
+      const body = { results: [hit] };
+      setGeocodeCache(cacheKey, body);
+      return secureJsonResponse(body);
     }
 
     const data = (await res.json().catch(() => null)) as {
@@ -60,16 +68,22 @@ export async function GET(req: Request) {
       lon?: string;
     } | null;
 
-    if (!data?.display_name) {
-      const body = { results: [] };
+    const displayName = data?.display_name?.trim();
+    if (!displayName) {
+      const hit: GeocodeHit = {
+        lat,
+        lng,
+        label: gpsCoordFallbackAddress(lat, lng),
+      };
+      const body = { results: [hit] };
       setGeocodeCache(cacheKey, body);
       return secureJsonResponse(body);
     }
 
     const hit: GeocodeHit = {
-      lat: Number(data.lat),
-      lng: Number(data.lon),
-      label: formatGeocodeLabel(data.display_name),
+      lat: Number.isFinite(Number(data?.lat)) ? Number(data!.lat) : lat,
+      lng: Number.isFinite(Number(data?.lon)) ? Number(data!.lon) : lng,
+      label: formatGeocodeLabel(displayName),
     };
 
     const body = { results: [hit] };

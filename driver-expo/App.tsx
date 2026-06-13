@@ -534,7 +534,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
         <WebView
           key={`${session?.user?.id ?? "webview"}-${webUrlIndex}`}
           ref={webRef}
@@ -625,10 +625,20 @@ export default function App() {
             onPress={handleToggle}
             disabled={driverState.delivering && driverState.online}
           >
-            <Text style={styles.toggleText}>
+            <Text
+              style={[
+                styles.toggleText,
+                driverState.online ? styles.toggleTextOn : styles.toggleTextOff,
+              ]}
+            >
               {driverState.online ? "● ONLINE" : "○ OFFLINE"}
             </Text>
-            <Text style={styles.toggleHint}>
+            <Text
+              style={[
+                styles.toggleHint,
+                driverState.online ? styles.toggleHintOn : styles.toggleHintOff,
+              ]}
+            >
               {driverState.delivering
                 ? "Mengantar"
                 : driverState.online
@@ -650,32 +660,37 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: "#f8fafc",
   },
   root: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#f8fafc",
   },
   web: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#f8fafc",
   },
   loader: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(15,23,42,0.85)",
+    backgroundColor: "rgba(248,250,252,0.92)",
   },
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "#0f172a",
+    borderTopColor: "rgba(226,232,240,0.9)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     paddingHorizontal: 12,
     paddingVertical: 10,
     paddingBottom: Platform.OS === "ios" ? 4 : 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 8,
   },
   toggleBtn: {
     flex: 1,
@@ -685,55 +700,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   toggleOn: {
-    borderColor: "rgba(52,211,153,0.5)",
-    backgroundColor: "rgba(16,185,129,0.15)",
+    borderColor: "rgba(16,185,129,0.45)",
+    backgroundColor: "rgba(236,253,245,0.95)",
   },
   toggleOff: {
-    borderColor: "rgba(100,116,139,0.5)",
-    backgroundColor: "rgba(51,65,85,0.4)",
+    borderColor: "rgba(203,213,225,0.9)",
+    backgroundColor: "rgba(248,250,252,0.95)",
   },
   toggleDisabled: {
-    opacity: 0.65,
+    opacity: 0.72,
   },
   toggleText: {
-    color: "#ecfdf5",
     fontSize: 13,
     fontWeight: "700",
   },
+  toggleTextOn: {
+    color: "#065f46",
+  },
+  toggleTextOff: {
+    color: "#0f172a",
+  },
   toggleHint: {
-    color: "#94a3b8",
     fontSize: 10,
     marginTop: 2,
+    fontWeight: "500",
+  },
+  toggleHintOn: {
+    color: "#047857",
+  },
+  toggleHintOff: {
+    color: "#475569",
   },
   logoutBtn: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(248,113,113,0.4)",
-    backgroundColor: "rgba(127,29,29,0.25)",
+    borderColor: "rgba(252,165,165,0.9)",
+    backgroundColor: "rgba(254,242,242,0.95)",
     paddingVertical: 14,
     paddingHorizontal: 16,
   },
   logoutText: {
-    color: "#fca5a5",
+    color: "#b91c1c",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   errorScreen: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: "#f8fafc",
     paddingHorizontal: 24,
   },
   errorTitle: {
-    color: "#f8fafc",
+    color: "#0f172a",
     fontSize: 16,
     fontWeight: "700",
     textAlign: "center",
     marginBottom: 8,
   },
   errorBody: {
-    color: "#94a3b8",
+    color: "#475569",
     fontSize: 13,
     textAlign: "center",
     lineHeight: 20,
@@ -749,13 +775,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(52,211,153,0.5)",
-    backgroundColor: "rgba(16,185,129,0.15)",
+    borderColor: "rgba(16,185,129,0.45)",
+    backgroundColor: "rgba(236,253,245,0.95)",
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
   errorRetryText: {
-    color: "#6ee7b7",
+    color: "#047857",
     fontSize: 14,
     fontWeight: "700",
   },

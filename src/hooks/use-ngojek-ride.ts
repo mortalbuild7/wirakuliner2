@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAddressFromCoordinates } from "@/app/actions/geoActions";
+import {
+  geoLocationFromCoords,
+  gpsCoordFallbackAddress,
+  resolveAddressFromGeocode,
+} from "@/lib/geocode-resilient";
 import type { GeocodeHit } from "@/lib/geocode";
 import { haversineKm } from "@/lib/geo-config";
 import { useOrderStore } from "@/store/useOrderStore";
@@ -124,16 +129,60 @@ async function fetchServiceArea(
   };
 }
 
+async function safeGetAddressFromCoordinates(
+  lat: number,
+  lng: number,
+  defaultLabel?: string
+): Promise<GeoLocationPoint> {
+  try {
+    const res = await getAddressFromCoordinates(lat, lng);
+    if (res.ok) {
+      return {
+        address: resolveAddressFromGeocode(
+          res.location.address,
+          res.location.latitude ?? lat,
+          res.location.longitude ?? lng,
+          defaultLabel
+        ),
+        latitude: res.location.latitude ?? lat,
+        longitude: res.location.longitude ?? lng,
+      };
+    }
+  } catch {
+    /* server action / jaringan — fallback koordinat */
+  }
+  return geoLocationFromCoords(lat, lng, defaultLabel);
+}
+
 async function reverseGeocode(lat: number, lng: number): Promise<GeocodeHit | null> {
-  const params = new URLSearchParams({
-    reverse: "1",
-    lat: String(lat),
-    lng: String(lng),
-  });
-  const res = await fetch(`/api/geocode?${params.toString()}`);
-  if (res.status === 429 || !res.ok) return null;
-  const json = (await res.json().catch(() => ({}))) as { results?: GeocodeHit[] };
-  return json.results?.[0] ?? null;
+  try {
+    const params = new URLSearchParams({
+      reverse: "1",
+      lat: String(lat),
+      lng: String(lng),
+    });
+    const res = await fetch(`/api/geocode?${params.toString()}`);
+    if (res.ok) {
+      const json = (await res.json().catch(() => ({}))) as {
+        results?: Array<{ label?: string; lat?: number; lng?: number }>;
+      };
+      const row = json?.results?.[0];
+      if (row?.label?.trim()) {
+        return {
+          label: row.label,
+          lat: Number.isFinite(row.lat) ? (row.lat as number) : lat,
+          lng: Number.isFinite(row.lng) ? (row.lng as number) : lng,
+        };
+      }
+    }
+  } catch {
+    /* API geocode client gagal */
+  }
+  return {
+    label: gpsCoordFallbackAddress(lat, lng),
+    lat,
+    lng,
+  };
 }
 
 /** State & logika bisnis transit (NGOJEK / NGOMOBIL / PAKET). */
@@ -455,19 +504,12 @@ export function useNgojekRide() {
         const lng = roundCoordForQuote(pos.coords.longitude);
         setGpsLoading(false);
         void (async () => {
-          try {
-            const res = await getAddressFromCoordinates(lat, lng);
-            const address =
-              res.ok && res.location.address
-                ? res.location.address
-                : "Lokasi perangkat saya";
-            setDeviceLocation(
-              { address, latitude: lat, longitude: lng },
-              pos.coords.accuracy
-            );
-          } catch (error) {
-            notifyCustomerOrderError("Gagal mengurai alamat dari GPS.", error);
-          }
+          const location = await safeGetAddressFromCoordinates(
+            lat,
+            lng,
+            "Lokasi perangkat saya"
+          );
+          setDeviceLocation(location, pos.coords.accuracy);
         })();
       },
       (error) => {
@@ -511,12 +553,14 @@ export function useNgojekRide() {
 
   const reverseGeocodeDest = useCallback(async (lat: number, lng: number) => {
     const hit = await reverseGeocode(lat, lng);
-    if (hit) {
-      destFromPinRef.current = true;
-      skipForwardGeocodeRef.current = true;
-      patchDestinationLocation({ address: hit.label });
-      lastReverseCoordsRef.current = { lat, lng };
-    }
+    destFromPinRef.current = true;
+    skipForwardGeocodeRef.current = true;
+    patchDestinationLocation({
+      address: hit?.label ?? gpsCoordFallbackAddress(lat, lng),
+      latitude: hit?.lat ?? lat,
+      longitude: hit?.lng ?? lng,
+    });
+    lastReverseCoordsRef.current = { lat, lng };
   }, [patchDestinationLocation]);
 
   useEffect(() => {
@@ -631,15 +675,12 @@ export function useNgojekRide() {
         setPlaceError(null);
         setGpsLoading(false);
         void (async () => {
-          const res = await getAddressFromCoordinates(lat, lng);
-          const address =
-            res.ok && res.location.address
-              ? res.location.address
-              : "Lokasi perangkat saya";
-          setDeviceLocation(
-            { address, latitude: lat, longitude: lng },
-            pos.coords.accuracy
+          const location = await safeGetAddressFromCoordinates(
+            lat,
+            lng,
+            "Lokasi perangkat saya"
           );
+          setDeviceLocation(location, pos.coords.accuracy);
         })();
       },
       () => {
@@ -668,21 +709,9 @@ export function useNgojekRide() {
 
   const reverseGeocodePickup = useCallback(async (lat: number, lng: number) => {
     const gen = ++pickupReverseGenRef.current;
-    const res = await getAddressFromCoordinates(lat, lng);
+    const location = await safeGetAddressFromCoordinates(lat, lng);
     if (gen !== pickupReverseGenRef.current) return;
-    if (res.ok) {
-      patchPickupLocation({
-        address: res.location.address,
-        latitude: res.location.latitude,
-        longitude: res.location.longitude,
-      });
-    } else {
-      patchPickupLocation({
-        latitude: lat,
-        longitude: lng,
-        address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-      });
-    }
+    patchPickupLocation(location);
   }, [patchPickupLocation]);
 
   const handlePickupMapIdle = useCallback(

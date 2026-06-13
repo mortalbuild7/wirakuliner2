@@ -4,6 +4,10 @@ import {
   reverseGeocodeCoords,
   searchGeocodeQuery,
 } from "@/lib/geocode-server";
+import {
+  geoLocationFromCoords,
+  resolveAddressFromGeocode,
+} from "@/lib/geocode-resilient";
 import type { GeoLocationPoint } from "@/types/geo-location";
 
 /** Hasil reverse geocode — koordinat → alamat terbaca manusia. */
@@ -24,9 +28,8 @@ function clampCoord(value: number, min: number, max: number): number | null {
 }
 
 /**
- * Reverse geocoding server-side — API key / Nominatim tidak pernah ke browser.
- * Dipanggil saat peta jemput berhenti digeser (onMoveEnd / onCameraIdle).
- * Fallback Nominatim OSM gratis jika GOOGLE_GEOCODING_API_KEY kosong.
+ * Reverse geocoding server-side — tidak pernah memblokir alur order.
+ * Jika geocoder gagal/rate-limit, selalu kembalikan koordinat + label fallback.
  */
 export async function getAddressFromCoordinates(
   lat: number,
@@ -35,33 +38,29 @@ export async function getAddressFromCoordinates(
   const latitude = clampCoord(lat, -90, 90);
   const longitude = clampCoord(lng, -180, 180);
   if (latitude == null || longitude == null) {
-    return { ok: false, error: "Koordinat tidak valid" };
+    return {
+      ok: true,
+      location: geoLocationFromCoords(lat, lng),
+    };
   }
 
   try {
     const hit = await reverseGeocodeCoords(latitude, longitude);
-    if (!hit) {
-      // Fallback koordinat mentah jika geocoder tidak mengembalikan label
-      return {
-        ok: true,
-        location: {
-          address: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-          latitude,
-          longitude,
-        },
-      };
-    }
+    const address = resolveAddressFromGeocode(hit?.label, latitude, longitude);
     return {
       ok: true,
       location: {
-        address: hit.label,
-        latitude: hit.lat,
-        longitude: hit.lng,
+        address,
+        latitude: hit?.lat ?? latitude,
+        longitude: hit?.lng ?? longitude,
       },
     };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Gagal memuat alamat";
-    return { ok: false, error: msg };
+    console.warn("[geocode] reverse fallback:", e);
+    return {
+      ok: true,
+      location: geoLocationFromCoords(latitude, longitude),
+    };
   }
 }
 

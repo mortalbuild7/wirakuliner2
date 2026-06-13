@@ -71,8 +71,8 @@ export function DriverHeaderControls() {
         className={cn(
           "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition",
           isOnline
-            ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-200"
-            : "border-slate-500/50 bg-slate-700/40 text-slate-300",
+            ? "border-emerald-500/50 bg-emerald-50 text-emerald-800"
+            : "border-slate-300 bg-slate-100 text-slate-700",
           (loading || (isDelivering && isOnline)) && "opacity-60"
         )}
         aria-pressed={isOnline}
@@ -84,7 +84,7 @@ export function DriverHeaderControls() {
         type="button"
         variant="ghost"
         size="sm"
-        className="h-8 px-2 text-xs text-muted-foreground hover:text-red-300"
+        className="h-8 px-2 text-xs text-slate-600 hover:text-red-600"
         onClick={() => logout()}
         disabled={loading}
       >
