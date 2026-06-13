@@ -87,13 +87,6 @@ function collectSubmitBlockers(
   if (ride.placing) blockers.push("pesanan sedang diproses");
   if (uiState === "checking") blockers.push("sedang memeriksa driver");
   if (!ride.destAddress.trim()) blockers.push("alamat tujuan");
-  if (!ride.areaAvailable) {
-    blockers.push(
-      ride.areaMessage
-        ? `wilayah layanan (${ride.areaMessage})`
-        : "wilayah layanan belum siap"
-    );
-  }
   if (ride.rideFee <= 0) blockers.push("tarif ride (belum dihitung)");
   if (ride.distanceKm < NGOJEK_MIN_DISTANCE_KM) {
     blockers.push(
@@ -195,6 +188,7 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
               );
               return;
             }
+            toast.warning(EMPTY_DRIVER_ZONE_MESSAGE);
             setUiState("EMPTY_STATE");
             return;
           }

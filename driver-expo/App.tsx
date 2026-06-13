@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import * as NavigationBar from "expo-navigation-bar";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import type { WebViewMessageEvent, WebViewNavigation } from "react-native-webview";
@@ -63,6 +64,12 @@ function injectSession(webRef: React.RefObject<WebView | null>, session: Session
 function webErrorGuardScript() {
   return `
     (function() {
+      window.__WIRA_APK_WEBVIEW__ = true;
+      try {
+        document.documentElement.classList.add('wira-apk-webview');
+        document.documentElement.style.backgroundColor = '#ffffff';
+        if (document.body) document.body.style.backgroundColor = '#ffffff';
+      } catch (e) {}
       if (window.__WIRA_ERROR_GUARD__) return;
       window.__WIRA_ERROR_GUARD__ = true;
       function notifyChunk(msg) {
@@ -170,10 +177,18 @@ function DriverWebShell({
 }) {
   const insets = useSafeAreaInsets();
 
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    void NavigationBar.setBackgroundColorAsync("#ffffff");
+    void NavigationBar.setButtonStyleAsync("dark");
+    void NavigationBar.setVisibilityAsync("visible");
+  }, []);
+
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <StatusBar style="dark" backgroundColor="#ffffff" />
-      <View style={[styles.webWrap, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      <View style={styles.webColumn}>
+        <View style={styles.webWrap}>
         <WebView
           key={`${sessionKey}-${webUrlIndex}`}
           ref={webRef}
@@ -242,6 +257,13 @@ function DriverWebShell({
             )}
           </View>
         )}
+        </View>
+        <View
+          style={[
+            styles.bottomSafeFill,
+            { minHeight: Math.max(insets.bottom, Platform.OS === "android" ? 12 : 0) },
+          ]}
+        />
       </View>
     </SafeAreaView>
   );
@@ -360,6 +382,12 @@ export default function App() {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    void NavigationBar.setBackgroundColorAsync("#ffffff");
+    void NavigationBar.setButtonStyleAsync("dark");
+  }, []);
 
   useEffect(() => {
     sessionInjectedRef.current = sessionInjected;
@@ -684,8 +712,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#ffffff",
   },
+  webColumn: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+  },
   webWrap: {
     flex: 1,
+    backgroundColor: "#ffffff",
+  },
+  bottomSafeFill: {
+    width: "100%",
     backgroundColor: "#ffffff",
   },
   web: {

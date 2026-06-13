@@ -2,6 +2,20 @@
 export const CUSTOMER_GPS_REQUIRED_MSG =
   "Gagal mendapatkan lokasi GPS Anda. Mohon aktifkan izin lokasi HP Anda.";
 
+/** Hint ringan saat GPS belum mengunci koordinat asli (bukan blokir layanan). */
+export const CUSTOMER_GPS_INITIALIZING_MSG =
+  "Sedang mengunci GPS HP Anda...";
+
+export type CustomerGpsInitStatus = "INITIALIZING_GPS" | "READY";
+
+/** Status GPS customer — hanya berdasarkan koordinat valid, tanpa cek wilayah teks. */
+export function resolveCustomerGpsInitStatus(
+  lat: unknown,
+  lng: unknown
+): CustomerGpsInitStatus {
+  return isValidPickupCoordinates(lat, lng) ? "READY" : "INITIALIZING_GPS";
+}
+
 /** Pesan server saat parsing koordinat gagal (NaN / kosong). */
 export const INVALID_CUSTOMER_GPS_COORDS_MSG =
   "Koordinat GPS HP Customer tidak valid";

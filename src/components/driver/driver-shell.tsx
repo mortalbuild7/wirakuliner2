@@ -26,7 +26,7 @@ export function DriverShell({ children }: { children: React.ReactNode }) {
         <div
           className={cn(
             "mx-auto flex w-full max-w-mobile min-h-0 flex-1 flex-col",
-            isApk && "pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))]"
+            isApk && "pb-[calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px))]"
           )}
         >
           {children}
@@ -53,7 +53,7 @@ export function DriverShell({ children }: { children: React.ReactNode }) {
           {!isApk && <DriverHeaderControls />}
         </div>
       </header>
-      <div className={cn("safe-pb-nav mx-auto max-w-mobile", isApk && "pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))]")}>
+      <div className={cn("safe-pb-nav mx-auto max-w-mobile", isApk && "pb-[calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px))]")}>
         {children}
       </div>
       <DriverApkBottomBar />

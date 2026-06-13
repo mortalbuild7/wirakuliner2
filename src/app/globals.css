@@ -144,6 +144,16 @@
     padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
   }
 
+  /* WebView APK driver — latar putih penuh agar area bawah tidak tampak gelap */
+  html.wira-apk-webview,
+  html.wira-apk-webview body {
+    background-color: #ffffff !important;
+  }
+
+  html.wira-apk-webview .driver-panel {
+    background-color: #ffffff;
+  }
+
   .safe-pb-merchant {
     padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
   }

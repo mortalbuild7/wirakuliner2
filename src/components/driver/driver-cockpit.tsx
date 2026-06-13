@@ -625,7 +625,7 @@ export function DriverCockpit() {
     Number(o.total_product_amount) + Number(o.delivery_fee);
 
   const orderCardBottom = isApk
-    ? "bottom-[max(8.5rem,calc(5.5rem+env(safe-area-inset-bottom)))]"
+    ? "bottom-[max(9rem,calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px)))]"
     : "bottom-[max(7rem,calc(0.75rem+env(safe-area-inset-bottom)))]";
   const orderItems = activeOrder?.order_items ?? [];
 

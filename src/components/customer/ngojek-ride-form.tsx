@@ -14,6 +14,7 @@ import { PaymentMethodPicker } from "@/components/wallet/payment-method-picker";
 import { OrderConfirmation } from "@/components/customer/OrderConfirmation";
 import { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import { cn } from "@/lib/utils";
+import { CUSTOMER_GPS_INITIALIZING_MSG } from "@/lib/pickup-coords";
 import { LocationSearchBar } from "@/components/maps/LocationSearchBar";
 import { PickupMapContainer } from "@/components/maps/PickupMapContainer";
 import {
@@ -444,6 +445,16 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
               Refresh GPS
             </Button>
           </div>
+          {ride.gpsInitStatus === "INITIALIZING_GPS" && (
+            <p className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
+              {ride.gpsLoading ? (
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+              ) : (
+                <Navigation className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              )}
+              {CUSTOMER_GPS_INITIALIZING_MSG}
+            </p>
+          )}
           {ride.currentDeviceLocation && ride.pickupAccuracyM != null && (
             <p className="text-[10px] font-medium text-slate-600">
               GPS perangkat: {ride.currentDeviceLocation.address} (±
@@ -565,12 +576,6 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
           </div>
         </div>
       </section>
-
-      {!ride.areaAvailable && ride.areaMessage && (
-        <Alert variant="warning" className="border-amber-500/30 bg-amber-500/10">
-          {ride.areaMessage}
-        </Alert>
-      )}
 
       {ride.userId && (
         <PaymentMethodPicker

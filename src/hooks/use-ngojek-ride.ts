@@ -37,8 +37,8 @@ import {
   notifyCustomerOrderError,
 } from "@/lib/customer-order-feedback";
 import {
-  CUSTOMER_GPS_REQUIRED_MSG,
-  validatePickupCoordinates,
+  resolveCustomerGpsInitStatus,
+  type CustomerGpsInitStatus,
 } from "@/lib/pickup-coords";
 
 const REVERSE_MIN_KM = 0.025;
@@ -106,28 +106,6 @@ const EMPTY_PACKAGE: PackageDetailsInput = {
   widthCm: 20,
   heightCm: 10,
 };
-
-async function fetchServiceArea(
-  lat: number,
-  lng: number,
-  serviceType?: ServiceType
-) {
-  const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
-  if (serviceType) params.set("serviceType", serviceType);
-  const res = await fetch(`/api/service-area/check?${params}`);
-  if (!res.ok) return null;
-  return (await res.json()) as {
-    available?: boolean;
-    message?: string | null;
-    cityId?: string | null;
-    error_code?: string;
-    debug_info?: {
-      customer_coords: [number, number];
-      effective_coords: [number, number];
-      checked_drivers_count: number;
-    };
-  };
-}
 
 async function safeGetAddressFromCoordinates(
   lat: number,
@@ -225,11 +203,6 @@ export function useNgojekRide() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [qrisPayment, setQrisPayment] = useState<QrisPaymentData | null>(null);
 
-  const [pickupAreaOk, setPickupAreaOk] = useState(true);
-  const [destAreaOk, setDestAreaOk] = useState(true);
-  const [sameCityOk, setSameCityOk] = useState(true);
-  const [areaMessage, setAreaMessage] = useState<string | null>(null);
-
   const [destSuggestions, setDestSuggestions] = useState<GeocodeHit[]>([]);
   const [geocodingDest, setGeocodingDest] = useState(false);
 
@@ -254,13 +227,27 @@ export function useNgojekRide() {
   const quoteAbortRef = useRef<AbortController | null>(null);
   const lastServerQuoteKeyRef = useRef("");
   const [gpsLoading, setGpsLoading] = useState(false);
+  const hasAppliedInitialGpsRef = useRef(false);
+
+  const showFlexiblePickup =
+    serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
+
+  const gpsInitStatus: CustomerGpsInitStatus = useMemo(() => {
+    if (!showFlexiblePickup) return "READY";
+    if (gpsLoading || !currentDeviceLocation) return "INITIALIZING_GPS";
+    return resolveCustomerGpsInitStatus(pickupLat, pickupLng);
+  }, [
+    showFlexiblePickup,
+    gpsLoading,
+    currentDeviceLocation,
+    pickupLat,
+    pickupLng,
+  ]);
 
   const quoteKey = useMemo(
     () => buildQuoteKey(pickupLat, pickupLng, destLat, destLng, serviceType),
     [pickupLat, pickupLng, destLat, destLng, serviceType]
   );
-
-  const areaAvailable = pickupAreaOk && destAreaOk && sameCityOk;
 
   const packageVolume = useMemo(() => {
     if (serviceType !== "PAKET") return 0;
@@ -370,17 +357,6 @@ export function useNgojekRide() {
             setRideFee(Number(json.rideFee ?? local.rideFee));
           }
           setFeeDescription(json.feeDescription ?? local.feeDescription);
-          if (json.areaAvailable === false && json.areaMessage) {
-            setAreaMessage(json.areaMessage);
-            setPickupAreaOk(false);
-            setDestAreaOk(true);
-            setSameCityOk(true);
-          } else if (json.areaAvailable === true) {
-            setPickupAreaOk(true);
-            setDestAreaOk(true);
-            setSameCityOk(true);
-            setAreaMessage(null);
-          }
         } catch {
           if (gen !== quoteGenRef.current || controller.signal.aborted) return;
           setFeeDescription(`${local.feeDescription} (estimasi lokal)`);
@@ -399,103 +375,10 @@ export function useNgojekRide() {
     };
   }, [quoteKey]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const isTransit = serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
-
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-        if (isTransit) {
-          const pickupCoords = validatePickupCoordinates(pickupLat, pickupLng);
-          if (!pickupCoords.ok) {
-            setPickupAreaOk(false);
-            setDestAreaOk(true);
-            setSameCityOk(true);
-            setAreaMessage(CUSTOMER_GPS_REQUIRED_MSG);
-            notifyCustomerOrderError(CUSTOMER_GPS_REQUIRED_MSG);
-            return;
-          }
-
-          const pickup = await fetchServiceArea(
-            pickupCoords.lat,
-            pickupCoords.lng,
-            serviceType
-          );
-          if (cancelled) return;
-
-          if (pickup?.error_code === "INVALID_COORDINATES") {
-            setPickupAreaOk(false);
-            setDestAreaOk(true);
-            setSameCityOk(true);
-            setAreaMessage(pickup.message ?? CUSTOMER_GPS_REQUIRED_MSG);
-            notifyCustomerOrderError(pickup.message ?? CUSTOMER_GPS_REQUIRED_MSG);
-            return;
-          }
-
-          const pickupOk = pickup?.available !== false;
-          setPickupAreaOk(pickupOk);
-          setDestAreaOk(true);
-          setSameCityOk(true);
-
-        if (!pickupOk) {
-          setAreaMessage(
-            pickup?.message ??
-              "Maaf, layanan Wira Kuliner belum tersedia atau driver belum siap di wilayah ini. Kami akan segera hadir!"
-          );
-          if (process.env.NODE_ENV === "development" && pickup?.debug_info) {
-            console.info("[service-area/pickup]", pickup.debug_info);
-          }
-        } else {
-            setAreaMessage(null);
-          }
-          return;
-        }
-
-        const [pickup, dest] = await Promise.all([
-          fetchServiceArea(pickupLat, pickupLng),
-          fetchServiceArea(destLat, destLng),
-        ]);
-        if (cancelled) return;
-
-        const pickupOk = pickup?.available !== false;
-        const destOk = dest?.available !== false;
-        const sameCity =
-          !pickup?.cityId || !dest?.cityId || pickup.cityId === dest.cityId;
-
-        setPickupAreaOk(pickupOk);
-        setDestAreaOk(destOk);
-        setSameCityOk(sameCity);
-
-        if (!pickupOk) {
-          setAreaMessage(pickup?.message ?? "Jemput di luar wilayah layanan");
-        } else if (!destOk) {
-          setAreaMessage("Tujuan di luar wilayah layanan");
-        } else if (!sameCity) {
-          setAreaMessage("Jemput dan tujuan harus dalam kota layanan yang sama");
-        } else {
-          setAreaMessage(null);
-        }
-        } catch (error) {
-          if (cancelled) return;
-          notifyCustomerOrderError("Crash Frontend: gagal cek wilayah layanan.", error);
-        }
-      })();
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [pickupLat, pickupLng, destLat, destLng, serviceType]);
-
   /** GPS sekali — hanya mengisi currentDeviceLocation, tidak mengunci pickup. */
   useEffect(() => {
     const geo = assertCustomerGeolocationReady();
-    if (!geo.ok) {
-      notifyCustomerOrderError(geo.message);
-      return;
-    }
+    if (!geo.ok) return;
 
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
@@ -512,13 +395,20 @@ export function useNgojekRide() {
           setDeviceLocation(location, pos.coords.accuracy);
         })();
       },
-      (error) => {
+      () => {
         setGpsLoading(false);
-        notifyCustomerOrderError("Gagal mendapatkan lokasi GPS HP Anda.", error);
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 }
     );
   }, [setDeviceLocation]);
+
+  /** NGOJEK/NGOMOBIL: salin GPS perangkat ke titik jemput setelah lock pertama. */
+  useEffect(() => {
+    if (!showFlexiblePickup || !currentDeviceLocation) return;
+    if (hasAppliedInitialGpsRef.current) return;
+    hasAppliedInitialGpsRef.current = true;
+    applyDeviceLocationToPickup();
+  }, [showFlexiblePickup, currentDeviceLocation, applyDeviceLocationToPickup]);
 
   const applyDestinationCoords = useCallback((lat: number, lng: number, fly = true) => {
     const roundedLat = roundCoordForQuote(lat);
@@ -780,9 +670,9 @@ export function useNgojekRide() {
       serviceType,
       destinationAddress: destAddress,
       distanceKm,
-      pickupInServiceArea: pickupAreaOk,
-      destinationInServiceArea: destAreaOk,
-      sameServiceCity: sameCityOk,
+      pickupInServiceArea: true,
+      destinationInServiceArea: true,
+      sameServiceCity: true,
       paymentMethod,
       walletBalance,
       rideFee,
@@ -896,9 +786,6 @@ export function useNgojekRide() {
     serviceLabel,
     destAddress,
     distanceKm,
-    pickupAreaOk,
-    destAreaOk,
-    sameCityOk,
     paymentMethod,
     walletBalance,
     rideFee,
@@ -928,9 +815,6 @@ export function useNgojekRide() {
     },
     [setDestinationLocation, bumpDestinationMapFly]
   );
-
-  const showFlexiblePickup =
-    serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
 
   return {
     authReady,
@@ -965,8 +849,7 @@ export function useNgojekRide() {
     walletBalance,
     qrisPayment,
     setQrisPayment,
-    areaAvailable,
-    areaMessage,
+    gpsInitStatus,
     destSuggestions,
     geocodingDest,
     mapFlyTrigger,

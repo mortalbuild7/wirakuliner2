@@ -48,7 +48,8 @@
         }
       ],
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      "expo-navigation-bar"
     ],
     "runtimeVersion": {
       "policy": "appVersion"
