@@ -19,7 +19,7 @@ import type { AdminTier } from "@/app/utils/adminAuth";
 import { Loader2, Mail, UserPlus } from "lucide-react";
 
 const SELECT_CLASS =
-  "mt-1 flex h-11 w-full rounded-2xl border border-slate-200/60 bg-slate-50 px-4 text-sm text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60";
+  "mt-1 flex h-11 w-full rounded-2xl border border-slate-200/60 bg-slate-50 px-4 text-sm text-slate-900 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60";
 
 export function AdminRecruitForm({
   recruiterTier,
@@ -49,26 +49,33 @@ export function AdminRecruitForm({
   const [citiesError, setCitiesError] = useState<string | null>(null);
 
   const fetchGenRef = useRef(0);
+  const activeProvinceId = form.provinceId;
 
   const showCityField = useMemo(
     () => form.adminRole === "CITY_ADMIN",
     [form.adminRole]
   );
 
-  const selectedCityMeta = useMemo(
-    () => cities.find((c) => String(c.cityId) === selectedCity) ?? null,
-    [cities, selectedCity]
-  );
+  const selectedCityMeta = useMemo(() => {
+    const pid = Number(activeProvinceId);
+    return (
+      cities.find(
+        (c) => String(c.cityId) === selectedCity && c.provinceId === pid
+      ) ?? null
+    );
+  }, [cities, selectedCity, activeProvinceId]);
 
   const loadCitiesForProvince = useCallback(async (provinceId: string) => {
     const pid = Number(provinceId);
     if (!Number.isInteger(pid) || pid <= 0) {
       setCities([]);
       setCitiesError(null);
+      setCitiesLoading(false);
       return;
     }
 
     const gen = ++fetchGenRef.current;
+    setCities([]);
     setCitiesLoading(true);
     setCitiesError(null);
 
@@ -100,22 +107,27 @@ export function AdminRecruitForm({
     }
 
     setSelectedCity("");
-    void loadCitiesForProvince(form.provinceId);
-  }, [form.provinceId, showCityField, loadCitiesForProvince]);
+    void loadCitiesForProvince(activeProvinceId);
+  }, [activeProvinceId, showCityField, loadCitiesForProvince]);
 
-  const handleProvinceChange = useCallback(
-    (provinceId: string) => {
-      setForm((f) => ({ ...f, provinceId }));
-      setSelectedCity("");
-      setCitiesError(null);
-    },
-    []
-  );
+  const handleProvinceChange = useCallback((provinceId: string) => {
+    fetchGenRef.current += 1;
+    setForm((f) => ({ ...f, provinceId }));
+    setSelectedCity("");
+    setCities([]);
+    setCitiesError(null);
+    setCitiesLoading(true);
+    setError(null);
+  }, []);
 
   const handleAdminRoleChange = useCallback((adminRole: string) => {
+    fetchGenRef.current += 1;
     setForm((f) => ({ ...f, adminRole }));
     setSelectedCity("");
+    setCities([]);
     setCitiesError(null);
+    setCitiesLoading(adminRole === "CITY_ADMIN");
+    setError(null);
   }, []);
 
   function submit(e: React.FormEvent) {
@@ -123,11 +135,25 @@ export function AdminRecruitForm({
     setError(null);
     setSuccess(null);
 
+    const provinceId = Number(form.provinceId);
+
+    if (showCityField) {
+      if (!selectedCity || citiesLoading) {
+        setError("Tunggu hingga daftar kota selesai dimuat.");
+        return;
+      }
+
+      if (!selectedCityMeta) {
+        setError("Kota yang dipilih tidak sesuai dengan provinsi induk.");
+        return;
+      }
+    }
+
     const payload: RecruitAdminInput = {
       name: form.name.trim(),
       email: form.email.trim(),
       adminRole: form.adminRole as "PROVINCE_ADMIN" | "CITY_ADMIN",
-      provinceId: Number(form.provinceId),
+      provinceId,
       cityId: showCityField ? Number(selectedCity) : undefined,
       cityName: showCityField ? selectedCityMeta?.name : undefined,
     };
@@ -149,37 +175,41 @@ export function AdminRecruitForm({
   }
 
   const cityPlaceholder = citiesLoading
-    ? "Memuat kota... (Loading)"
+    ? "Memuat kota..."
     : citiesError
       ? "Gagal memuat kota"
       : cities.length === 0
         ? "Tidak ada kota tersedia"
         : "— Pilih kota —";
 
+  const canSubmitCity =
+    !showCityField ||
+    (selectedCityMeta != null && !citiesLoading && cities.length > 0);
+
   return (
-    <Card className="mt-6 max-w-2xl border-emerald-500/30">
+    <Card className="mt-6 max-w-2xl rounded-2xl border-emerald-500/30">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg text-slate-800">
-          <UserPlus className="h-5 w-5 text-emerald-600" />
+        <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
+          <UserPlus className="h-5 w-5 text-emerald-600" aria-hidden />
           Form Rekrutmen Admin
         </CardTitle>
       </CardHeader>
       <CardContent>
         {error && (
-          <Alert variant="destructive" className="mb-4">
+          <Alert variant="destructive" className="mb-4 text-slate-900">
             {error}
           </Alert>
         )}
         {success && (
           <Alert className="mb-4 border-emerald-500/40 bg-emerald-50 text-emerald-900">
-            <Mail className="h-4 w-4 shrink-0" />
+            <Mail className="h-4 w-4 shrink-0" aria-hidden />
             {success}
           </Alert>
         )}
 
         <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Label>Nama lengkap</Label>
+            <Label className="text-slate-900">Nama lengkap</Label>
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -189,7 +219,7 @@ export function AdminRecruitForm({
             />
           </div>
           <div className="sm:col-span-2">
-            <Label>Email korporat</Label>
+            <Label className="text-slate-900">Email korporat</Label>
             <Input
               type="email"
               value={form.email}
@@ -198,7 +228,7 @@ export function AdminRecruitForm({
               required
               disabled={pending}
             />
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-slate-600">
               Email aktivasi & instruksi MFA dikirim otomatis dari{" "}
               <strong>admin@wirakuliner.web.id</strong>.
             </p>
@@ -206,12 +236,13 @@ export function AdminRecruitForm({
 
           {recruiterTier === "SUPER_ADMIN" && (
             <div className="sm:col-span-2">
-              <Label>Tier admin</Label>
+              <Label className="text-slate-900">Tier admin</Label>
               <select
                 className={SELECT_CLASS}
                 value={form.adminRole}
                 onChange={(e) => handleAdminRoleChange(e.target.value)}
                 disabled={pending}
+                required
               >
                 <option value="PROVINCE_ADMIN">Province Admin</option>
                 <option value="CITY_ADMIN">City Admin</option>
@@ -220,7 +251,7 @@ export function AdminRecruitForm({
           )}
 
           <div>
-            <Label>Provinsi</Label>
+            <Label className="text-slate-900">Provinsi</Label>
             <select
               className={SELECT_CLASS}
               value={form.provinceId}
@@ -238,8 +269,9 @@ export function AdminRecruitForm({
 
           {showCityField && (
             <div>
-              <Label>Kota cabang</Label>
+              <Label className="text-slate-900">Kota cabang</Label>
               <select
+                key={`city-select-${activeProvinceId}`}
                 className={SELECT_CLASS}
                 value={selectedCity}
                 onChange={(e) => setSelectedCity(e.target.value)}
@@ -247,20 +279,21 @@ export function AdminRecruitForm({
                 required
               >
                 <option value="">{cityPlaceholder}</option>
-                {cities.map((c) => (
-                  <option key={c.cityId} value={c.cityId}>
-                    {c.name}
-                  </option>
-                ))}
+                {!citiesLoading &&
+                  cities.map((c) => (
+                    <option key={`${activeProvinceId}-${c.cityId}`} value={c.cityId}>
+                      {c.name}
+                    </option>
+                  ))}
               </select>
               {citiesLoading && (
-                <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Memuat daftar kota/kabupaten…
+                <p className="mt-1 flex items-center gap-1 text-xs text-slate-600">
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  Memuat kota...
                 </p>
               )}
               {citiesError && !citiesLoading && (
-                <p className="mt-1 text-xs text-amber-700">{citiesError}</p>
+                <p className="mt-1 text-xs text-amber-800">{citiesError}</p>
               )}
             </div>
           )}
@@ -268,17 +301,13 @@ export function AdminRecruitForm({
           <div className="sm:col-span-2">
             <Button
               type="submit"
-              disabled={
-                pending ||
-                (showCityField &&
-                  (!selectedCity || citiesLoading || cities.length === 0))
-              }
-              className="gap-2"
+              disabled={pending || !canSubmitCity}
+              className="gap-2 rounded-2xl"
             >
               {pending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (
-                <Mail className="h-4 w-4" />
+                <Mail className="h-4 w-4" aria-hidden />
               )}
               Daftarkan & Kirim Email Aktivasi
             </Button>

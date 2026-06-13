@@ -11,7 +11,7 @@ import {
 } from "@/app/utils/indonesiaProvinces";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncAdminJwtMetadata } from "@/lib/sync-admin-jwt-metadata";
-import { resolveKemendagriProvinceId } from "@/lib/indonesia-wilayah-api";
+import { isRecruitCityInProvince } from "@/app/actions/locationActions";
 
 const TIER_LABEL: Record<AdminTier, string> = {
   SUPER_ADMIN: "Super Admin",
@@ -79,6 +79,18 @@ export async function recruitNewAdmin(
     if (!provinceId || !cityId) {
       return { ok: false, error: "Provinsi dan kota wajib dipilih untuk City Admin" };
     }
+
+    const cityMatchesProvince = await isRecruitCityInProvince(
+      provinceId,
+      cityId,
+      data.cityName
+    );
+    if (!cityMatchesProvince) {
+      return {
+        ok: false,
+        error: "Kota yang dipilih tidak sesuai dengan provinsi induk",
+      };
+    }
   }
 
   if (session.adminRole === "PROVINCE_ADMIN") {
@@ -112,21 +124,9 @@ export async function recruitNewAdmin(
     if (provErr) {
       return { ok: false, error: provErr.message };
     }
-
-    const kemProvId = await resolveKemendagriProvinceId(provinceMeta.name);
-    if (kemProvId && Number(kemProvId) !== provinceMeta.id) {
-      await admin.from("provinces").upsert(
-        { id: Number(kemProvId), name: provinceMeta.name },
-        { onConflict: "id" }
-      );
-    }
   }
 
   if (data.adminRole === "CITY_ADMIN" && cityId) {
-    const kemProvId = provinceMeta
-      ? await resolveKemendagriProvinceId(provinceMeta.name)
-      : null;
-    const cityProvinceId = kemProvId ? Number(kemProvId) : provinceId;
     const cityLabel =
       data.cityName?.trim() ||
       (await admin
@@ -137,11 +137,11 @@ export async function recruitNewAdmin(
         .then((r) => r.data?.name)) ||
       `Kota ${cityId}`;
 
-    if (cityProvinceId) {
+    if (provinceId) {
       const { error: cityErr } = await admin.from("cities").upsert(
         {
           id: cityId,
-          province_id: cityProvinceId,
+          province_id: provinceId,
           name: cityLabel,
           is_active: true,
         },

@@ -9,6 +9,13 @@ import {
 } from "@/app/utils/indonesiaProvinces";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { JALAN_WIRA } from "@/lib/geo-config";
+import { fetchRegenciesByProvinceName } from "@/lib/indonesia-wilayah-api";
+import { formatWilayahCityName } from "@/lib/wilayah-city-format";
+
+export type WilayahRegencyOption = {
+  kemendagriId: string;
+  name: string;
+};
 
 /**
  * Server Action — Manajemen Kota Layanan (SUPER_ADMIN only).
@@ -56,6 +63,50 @@ function slugifyCity(name: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+/** Dropdown dinamis — kabupaten/kota per provinsi via API EMSIFA (Super Admin). */
+export async function getRegenciesForServiceCityForm(
+  provinceId: number
+): Promise<
+  | { ok: true; regencies: WilayahRegencyOption[] }
+  | { ok: false; error: string }
+> {
+  await verifyAdminSession({ requireSuperAdmin: true });
+
+  const pid = Number(provinceId);
+  if (!Number.isInteger(pid) || pid <= 0 || !INDONESIA_PROVINCE_IDS.has(pid)) {
+    return { ok: false, error: "Provinsi tidak valid" };
+  }
+
+  const provinceMeta = getIndonesiaProvinceById(pid);
+  if (!provinceMeta) {
+    return { ok: false, error: "Provinsi tidak ditemukan" };
+  }
+
+  try {
+    const rows = await fetchRegenciesByProvinceName(provinceMeta.name);
+    if (!rows.length) {
+      return {
+        ok: false,
+        error: `Tidak ada kota/kabupaten untuk ${provinceMeta.name}`,
+      };
+    }
+
+    const regencies = rows
+      .map((r) => ({
+        kemendagriId: r.id,
+        name: formatWilayahCityName(r.name),
+      }))
+      .filter((r) => r.name.length >= 2)
+      .sort((a, b) => a.name.localeCompare(b.name, "id"));
+
+    return { ok: true, regencies };
+  } catch (e) {
+    const msg =
+      e instanceof Error ? e.message : "Gagal memuat data wilayah dari API";
+    return { ok: false, error: msg };
+  }
 }
 
 export async function createServiceCity(
@@ -195,3 +246,6 @@ export async function createServiceCity(
     message: `Kota layanan "${displayName}" berhasil ditambahkan.`,
   };
 }
+
+/** Alias dokumentasi — payload: provinsi (ID) + nama kota. */
+export const addServiceCity = createServiceCity;
