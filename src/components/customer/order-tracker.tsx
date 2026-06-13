@@ -372,7 +372,7 @@ export function OrderTracker({ orderId }: { orderId: string }) {
       </div>
 
       {showTrackingMap && (
-        <div className="relative overflow-hidden rounded-lg border border-slate-200">
+        <div className="customer-map-wrap relative z-10 isolate overflow-hidden rounded-lg border border-slate-200">
           <p className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900">
             {hasDriverOnMap
               ? isPaket && order.order_status === "ready_for_pickup"

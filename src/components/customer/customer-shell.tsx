@@ -56,7 +56,10 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="wira-mesh min-h-[100dvh] text-slate-900">
       <HelloWelcome />
-      <header className="sticky top-0 z-50 glass-panel">
+      <header
+        className="customer-app-header sticky top-0 z-[9999] border-b border-slate-200 bg-white shadow-sm"
+        style={{ zIndex: 9999 }}
+      >
         <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <Link href="/customer" className="flex items-center gap-2.5">
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/25">

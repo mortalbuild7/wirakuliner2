@@ -111,7 +111,7 @@ export function PickupMapInner({
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl ring-1 ring-emerald-500/30"
+      className="customer-map-wrap relative z-10 isolate overflow-hidden rounded-2xl ring-1 ring-emerald-500/30"
       style={{ height }}
     >
       <MapContainer
@@ -149,7 +149,7 @@ export function PickupMapInner({
 
       {/* Center-pinned marker — peta bergerak, pin tetap di tengah layar */}
       <div
-        className="pointer-events-none absolute inset-0 z-[500] flex items-center justify-center"
+        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
         aria-hidden
       >
         <div className="-mt-8 flex flex-col items-center">

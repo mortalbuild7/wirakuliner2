@@ -233,6 +233,36 @@
     z-index: 0;
   }
 
+  /* Customer: peta Leaflet selalu di bawah header sticky */
+  .customer-app-header {
+    position: sticky;
+    top: 0;
+    z-index: 9999 !important;
+    background-color: #ffffff !important;
+    isolation: isolate;
+  }
+
+  .customer-map-wrap {
+    position: relative;
+    z-index: 10;
+    isolation: isolate;
+  }
+
+  .customer-map-wrap .leaflet-container {
+    z-index: 0 !important;
+  }
+
+  .customer-map-wrap .leaflet-pane,
+  .customer-map-wrap .leaflet-top,
+  .customer-map-wrap .leaflet-bottom,
+  .customer-map-wrap .leaflet-control {
+    z-index: 1 !important;
+  }
+
+  .customer-map-wrap .leaflet-control-attribution {
+    z-index: 2 !important;
+  }
+
   .leaflet-control-zoom a {
     @apply !rounded-2xl !border-slate-200/80 !bg-white/95 !text-emerald-600 !shadow-md;
   }

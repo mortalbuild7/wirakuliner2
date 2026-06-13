@@ -140,15 +140,16 @@ export function CustomerOrderTrackMapInner({
   const navActive = Boolean(navRouteLine && hasDriver);
 
   return (
-    <MapContainer
-      center={center}
-      zoom={15}
-      maxZoom={19}
-      scrollWheelZoom
-      touchZoom
-      className={`z-0 rounded-none ${className}`}
-      style={{ minHeight: 300 }}
-    >
+    <div className="customer-map-wrap relative z-10 isolate">
+      <MapContainer
+        center={center}
+        zoom={15}
+        maxZoom={19}
+        scrollWheelZoom
+        touchZoom
+        className={`z-0 rounded-none ${className}`}
+        style={{ minHeight: 300 }}
+      >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -179,5 +180,6 @@ export function CustomerOrderTrackMapInner({
         />
       )}
     </MapContainer>
+    </div>
   );
 }

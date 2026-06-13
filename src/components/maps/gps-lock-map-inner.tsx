@@ -282,7 +282,7 @@ export function GpsLockMapInner({
   return (
     <div
       style={wrapStyle}
-      className={`overflow-hidden ring-1 ring-cyan-500/30 ${height == null ? "h-full min-h-[240px]" : "rounded-2xl"}`}
+      className={`customer-map-wrap relative z-10 isolate overflow-hidden ring-1 ring-cyan-500/30 ${height == null ? "h-full min-h-[240px]" : "rounded-2xl"}`}
     >
       <MapContainer
         center={userPos}
