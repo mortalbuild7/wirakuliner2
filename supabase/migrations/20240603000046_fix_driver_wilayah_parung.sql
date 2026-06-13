@@ -12,17 +12,7 @@ COMMENT ON COLUMN public.drivers.province_name IS
 COMMENT ON COLUMN public.drivers.city_name IS
   'Cache nama kota/kabupaten operasional — disinkronkan dari master wilayah / GPS.';
 
--- Pastikan provinsi Jawa Barat & Kabupaten Bogor ada (toleran ID Kemendagri ganda)
-INSERT INTO public.provinces (id, name)
-VALUES (32, 'Jawa Barat')
-ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
-
-INSERT INTO public.provinces (id, name)
-SELECT 31, 'Jawa Barat'
-WHERE NOT EXISTS (
-  SELECT 1 FROM public.provinces WHERE LOWER(name) = 'jawa barat'
-);
-
+-- Kabupaten Bogor di bawah provinsi Jawa Barat yang sudah ada (hindari duplikat nama provinsi)
 INSERT INTO public.cities (id, province_id, name)
 SELECT
   3201,
@@ -30,6 +20,12 @@ SELECT
   'Kabupaten Bogor'
 FROM public.provinces p
 WHERE LOWER(p.name) = 'jawa barat'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.cities c
+    WHERE c.province_id = p.id
+      AND LOWER(c.name) = 'kabupaten bogor'
+  )
 ON CONFLICT (id) DO UPDATE
   SET name = EXCLUDED.name,
       province_id = EXCLUDED.province_id;

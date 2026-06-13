@@ -40,9 +40,6 @@ export type DriverFilterCityOption = {
   province_id: number;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ScopedDriversQuery = any;
-
 const DRIVER_SELECT = `
   *,
   profiles(email, account_status, phone),
@@ -86,55 +83,61 @@ async function resolveProvinceIdsForSession(
   return resolveProvinceIdsByAppId(session.provinceId);
 }
 
-/**
- * RBAC — CITY_ADMIN selalu terkunci `city_id`; PROVINCE_ADMIN by provinsi;
- * SUPER_ADMIN default tanpa filter wilayah.
- */
-async function applyDriverListRegionalScope(
-  query: ScopedDriversQuery,
+async function resolveRegionalScopeFilters(
   session: RegionalAdminSession,
   filters: AdminDriverListQuery
-): Promise<ScopedDriversQuery> {
+): Promise<{ cityId?: number; provinceIds?: number[] } | null> {
   if (session.adminRole === "CITY_ADMIN" && session.cityId != null) {
-    return query.eq("city_id", session.cityId);
+    return { cityId: session.cityId };
   }
 
   if (session.adminRole === "PROVINCE_ADMIN" && session.provinceId != null) {
     const provinceIds = await resolveProvinceIdsForSession(session);
-    if (provinceIds.length === 1) {
-      return query.eq("province_id", provinceIds[0]);
-    }
-    return query.in("province_id", provinceIds);
+    return provinceIds.length ? { provinceIds } : null;
   }
 
   if (session.adminRole === "SUPER_ADMIN") {
     if (filters.cityId != null && filters.cityId > 0) {
-      return query.eq("city_id", filters.cityId);
+      return { cityId: filters.cityId };
     }
     if (filters.provinceId != null && filters.provinceId > 0) {
       const provinceIds = await resolveProvinceIdsByAppId(filters.provinceId);
-      if (provinceIds.length === 1) {
-        return query.eq("province_id", provinceIds[0]);
-      }
-      return query.in("province_id", provinceIds);
+      return provinceIds.length ? { provinceIds } : null;
     }
-    return query;
   }
 
-  return query;
+  return null;
 }
 
-function applyDriverSearchFilter(
-  query: ScopedDriversQuery,
-  search?: string,
-  phoneOnly = false
-): ScopedDriversQuery {
+function applyRegionalScopeToQuery<
+  T extends {
+    eq: (column: string, value: unknown) => T;
+    in: (column: string, values: readonly unknown[]) => T;
+  }
+>(dbQuery: T, scope: { cityId?: number; provinceIds?: number[] } | null): T {
+  if (!scope) return dbQuery;
+  if (scope.cityId != null) return dbQuery.eq("city_id", scope.cityId);
+  if (scope.provinceIds?.length === 1) {
+    return dbQuery.eq("province_id", scope.provinceIds[0]);
+  }
+  if (scope.provinceIds && scope.provinceIds.length > 1) {
+    return dbQuery.in("province_id", scope.provinceIds);
+  }
+  return dbQuery;
+}
+
+function applySearchToQuery<
+  T extends {
+    or: (filters: string) => T;
+    ilike: (column: string, pattern: string) => T;
+  }
+>(dbQuery: T, search?: string, phoneOnly = false): T {
   const keyword = sanitizeIlikeKeyword(search ?? "");
-  if (!keyword) return query;
+  if (!keyword) return dbQuery;
 
   const pattern = `%${keyword}%`;
-  if (phoneOnly) return query.ilike("phone", pattern);
-  return query.or(`phone.ilike.${pattern},nik.ilike.${pattern}`);
+  if (phoneOnly) return dbQuery.ilike("phone", pattern);
+  return dbQuery.or(`phone.ilike.${pattern},nik.ilike.${pattern}`);
 }
 
 function isMissingNikColumnError(message: string): boolean {
@@ -160,19 +163,21 @@ export async function fetchAdminDriversList(
     (session.adminRole === "SUPER_ADMIN" ? "all" : "scoped");
 
   const admin = createAdminClient();
+  const applyScope =
+    session.adminRole !== "SUPER_ADMIN" || regionFilter !== "all";
+
+  const scopeFilters =
+    applyScope || query.provinceId || query.cityId
+      ? await resolveRegionalScopeFilters(session, query)
+      : null;
+
   let dbQuery = admin
     .from("drivers")
     .select(DRIVER_SELECT)
     .order("created_at", { ascending: false });
 
-  const applyScope =
-    session.adminRole !== "SUPER_ADMIN" || regionFilter !== "all";
-
-  if (applyScope || query.provinceId || query.cityId) {
-    dbQuery = await applyDriverListRegionalScope(dbQuery, session, query);
-  }
-
-  dbQuery = applyDriverSearchFilter(dbQuery, query.search);
+  dbQuery = applyRegionalScopeToQuery(dbQuery, scopeFilters);
+  dbQuery = applySearchToQuery(dbQuery, query.search);
 
   let { data, error } = await dbQuery;
 
@@ -182,10 +187,8 @@ export async function fetchAdminDriversList(
       .select(DRIVER_SELECT)
       .order("created_at", { ascending: false });
 
-    if (applyScope || query.provinceId || query.cityId) {
-      retryQuery = await applyDriverListRegionalScope(retryQuery, session, query);
-    }
-    retryQuery = applyDriverSearchFilter(retryQuery, query.search, true);
+    retryQuery = applyRegionalScopeToQuery(retryQuery, scopeFilters);
+    retryQuery = applySearchToQuery(retryQuery, query.search, true);
     ({ data, error } = await retryQuery);
   }
 
