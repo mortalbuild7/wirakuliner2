@@ -1,13 +1,15 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { parseCustomerCoords } from "@/lib/coord-parse";
+import {
+  INVALID_CUSTOMER_GPS_COORDS_MSG,
+  parseCustomerCoords,
+} from "@/lib/coord-parse";
 import type {
   DriverAvailabilityErrorCode,
   DriverAvailabilityResult,
 } from "@/lib/driver-availability-types";
 import { haversineKm } from "@/lib/geo-config";
-import { CUSTOMER_GPS_REQUIRED_MSG } from "@/lib/pickup-coords";
 import {
   resolveDriverCategoryForService,
   type ServiceType,
@@ -45,10 +47,21 @@ type NearestIdleDriver = {
   distance_km: number;
 };
 
+type CountDriversResult = {
+  count: number;
+  matchEngine: "postgis" | "haversine";
+};
+
 function normalizeTransitService(
   service?: ServiceType | null
 ): "NGOJEK" | "NGOMOBIL" {
   return service === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK";
+}
+
+function parseDriverCoord(value: unknown): number | null {
+  const n = parseFloat(String(value ?? "").trim());
+  if (!Number.isFinite(n) || isNaN(n) || Math.abs(n) < 1e-9) return null;
+  return n;
 }
 
 function buildAvailabilityResult(
@@ -74,10 +87,9 @@ function buildAvailabilityResult(
 }
 
 /**
- * COUNT driver idle (ONLINE) dalam radius — PostGIS ST_DWithin di Supabase.
- * Tanpa filter nama kota/provinsi administratif.
+ * COUNT via PostGIS RPC — dibungkus try/catch terisolasi.
  */
-export async function countNearbyIdleDrivers(
+async function countIdleDriversViaPostgisRpc(
   admin: SupabaseClient,
   lat: number,
   lng: number,
@@ -95,11 +107,84 @@ export async function countNearbyIdleDrivers(
     package_volume_cm3: opts?.packageVolumeCm3 ?? 0,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw error;
   return Number(data ?? 0);
 }
 
-/** Cari driver idle terdekat secara global — hanya untuk debug_info, bukan bypass matching. */
+/**
+ * Fallback Haversine lokal — driver ONLINE (`idle`) dengan koordinat valid saja.
+ * DB kolom: `current_lat` / `current_lng` (bukan latitude/longitude).
+ */
+async function countIdleDriversViaHaversineFallback(
+  admin: SupabaseClient,
+  lat: number,
+  lng: number,
+  opts?: {
+    serviceType?: ServiceType;
+    packageVolumeCm3?: number;
+    radiusKm?: number;
+  }
+): Promise<number> {
+  const radiusKm = opts?.radiusKm ?? CUSTOMER_DRIVER_RADIUS_KM;
+  const category = resolveDriverCategoryForService(
+    opts?.serviceType ?? "NGOJEK",
+    opts?.packageVolumeCm3 ?? 0
+  );
+
+  const { data, error } = await admin
+    .from("drivers")
+    .select("id, current_lat, current_lng, gps_trust")
+    .eq("status", "idle")
+    .eq("service_category", category)
+    .not("current_lat", "is", null)
+    .not("current_lng", "is", null);
+
+  if (error) {
+    console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
+    return 0;
+  }
+
+  let count = 0;
+  for (const row of data ?? []) {
+    const dLat = parseDriverCoord(row.current_lat);
+    const dLng = parseDriverCoord(row.current_lng);
+    if (dLat == null || dLng == null) continue;
+    if (row.gps_trust === "SUSPICIOUS") continue;
+
+    const distKm = haversineKm(lat, lng, dLat, dLng);
+    if (distKm <= radiusKm) count += 1;
+  }
+
+  return count;
+}
+
+/**
+ * COUNT driver idle (ONLINE) dalam radius — PostGIS RPC + fallback Haversine.
+ */
+export async function countNearbyIdleDrivers(
+  admin: SupabaseClient,
+  lat: number,
+  lng: number,
+  opts?: {
+    serviceType?: ServiceType;
+    packageVolumeCm3?: number;
+    radiusKm?: number;
+  }
+): Promise<CountDriversResult> {
+  try {
+    const count = await countIdleDriversViaPostgisRpc(admin, lat, lng, opts);
+    return { count, matchEngine: "postgis" };
+  } catch (rpcError) {
+    console.error("LOG ERROR GEOLOKASI LENGKAP:", rpcError);
+    console.warn(
+      "[driver-match] PostGIS RPC gagal — mengaktifkan fallback Haversine lokal"
+    );
+    const count = await countIdleDriversViaHaversineFallback(admin, lat, lng, opts);
+    return { count, matchEngine: "haversine" };
+  }
+}
+
+/** Cari driver idle terdekat — null-safe, hanya driver dengan GPS valid. */
 export async function findNearestIdleDriverGlobal(
   admin: SupabaseClient,
   anchorLat: number,
@@ -107,37 +192,46 @@ export async function findNearestIdleDriverGlobal(
   serviceType: ServiceType,
   packageVolumeCm3 = 0
 ): Promise<NearestIdleDriver | null> {
-  const category = resolveDriverCategoryForService(serviceType, packageVolumeCm3);
+  try {
+    const category = resolveDriverCategoryForService(serviceType, packageVolumeCm3);
 
-  const { data, error } = await admin
-    .from("drivers")
-    .select("id, current_lat, current_lng, service_category")
-    .eq("status", "idle")
-    .eq("service_category", category)
-    .not("current_lat", "is", null)
-    .not("current_lng", "is", null)
-    .limit(80);
+    const { data, error } = await admin
+      .from("drivers")
+      .select("id, current_lat, current_lng, service_category")
+      .eq("status", "idle")
+      .eq("service_category", category)
+      .not("current_lat", "is", null)
+      .not("current_lng", "is", null)
+      .limit(80);
 
-  if (error || !data?.length) return null;
-
-  let best: NearestIdleDriver | null = null;
-  for (const row of data) {
-    const dLat = Number(row.current_lat);
-    const dLng = Number(row.current_lng);
-    if (!Number.isFinite(dLat) || !Number.isFinite(dLng)) continue;
-
-    const dist = haversineKm(anchorLat, anchorLng, dLat, dLng);
-    if (!best || dist < best.distance_km) {
-      best = {
-        driver_id: row.id as string,
-        lat: dLat,
-        lng: dLng,
-        distance_km: dist,
-      };
+    if (error) {
+      console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
+      return null;
     }
-  }
+    if (!data?.length) return null;
 
-  return best;
+    let best: NearestIdleDriver | null = null;
+    for (const row of data) {
+      const dLat = parseDriverCoord(row.current_lat);
+      const dLng = parseDriverCoord(row.current_lng);
+      if (dLat == null || dLng == null) continue;
+
+      const dist = haversineKm(anchorLat, anchorLng, dLat, dLng);
+      if (!best || dist < best.distance_km) {
+        best = {
+          driver_id: row.id as string,
+          lat: dLat,
+          lng: dLng,
+          distance_km: dist,
+        };
+      }
+    }
+
+    return best;
+  } catch (error) {
+    console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
+    return null;
+  }
 }
 
 export type EvaluateDriverProximityOpts = {
@@ -146,7 +240,7 @@ export type EvaluateDriverProximityOpts = {
 };
 
 /**
- * Ketersediaan driver murni radius GPS PostGIS — tanpa fallback atau dev mock.
+ * Ketersediaan driver radius GPS — tidak pernah throw ke caller.
  */
 export async function evaluateDriverProximityAvailability(
   admin: SupabaseClient,
@@ -156,54 +250,57 @@ export async function evaluateDriverProximityAvailability(
   opts: EvaluateDriverProximityOpts = {}
 ): Promise<DriverAvailabilityResult> {
   const radiusKm = opts.radiusKm ?? CUSTOMER_DRIVER_RADIUS_KM;
-  const parsed = parseCustomerCoords(rawLat, rawLng);
-  const customerCoords: [number, number] = parsed.isValid
-    ? [parsed.lat, parsed.lng]
-    : [parsed.lat, parsed.lng];
-
-  const logCheck = (
-    count: number,
-    coords: [number, number],
-    code: DriverAvailabilityErrorCode
-  ) => {
-    console.log("Koordinat Customer:", coords[0], coords[1]);
-    console.log("Jumlah Driver Terdekat < 3KM yang Online:", count);
-    console.log("Layanan diminta:", serviceType);
-    console.log("Availability:", code);
-  };
-
-  if (!parsed.isValid) {
-    logCheck(0, customerCoords, "INVALID_COORDINATES");
-    return buildAvailabilityResult(
-      {
-        available: false,
-        error_code: "INVALID_COORDINATES",
-        message: CUSTOMER_GPS_REQUIRED_MSG,
-        effective_lat: parsed.lat,
-        effective_lng: parsed.lng,
-        debug_info: {
-          checked_drivers_count: 0,
-          nearest_driver_km: null,
-          nearest_driver_id: null,
-          service_type: serviceType,
-          radius_km: radiusKm,
-        },
-      },
-      customerCoords,
-      customerCoords
-    );
-  }
-
-  let nearestDriver: NearestIdleDriver | null = null;
 
   try {
-    const count = await countNearbyIdleDrivers(admin, parsed.lat, parsed.lng, {
-      serviceType,
-      packageVolumeCm3: opts.packageVolumeCm3,
-      radiusKm,
-    });
+    const parsed = parseCustomerCoords(rawLat, rawLng);
+    const customerCoords: [number, number] = [parsed.lat, parsed.lng];
 
-    nearestDriver = await findNearestIdleDriverGlobal(
+    const logCheck = (
+      count: number,
+      coords: [number, number],
+      code: DriverAvailabilityErrorCode,
+      engine?: "postgis" | "haversine"
+    ) => {
+      console.log("Koordinat Customer:", coords[0], coords[1]);
+      console.log("Jumlah Driver Terdekat < 3KM yang Online:", count);
+      console.log("Layanan diminta:", serviceType);
+      console.log("Availability:", code, engine ? { match_engine: engine } : "");
+    };
+
+    if (!parsed.isValid) {
+      logCheck(0, customerCoords, "INVALID_COORDINATES");
+      return buildAvailabilityResult(
+        {
+          available: false,
+          error_code: "INVALID_COORDINATES",
+          message: INVALID_CUSTOMER_GPS_COORDS_MSG,
+          effective_lat: parsed.lat,
+          effective_lng: parsed.lng,
+          debug_info: {
+            checked_drivers_count: 0,
+            nearest_driver_km: null,
+            nearest_driver_id: null,
+            service_type: serviceType,
+            radius_km: radiusKm,
+          },
+        },
+        customerCoords,
+        customerCoords
+      );
+    }
+
+    const { count, matchEngine } = await countNearbyIdleDrivers(
+      admin,
+      parsed.lat,
+      parsed.lng,
+      {
+        serviceType,
+        packageVolumeCm3: opts.packageVolumeCm3,
+        radiusKm,
+      }
+    );
+
+    const nearestDriver = await findNearestIdleDriverGlobal(
       admin,
       parsed.lat,
       parsed.lng,
@@ -218,10 +315,11 @@ export async function evaluateDriverProximityAvailability(
       nearest_driver_id: nearestDriver?.driver_id ?? null,
       service_type: serviceType,
       radius_km: radiusKm,
+      match_engine: matchEngine,
     };
 
     if (count > 0) {
-      logCheck(count, effectiveCoords, "AVAILABLE");
+      logCheck(count, effectiveCoords, "AVAILABLE", matchEngine);
       return buildAvailabilityResult(
         {
           available: true,
@@ -235,7 +333,7 @@ export async function evaluateDriverProximityAvailability(
       );
     }
 
-    logCheck(count, effectiveCoords, "NO_ONLINE_DRIVER_IN_RADIUS");
+    logCheck(count, effectiveCoords, "NO_ONLINE_DRIVER_IN_RADIUS", matchEngine);
 
     return buildAvailabilityResult(
       {
@@ -249,28 +347,32 @@ export async function evaluateDriverProximityAvailability(
       customerCoords,
       effectiveCoords
     );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "RPC error";
-    const effectiveCoords: [number, number] = [parsed.lat, parsed.lng];
-    console.error("Driver proximity RPC error:", message);
+  } catch (error) {
+    console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
+    const fallbackLat = parseFloat(String(rawLat ?? "").trim());
+    const fallbackLng = parseFloat(String(rawLng ?? "").trim());
+    const coords: [number, number] = [
+      Number.isFinite(fallbackLat) ? fallbackLat : 0,
+      Number.isFinite(fallbackLng) ? fallbackLng : 0,
+    ];
 
     return buildAvailabilityResult(
       {
         available: false,
         error_code: "RPC_ERROR",
-        message,
-        effective_lat: parsed.lat,
-        effective_lng: parsed.lng,
+        message: "Gagal memeriksa ketersediaan driver. Coba lagi.",
+        effective_lat: coords[0],
+        effective_lng: coords[1],
         debug_info: {
           checked_drivers_count: 0,
-          nearest_driver_km: nearestDriver?.distance_km ?? null,
-          nearest_driver_id: nearestDriver?.driver_id ?? null,
+          nearest_driver_km: null,
+          nearest_driver_id: null,
           service_type: serviceType,
           radius_km: radiusKm,
         },
       },
-      customerCoords,
-      effectiveCoords
+      coords,
+      coords
     );
   }
 }
@@ -302,17 +404,22 @@ export async function findCustomerNearbyDrivers(
     offerTimeoutSeconds?: number;
   }
 ): Promise<CustomerDriverMatchRow[]> {
-  const { data, error } = await admin.rpc("find_nearest_priority_drivers_customer", {
-    lat_customer: opts.lat,
-    lng_customer: opts.lng,
-    max_radius_km: opts.radiusKm ?? CUSTOMER_DRIVER_RADIUS_KM,
-    requested_service: normalizeTransitService(opts.requestedService),
-    package_volume_cm3: opts.packageVolumeCm3 ?? 0,
-    p_skip_driver_ids: opts.skipDriverIds ?? [],
-    p_offer_timeout_seconds: opts.offerTimeoutSeconds ?? 15,
-    p_limit: opts.limit ?? 20,
-  });
+  try {
+    const { data, error } = await admin.rpc("find_nearest_priority_drivers_customer", {
+      lat_customer: opts.lat,
+      lng_customer: opts.lng,
+      max_radius_km: opts.radiusKm ?? CUSTOMER_DRIVER_RADIUS_KM,
+      requested_service: normalizeTransitService(opts.requestedService),
+      package_volume_cm3: opts.packageVolumeCm3 ?? 0,
+      p_skip_driver_ids: opts.skipDriverIds ?? [],
+      p_offer_timeout_seconds: opts.offerTimeoutSeconds ?? 15,
+      p_limit: opts.limit ?? 20,
+    });
 
-  if (error) throw new Error(error.message);
-  return (data ?? []) as CustomerDriverMatchRow[];
+    if (error) throw error;
+    return (data ?? []) as CustomerDriverMatchRow[];
+  } catch (error) {
+    console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
+    return [];
+  }
 }

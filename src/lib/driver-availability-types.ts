@@ -16,6 +16,8 @@ export type DriverAvailabilityDebugInfo = {
   nearest_driver_id: string | null;
   service_type: ServiceType;
   radius_km: number;
+  /** `postgis` = RPC Supabase; `haversine` = kalkulator lokal cadangan. */
+  match_engine?: "postgis" | "haversine";
 };
 
 export type DriverAvailabilityResult = {

@@ -142,12 +142,20 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
             setUiState("idle");
             return;
           }
+          if (result.error_code === "RPC_ERROR") {
+            toast.error(
+              result.message ?? "Gagal memeriksa ketersediaan driver. Coba lagi."
+            );
+            setUiState("idle");
+            return;
+          }
           setUiState("EMPTY_STATE");
           return;
         }
-      } catch {
+      } catch (error) {
+        console.error("[driver-availability] unexpected", error);
         setUiState("idle");
-        ride.setPlaceError("Gagal memeriksa ketersediaan driver. Coba lagi.");
+        toast.error("Gagal memeriksa ketersediaan driver. Coba lagi.");
         return;
       }
     }

@@ -2,22 +2,36 @@
 export const CUSTOMER_GPS_REQUIRED_MSG =
   "Gagal mendapatkan lokasi GPS Anda. Mohon aktifkan izin lokasi HP Anda.";
 
+/** Pesan server saat parsing koordinat gagal (NaN / kosong). */
+export const INVALID_CUSTOMER_GPS_COORDS_MSG =
+  "Koordinat GPS HP Customer tidak valid";
+
 function isZeroCoord(n: number): boolean {
   return Math.abs(n) < 1e-9;
 }
 
+/**
+ * Parsing defensif — parseFloat(String(value).trim()) dari HP/form.
+ */
+export function parsePickupFloat(value: unknown): number {
+  if (value == null) return Number.NaN;
+  return parseFloat(String(value).trim());
+}
+
 /** Validasi koordinat jemput — tanpa fallback ke lokasi default. */
 export function isValidPickupCoordinates(lat: unknown, lng: unknown): boolean {
-  const customerLat = Number(lat);
-  const customerLng = Number(lng);
+  const customerLat = parsePickupFloat(lat);
+  const customerLng = parsePickupFloat(lng);
 
   const latOk =
     Number.isFinite(customerLat) &&
+    !isNaN(customerLat) &&
     !isZeroCoord(customerLat) &&
     customerLat >= -90 &&
     customerLat <= 90;
   const lngOk =
     Number.isFinite(customerLng) &&
+    !isNaN(customerLng) &&
     !isZeroCoord(customerLng) &&
     customerLng >= -180 &&
     customerLng <= 180;
@@ -30,5 +44,9 @@ export function validatePickupCoordinates(
   lng: unknown
 ): { ok: true; lat: number; lng: number } | { ok: false } {
   if (!isValidPickupCoordinates(lat, lng)) return { ok: false };
-  return { ok: true, lat: Number(lat), lng: Number(lng) };
+  return {
+    ok: true,
+    lat: parsePickupFloat(lat),
+    lng: parsePickupFloat(lng),
+  };
 }
