@@ -22,7 +22,8 @@ import {
   formatTransitAddressByService,
 } from "@/lib/order-channel";
 import { isStoreOpen } from "@/lib/merchant-open";
-import { NGOJEK_MAX_DISTANCE_KM, NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
+import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
+import { validateTransitRideDistance } from "@/lib/jabodetabek-policy";
 import {
   applyPromoCode,
   computeDeliveryFeeServer,
@@ -233,11 +234,23 @@ export async function createTransitOrder(
   if (distanceKm < NGOJEK_MIN_DISTANCE_KM) {
     return { ok: false, error: "Titik jemput dan tujuan terlalu dekat" };
   }
-  if (distanceKm > NGOJEK_MAX_DISTANCE_KM) {
-    return {
-      ok: false,
-      error: `Jarak maksimal layanan ${NGOJEK_MAX_DISTANCE_KM} km`,
-    };
+
+  const packageVolumeCm3 =
+    input.serviceType === "PAKET" && input.packageDetails
+      ? computePackageVolumeCm3(
+          input.packageDetails.lengthCm,
+          input.packageDetails.widthCm,
+          input.packageDetails.heightCm
+        )
+      : 0;
+
+  const distanceCheck = validateTransitRideDistance(
+    input.serviceType,
+    distanceKm,
+    packageVolumeCm3
+  );
+  if (!distanceCheck.ok) {
+    return { ok: false, error: distanceCheck.error };
   }
 
   const supabase = await createClient();
@@ -249,7 +262,9 @@ export async function createTransitOrder(
   const admin = createAdminClient();
 
   const isTransit =
-    input.serviceType === "NGOJEK" || input.serviceType === "NGOMOBIL";
+    input.serviceType === "NGOJEK" ||
+    input.serviceType === "NGOMOBIL" ||
+    input.serviceType === "PAKET";
 
   const matchingCtx = isTransit
     ? await evaluateRideMatchingContext(
@@ -258,7 +273,8 @@ export async function createTransitOrder(
         input.pickupLng,
         input.destinationLat,
         input.destinationLng,
-        input.serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK"
+        input.serviceType,
+        { packageVolumeCm3 }
       )
     : null;
 

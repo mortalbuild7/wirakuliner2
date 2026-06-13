@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useDriverProfile } from "@/hooks/use-driver-profile";
 import { useDriverStatusActions } from "@/hooks/use-driver-status-actions";
 import { cn } from "@/lib/utils";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, Power } from "lucide-react";
 
 function detectApkWebView(): boolean {
   if (typeof window === "undefined") return false;
@@ -38,7 +38,8 @@ export function useDriverApkWebView(): boolean {
   return isApk;
 }
 
-function ApkToolbarShell({
+/** Bottom Panel Status — latar putih solid (bukan menu navigasi). */
+function DriverBottomStatusPanel({
   children,
   loading,
 }: {
@@ -47,26 +48,34 @@ function ApkToolbarShell({
 }) {
   return (
     <nav
-      className="driver-apk-bottom-bar fixed bottom-0 left-0 right-0 z-[80] border-t border-slate-100/80 bg-white/95 pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_24px_rgb(0,0,0,0.04)] backdrop-blur-xl"
+      aria-label="Status driver"
+      className={cn(
+        "driver-apk-bottom-bar fixed bottom-0 left-0 right-0 z-[80]",
+        "border-t border-gray-200 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.05)]",
+        loading && "opacity-90"
+      )}
       style={{ backgroundColor: "#ffffff" }}
     >
       <div
-        className={cn(
-          "mx-auto flex max-w-mobile items-center gap-2.5 px-3 py-2.5",
-          loading && "opacity-90"
-        )}
+        className="bg-white pb-[max(env(safe-area-inset-bottom,0px),8px)]"
+        style={{ backgroundColor: "#ffffff" }}
       >
-        {children}
+        <div className="mx-auto flex max-w-mobile items-center gap-2.5 px-3 py-2.5">
+          {children}
+        </div>
       </div>
     </nav>
   );
 }
 
-/** Bar bawah APK: indikator status (bukan toggle) + tombol Keluar — latar putih seperti customer. */
+/** Panel bawah APK: switch ONLINE/OFF + tombol Keluar — background putih bersih. */
 export function DriverApkBottomBar() {
   const isApk = useDriverApkWebView();
   const { driver, loading: profileLoading, refresh } = useDriverProfile();
-  const { loading, isOnline, isDelivering, logout } = useDriverStatusActions(driver, refresh);
+  const { loading, isOnline, isDelivering, setOnline, logout } = useDriverStatusActions(
+    driver,
+    refresh
+  );
 
   useEffect(() => {
     if (!isApk) return;
@@ -82,11 +91,22 @@ export function DriverApkBottomBar() {
 
   if (profileLoading) {
     return (
-      <ApkToolbarShell loading>
+      <DriverBottomStatusPanel loading>
         <div className="min-h-[3.25rem] flex-1 animate-pulse rounded-2xl bg-slate-100" />
         <div className="min-h-[3.25rem] w-[5.5rem] shrink-0 animate-pulse rounded-2xl bg-slate-100" />
-      </ApkToolbarShell>
+      </DriverBottomStatusPanel>
     );
+  }
+
+  async function toggleOnline() {
+    if (isDelivering && isOnline) {
+      alert("Sedang mengantar — tidak bisa dimatikan.");
+      return;
+    }
+    const ok = await setOnline(!isOnline);
+    if (ok) {
+      postNativeMessage({ type: "WIRA_DRIVER_TOGGLED", online: !isOnline });
+    }
   }
 
   const statusHint = isDelivering
@@ -95,45 +115,61 @@ export function DriverApkBottomBar() {
       ? "Siap terima order"
       : "Tidak menerima order";
 
+  const toggleDisabled = loading || (isDelivering && isOnline);
+
   return (
-    <ApkToolbarShell>
-      <div
+    <DriverBottomStatusPanel>
+      <button
+        type="button"
+        disabled={toggleDisabled}
+        onClick={() => void toggleOnline()}
         className={cn(
-          "min-h-[3.25rem] flex-1 rounded-2xl border px-3 py-2",
-          isOnline ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"
+          "min-h-[3.25rem] flex-1 rounded-2xl border px-3 py-2 text-left transition active:scale-[0.98]",
+          isOnline
+            ? "border-emerald-400 bg-emerald-50"
+            : "border-slate-200 bg-slate-50",
+          toggleDisabled && "opacity-70"
         )}
-        aria-live="polite"
+        aria-pressed={isOnline}
       >
-        <span
-          className={cn(
-            "block text-sm font-bold",
-            isOnline ? "text-emerald-800" : "text-slate-800"
-          )}
-        >
-          {loading ? "Memuat..." : isOnline ? "● ONLINE" : "○ OFFLINE"}
+        <span className="flex items-center gap-2">
+          <Power
+            className={cn(
+              "h-4 w-4 shrink-0",
+              isOnline ? "text-emerald-600" : "text-slate-500"
+            )}
+          />
+          <span
+            className={cn(
+              "text-sm font-bold",
+              isOnline ? "text-emerald-800" : "text-slate-800"
+            )}
+          >
+            {loading ? "Memuat..." : isOnline ? "● ONLINE" : "○ OFFLINE"}
+          </span>
         </span>
         <span
           className={cn(
-            "mt-0.5 block text-[10px] font-medium",
+            "mt-0.5 block pl-6 text-[10px] font-medium",
             isOnline ? "text-emerald-700" : "text-slate-600"
           )}
         >
           {statusHint}
         </span>
-      </div>
+      </button>
       <button
         type="button"
         disabled={loading}
         onClick={() => void logout()}
-        className="flex min-h-[3.25rem] shrink-0 items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-4 text-xs font-bold text-red-700 transition active:scale-[0.98] disabled:opacity-60"
+        className="flex min-h-[3.25rem] shrink-0 items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-4 text-xs font-bold text-red-600 transition active:scale-[0.98] disabled:opacity-60"
       >
         {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin text-red-600" />
         ) : (
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-4 w-4 text-red-600" />
         )}
-        Keluar
+        <span className="text-red-600">Keluar</span>
       </button>
-    </ApkToolbarShell>
+    </DriverBottomStatusPanel>
   );
 }

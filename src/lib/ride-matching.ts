@@ -1,15 +1,19 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  CUSTOMER_DRIVER_RADIUS_KM,
+  OUTSIDE_JABODETABEK_MESSAGE,
+  resolvePickupRadiusKm,
+} from "@/lib/jabodetabek-policy";
+import { assertPickupInJabodetabekCluster } from "@/lib/jabodetabek-policy-server";
+import {
   EMPTY_DRIVER_ZONE_MESSAGE,
   evaluateDriverProximityAvailability,
   findCustomerNearbyDrivers,
   type DriverAvailabilityResult,
 } from "@/lib/customer-driver-match";
-import { resolveClusterIdForCoords } from "@/lib/operational-cluster";
 import { loadActiveServiceCities, findCityForCoords } from "@/lib/service-area";
 import type { PriorityDriverMatchRow, RideMatchingMode } from "@/lib/ride-matching-types";
+import type { ServiceType } from "@/lib/service-types";
 
 export type { PriorityDriverMatchRow, RideMatchingMode } from "@/lib/ride-matching-types";
 
@@ -78,8 +82,8 @@ export function computeBorderSurcharge(
 }
 
 /**
- * Evaluasi matching NGOJEK/NGOMOBIL — gate HANYA radius GPS 3 km (PostGIS).
- * Tidak ada pengecekan string kota/provinsi.
+ * Evaluasi matching transit — cluster JABODETABEK (pick-up) + radius jemput dinamis.
+ * Tujuan boleh lintas kota/provinsi (AKAP); tidak dibandingkan kota jemput vs tujuan.
  */
 export async function evaluateRideMatchingContext(
   admin: SupabaseClient,
@@ -87,13 +91,26 @@ export async function evaluateRideMatchingContext(
   pickupLng: unknown,
   destLat: unknown,
   destLng: unknown,
-  serviceType: "NGOJEK" | "NGOMOBIL" = "NGOJEK"
+  serviceType: ServiceType = "NGOJEK",
+  opts?: { packageVolumeCm3?: number }
 ): Promise<RideMatchingContext> {
+  const packageVolumeCm3 = opts?.packageVolumeCm3 ?? 0;
+  const pickupRadiusKm = resolvePickupRadiusKm(serviceType, packageVolumeCm3);
+
+  const parsedPickupLat = Number(pickupLat);
+  const parsedPickupLng = Number(pickupLng);
+
+  const clusterCheck =
+    Number.isFinite(parsedPickupLat) && Number.isFinite(parsedPickupLng)
+      ? await assertPickupInJabodetabekCluster(admin, parsedPickupLat, parsedPickupLng)
+      : { ok: false as const, message: OUTSIDE_JABODETABEK_MESSAGE };
+
   const availability = await evaluateDriverProximityAvailability(
     admin,
     pickupLat,
     pickupLng,
-    serviceType
+    serviceType,
+    { radiusKm: pickupRadiusKm, packageVolumeCm3 }
   );
 
   const effectiveLat = availability.effective_lat;
@@ -101,7 +118,7 @@ export async function evaluateRideMatchingContext(
 
   const cities = await loadActiveServiceCities(admin);
   const pickupCity = findCityForCoords(cities, effectiveLat, effectiveLng);
-  const clusterId = await resolveClusterIdForCoords(admin, effectiveLat, effectiveLng);
+  const clusterId = clusterCheck.ok ? clusterCheck.clusterId : null;
   const { provinceId, provinceName } = await resolvePickupProvinceMeta(
     admin,
     effectiveLat,
@@ -129,6 +146,14 @@ export async function evaluateRideMatchingContext(
     availability_debug: availability.debug_info,
   };
 
+  if (!clusterCheck.ok) {
+    return {
+      ...baseContext,
+      available: false,
+      message: clusterCheck.message ?? OUTSIDE_JABODETABEK_MESSAGE,
+    };
+  }
+
   if (!availability.available) {
     return {
       ...baseContext,
@@ -140,9 +165,10 @@ export async function evaluateRideMatchingContext(
   const drivers = await findCustomerNearbyDrivers(admin, {
     lat: effectiveLat,
     lng: effectiveLng,
-    requestedService: serviceType,
+    requestedService: serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK",
+    packageVolumeCm3,
     limit: 1,
-    radiusKm: CUSTOMER_DRIVER_RADIUS_KM,
+    radiusKm: pickupRadiusKm,
   });
 
   const nearestKm = drivers[0]?.distance_km ?? null;

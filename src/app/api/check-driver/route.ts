@@ -34,13 +34,15 @@ export async function POST(request: Request) {
       });
     }
 
-    let body: { lat?: unknown; lng?: unknown; serviceType?: unknown };
+    let body: {
+      lat?: unknown;
+      lng?: unknown;
+      serviceType?: unknown;
+      packageVolumeCm3?: unknown;
+      quotedFare?: unknown;
+    };
     try {
-      body = (await request.json()) as {
-        lat?: unknown;
-        lng?: unknown;
-        serviceType?: unknown;
-      };
+      body = (await request.json()) as typeof body;
     } catch (error) {
       console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
       return jsonOk({
@@ -49,8 +51,14 @@ export async function POST(request: Request) {
       });
     }
 
-    const { lat, lng, serviceType } = body;
-    const result = await runCheckDriverAvailability(request, lat, lng, serviceType);
+    const { lat, lng, serviceType, packageVolumeCm3, quotedFare } = body;
+    const result = await runCheckDriverAvailability(request, {
+      lat,
+      lng,
+      serviceType,
+      packageVolumeCm3,
+      quotedFare,
+    });
     return jsonOk(result);
   } catch (error) {
     console.error("LOG ERROR GEOLOKASI LENGKAP:", error);

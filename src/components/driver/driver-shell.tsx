@@ -51,7 +51,7 @@ export function DriverShell({ children }: { children: React.ReactNode }) {
               <PoweredByDaffacell variant="header" className="text-slate-500" />
             </div>
           </div>
-          <DriverHeaderControls />
+          {!isApk && <DriverHeaderControls />}
         </div>
       </header>
       <div className={cn("safe-pb-nav mx-auto max-w-mobile", apkBottomPad && "pb-[calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px))]")}>

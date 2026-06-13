@@ -677,7 +677,7 @@ export function DriverCockpit() {
               ))}
             </div>
           </div>
-          <DriverHeaderControls />
+          {!isApk && <DriverHeaderControls />}
         </div>
       </header>
 

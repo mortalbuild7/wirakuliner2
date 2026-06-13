@@ -1,7 +1,6 @@
 import "server-only";
 
 import {
-  CUSTOMER_DRIVER_RADIUS_KM,
   evaluateDriverProximityAvailability,
 } from "@/lib/customer-driver-match";
 import {
@@ -11,6 +10,13 @@ import {
   toDriverAvailabilityResponse,
   type DriverAvailabilityResult,
 } from "@/lib/driver-availability-types";
+import {
+  isAkapTransitService,
+  isTransitProximityServiceType,
+  OUTSIDE_JABODETABEK_MESSAGE,
+  resolvePickupRadiusKm,
+} from "@/lib/jabodetabek-policy";
+import { assertPickupInJabodetabekCluster } from "@/lib/jabodetabek-policy-server";
 import { extractServerErrorMessage } from "@/lib/server-error-message";
 import { getClientIp } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
@@ -25,6 +31,14 @@ import type {
   CheckDriverApiSuccess,
 } from "@/lib/check-driver-types";
 
+export type CheckDriverRequestInput = {
+  lat: unknown;
+  lng: unknown;
+  serviceType?: unknown;
+  packageVolumeCm3?: unknown;
+  quotedFare?: unknown;
+};
+
 function allowDevMockCustomerSession(): boolean {
   return (
     process.env.NODE_ENV === "development" ||
@@ -32,7 +46,10 @@ function allowDevMockCustomerSession(): boolean {
   );
 }
 
-function emptyDebugInfo(serviceType: ServiceType): DriverAvailabilityResult["debug_info"] {
+function emptyDebugInfo(
+  serviceType: ServiceType,
+  radiusKm: number
+): DriverAvailabilityResult["debug_info"] {
   return {
     customer_coords: [0, 0],
     effective_coords: [0, 0],
@@ -40,7 +57,7 @@ function emptyDebugInfo(serviceType: ServiceType): DriverAvailabilityResult["deb
     nearest_driver_km: null,
     nearest_driver_id: null,
     service_type: serviceType,
-    radius_km: CUSTOMER_DRIVER_RADIUS_KM,
+    radius_km: radiusKm,
     server_error_detail: null,
     rpc_fallback_reason: null,
   };
@@ -67,6 +84,16 @@ function toSuccess(result: DriverAvailabilityResult): CheckDriverApiSuccess {
   };
 }
 
+function parsePackageVolume(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function parseQuotedFare(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 async function assertCustomerSession(): Promise<
   { ok: true; userId: string } | { ok: false; message: string }
 > {
@@ -81,7 +108,6 @@ async function assertCustomerSession(): Promise<
       const detail = extractServerErrorMessage(error);
       console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
       if (allowDevMockCustomerSession()) {
-        console.warn("[check-driver] auth error — pakai mock customer id (dev)");
         return { ok: true, userId: DEV_MOCK_CUSTOMER_ID };
       }
       return { ok: false, message: `[Auth] ${detail}` };
@@ -89,7 +115,6 @@ async function assertCustomerSession(): Promise<
 
     if (!user?.id) {
       if (allowDevMockCustomerSession()) {
-        console.warn("[check-driver] session kosong — pakai mock customer id (dev)");
         return { ok: true, userId: DEV_MOCK_CUSTOMER_ID };
       }
       return { ok: false, message: CUSTOMER_SESSION_EXPIRED_MSG };
@@ -130,17 +155,18 @@ async function checkDriverMatchRateLimit(req: Request): Promise<{
 }
 
 /**
- * Pengecekan ketersediaan driver — hanya untuk API Route (bukan Server Action render).
+ * Pengecekan ketersediaan driver — cluster JABODETABEK + radius jemput dinamis.
  */
 export async function runCheckDriverAvailability(
   req: Request,
-  lat: unknown,
-  lng: unknown,
-  serviceTypeRaw: unknown = "NGOJEK"
+  input: CheckDriverRequestInput
 ): Promise<CheckDriverApiResponse> {
-  const serviceType: ServiceType = isServiceType(serviceTypeRaw)
-    ? serviceTypeRaw
+  const serviceType: ServiceType = isServiceType(input.serviceType)
+    ? input.serviceType
     : "NGOJEK";
+  const packageVolumeCm3 = parsePackageVolume(input.packageVolumeCm3);
+  const quotedFare = parseQuotedFare(input.quotedFare);
+  const pickupRadiusKm = resolvePickupRadiusKm(serviceType, packageVolumeCm3);
 
   try {
     const session = await assertCustomerSession();
@@ -153,13 +179,9 @@ export async function runCheckDriverAvailability(
       return failure(rate.message ?? "Terlalu banyak permintaan. Coba lagi nanti.");
     }
 
-    if (
-      serviceType !== "NGOJEK" &&
-      serviceType !== "NGOMOBIL" &&
-      serviceType !== "PAKET"
-    ) {
-      const customerLat = parseFloat(String(lat ?? "").trim());
-      const customerLng = parseFloat(String(lng ?? "").trim());
+    if (!isTransitProximityServiceType(serviceType)) {
+      const customerLat = parseFloat(String(input.lat ?? "").trim());
+      const customerLng = parseFloat(String(input.lng ?? "").trim());
       const coords: [number, number] = [
         Number.isFinite(customerLat) && !isNaN(customerLat) ? customerLat : 0,
         Number.isFinite(customerLng) && !isNaN(customerLng) ? customerLng : 0,
@@ -171,7 +193,7 @@ export async function runCheckDriverAvailability(
           effective_lat: coords[0],
           effective_lng: coords[1],
           debug_info: {
-            ...emptyDebugInfo(serviceType),
+            ...emptyDebugInfo(serviceType, pickupRadiusKm),
             customer_coords: coords,
             effective_coords: coords,
           },
@@ -187,13 +209,72 @@ export async function runCheckDriverAvailability(
       return failure(error);
     }
 
+    const parsedLat = parseFloat(String(input.lat ?? "").trim());
+    const parsedLng = parseFloat(String(input.lng ?? "").trim());
+    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+      return toSuccess(
+        toDriverAvailabilityResponse({
+          available: false,
+          error_code: "INVALID_COORDINATES",
+          message: "Koordinat GPS tidak valid",
+          effective_lat: 0,
+          effective_lng: 0,
+          debug_info: emptyDebugInfo(serviceType, pickupRadiusKm),
+        })
+      );
+    }
+
+    const clusterCheck = await assertPickupInJabodetabekCluster(
+      admin,
+      parsedLat,
+      parsedLng
+    );
+    if (!clusterCheck.ok) {
+      return toSuccess(
+        toDriverAvailabilityResponse({
+          available: false,
+          error_code: "NO_ONLINE_DRIVER_IN_RADIUS",
+          message: clusterCheck.message ?? OUTSIDE_JABODETABEK_MESSAGE,
+          effective_lat: parsedLat,
+          effective_lng: parsedLng,
+          debug_info: {
+            ...emptyDebugInfo(serviceType, pickupRadiusKm),
+            customer_coords: [parsedLat, parsedLng],
+            effective_coords: [parsedLat, parsedLng],
+            server_error_detail: clusterCheck.message,
+          },
+        })
+      );
+    }
+
     const result = await evaluateDriverProximityAvailability(
       admin,
-      lat,
-      lng,
-      serviceType
+      input.lat,
+      input.lng,
+      serviceType,
+      { radiusKm: pickupRadiusKm, packageVolumeCm3 }
     );
+
     const normalized = toDriverAvailabilityResponse(result);
+
+    if (
+      isAkapTransitService(serviceType, packageVolumeCm3) &&
+      quotedFare > 0 &&
+      clusterCheck.ok
+    ) {
+      return toSuccess({
+        ...normalized,
+        available: true,
+        error_code: "AVAILABLE",
+        message: undefined,
+        error_message: undefined,
+        debug_info: {
+          ...normalized.debug_info,
+          radius_km: pickupRadiusKm,
+        },
+      });
+    }
+
     if (
       !normalized.available &&
       (normalized.error_code === "RPC_ERROR" ||
@@ -205,9 +286,30 @@ export async function runCheckDriverAvailability(
           normalized.error_code
       );
     }
-    return toSuccess(normalized);
+
+    return toSuccess({
+      ...normalized,
+      debug_info: {
+        ...normalized.debug_info,
+        radius_km: pickupRadiusKm,
+      },
+    });
   } catch (error) {
     console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
     return failure(formatServerCrashMessage(error));
   }
+}
+
+/** @deprecated — gunakan objek input. */
+export async function runCheckDriverAvailabilityLegacy(
+  req: Request,
+  lat: unknown,
+  lng: unknown,
+  serviceTypeRaw: unknown = "NGOJEK"
+): Promise<CheckDriverApiResponse> {
+  return runCheckDriverAvailability(req, {
+    lat,
+    lng,
+    serviceType: serviceTypeRaw,
+  });
 }

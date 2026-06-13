@@ -30,7 +30,11 @@ export async function checkDriverAvailability(
   const req = new Request("https://wirakuliner.web.id/api/check-driver", {
     method: "POST",
   });
-  const api = await runCheckDriverAvailability(req, lat, lng, serviceType);
+  const api = await runCheckDriverAvailability(req, {
+    lat,
+    lng,
+    serviceType,
+  });
   if (!api.success) {
     return {
       available: false,

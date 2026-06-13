@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluateDriverProximityAvailability } from "@/lib/customer-driver-match";
 import { haversineKm } from "@/lib/geo-config";
+import { resolvePickupRadiusKm } from "@/lib/jabodetabek-policy";
+import { assertPickupInJabodetabekCluster } from "@/lib/jabodetabek-policy-server";
 import type { DriverAvailabilityDebugInfo, DriverAvailabilityErrorCode } from "@/lib/driver-availability-types";
 
 export const SERVICE_UNAVAILABLE_MSG =
@@ -155,88 +157,75 @@ export async function checkFoodServiceAvailability(
 }
 
 /**
- * NGOJEK / NGOMOBIL / PAKET: gate ketersediaan murni radius GPS 3 km.
- * Kuliner (NGEMIL): driver proximity di titik antar, tanpa cocokkan nama kota.
+ * NGOJEK / NGOMOBIL / PAKET: cluster JABODETABEK (pick-up) + radius jemput dinamis.
+ * Tujuan tidak dibandingkan — mendukung AKAP lintas kota/provinsi.
  */
 export async function checkRideServiceAvailability(
   admin: SupabaseClient,
   pickupLat: unknown,
   pickupLng: unknown,
-  destLat: unknown,
-  destLng: unknown,
-  serviceType?: "NGOJEK" | "NGOMOBIL" | "PAKET"
+  _destLat: unknown,
+  _destLng: unknown,
+  serviceType: "NGOJEK" | "NGOMOBIL" | "PAKET" = "NGOJEK",
+  packageVolumeCm3 = 0
 ): Promise<ServiceAvailability> {
-  const useTransitMatching =
-    serviceType === "NGOJEK" || serviceType === "NGOMOBIL" || serviceType == null;
+  const parsedLat = Number(pickupLat);
+  const parsedLng = Number(pickupLng);
+  const pickupRadiusKm = resolvePickupRadiusKm(serviceType, packageVolumeCm3);
 
-  if (useTransitMatching) {
-    const { resolveClusterIdForCoords } = await import("@/lib/operational-cluster");
-    const { resolvePickupProvinceMeta } = await import("@/lib/ride-matching");
-
-    const transitType = serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK";
-    const result = await evaluateDriverProximityAvailability(
-      admin,
-      pickupLat,
-      pickupLng,
-      transitType
-    );
-
-    const effectiveLat = result.effective_lat;
-    const effectiveLng = result.effective_lng;
-    const cities = await loadActiveServiceCities(admin);
-    const pickupCity = findCityForCoords(cities, effectiveLat, effectiveLng);
-    const clusterId = await resolveClusterIdForCoords(admin, effectiveLat, effectiveLng);
-    const { provinceName } = await resolvePickupProvinceMeta(
-      admin,
-      effectiveLat,
-      effectiveLng
-    );
-
-    if (!result.available) {
-      return {
-        available: false,
-        message: result.message,
-        cityId: pickupCity?.id ?? clusterId,
-        cityName: pickupCity?.name ?? provinceName,
-        error_code: result.error_code,
-        debug_info: result.debug_info,
-      };
-    }
-
-    return {
-      available: true,
-      cityId: pickupCity?.id ?? clusterId,
-      cityName: pickupCity?.name ?? provinceName,
-      error_code: result.error_code,
-      debug_info: result.debug_info,
-    };
-  }
+  const clusterCheck =
+    Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
+      ? await assertPickupInJabodetabekCluster(admin, parsedLat, parsedLng)
+      : { ok: false as const, message: "Titik jemput di luar cluster JABODETABEK" };
 
   const result = await evaluateDriverProximityAvailability(
     admin,
     pickupLat,
     pickupLng,
-    "PAKET"
+    serviceType,
+    { radiusKm: pickupRadiusKm, packageVolumeCm3 }
   );
 
-  if (!result.available) {
+  const effectiveLat = result.effective_lat;
+  const effectiveLng = result.effective_lng;
+  const cities = await loadActiveServiceCities(admin);
+  const pickupCity = findCityForCoords(cities, effectiveLat, effectiveLng);
+  const { resolvePickupProvinceMeta } = await import("@/lib/ride-matching");
+  const { provinceName } = await resolvePickupProvinceMeta(
+    admin,
+    effectiveLat,
+    effectiveLng
+  );
+
+  const clusterId = clusterCheck.ok ? clusterCheck.clusterId : null;
+  const clusterName = clusterCheck.ok ? clusterCheck.clusterName : null;
+
+  if (!clusterCheck.ok) {
     return {
       available: false,
-      message: result.message,
-      cityId: null,
-      cityName: null,
+      message: clusterCheck.message,
+      cityId: pickupCity?.id ?? null,
+      cityName: pickupCity?.name ?? null,
       error_code: result.error_code,
       debug_info: result.debug_info,
     };
   }
 
-  const cities = await loadActiveServiceCities(admin);
-  const pickupCity = findCityForCoords(cities, result.effective_lat, result.effective_lng);
+  if (!result.available) {
+    return {
+      available: false,
+      message: result.message,
+      cityId: pickupCity?.id ?? clusterId,
+      cityName: pickupCity?.name ?? clusterName ?? provinceName,
+      error_code: result.error_code,
+      debug_info: result.debug_info,
+    };
+  }
 
   return {
     available: true,
-    cityId: pickupCity?.id ?? null,
-    cityName: pickupCity?.name ?? null,
+    cityId: pickupCity?.id ?? clusterId,
+    cityName: pickupCity?.name ?? clusterName ?? provinceName,
     error_code: result.error_code,
     debug_info: result.debug_info,
   };

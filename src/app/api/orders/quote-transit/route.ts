@@ -4,7 +4,8 @@ import {
   fetchRegionalTransitTariff,
   resolveRegionalIdsFromServiceCity,
 } from "@/lib/regional-transit-pricing";
-import { NGOJEK_MAX_DISTANCE_KM, NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
+import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
+import { validateTransitRideDistance } from "@/lib/jabodetabek-policy";
 import { resolvePickupProvinceMeta } from "@/lib/ride-matching";
 import { findCityForCoords, loadActiveServiceCities } from "@/lib/service-area";
 import { isServiceType, type ServiceType } from "@/lib/service-types";
@@ -73,12 +74,13 @@ export async function POST(req: Request) {
     });
   }
 
-  if (distanceKm > NGOJEK_MAX_DISTANCE_KM) {
+  const distanceCheck = validateTransitRideDistance(serviceType, distanceKm);
+  if (!distanceCheck.ok && distanceCheck.tooFar) {
     return secureJsonResponse({
       distanceKm,
       rideFee: 0,
       tooFar: true,
-      feeDescription: `Maksimal ${NGOJEK_MAX_DISTANCE_KM} km`,
+      feeDescription: distanceCheck.error,
     });
   }
 

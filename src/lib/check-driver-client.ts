@@ -5,12 +5,19 @@ import type { ServiceType } from "@/lib/service-types";
 
 export type { CheckDriverApiResponse } from "@/lib/check-driver-types";
 
+export type CheckDriverClientOptions = {
+  packageVolumeCm3?: number;
+  quotedFare?: number;
+  timeoutMs?: number;
+};
+
 export async function fetchCheckDriverAvailability(
   lat: number,
   lng: number,
   serviceType: ServiceType,
-  timeoutMs = 30_000
+  options: CheckDriverClientOptions = {}
 ): Promise<CheckDriverApiResponse> {
+  const timeoutMs = options.timeoutMs ?? 30_000;
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
 
@@ -19,7 +26,13 @@ export async function fetchCheckDriverAvailability(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ lat, lng, serviceType }),
+      body: JSON.stringify({
+        lat,
+        lng,
+        serviceType,
+        packageVolumeCm3: options.packageVolumeCm3 ?? 0,
+        quotedFare: options.quotedFare ?? 0,
+      }),
       signal: controller.signal,
     });
 

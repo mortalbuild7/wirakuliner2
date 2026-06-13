@@ -12,7 +12,8 @@ import {
   notifyCustomerOrderToast,
   notifyFormValidationErrors,
 } from "@/lib/customer-order-feedback";
-import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
+import { NGOJEK_MIN_DISTANCE_KM, packageVolumeCm3 } from "@/lib/ngojek-ride-logic";
+import { isTransitProximityServiceType } from "@/lib/jabodetabek-policy";
 import {
   CUSTOMER_GPS_SYNC_MSG,
   validatePickupCoordinates,
@@ -102,8 +103,7 @@ function collectSubmitBlockers(
 export function OrderConfirmation({ ride }: OrderConfirmationProps) {
   const [uiState, setUiState] = useState<OrderUiState>("idle");
 
-  const isTransitRide =
-    ride.serviceType === "NGOJEK" || ride.serviceType === "NGOMOBIL";
+  const isTransitRide = isTransitProximityServiceType(ride.serviceType);
 
   const bookLabel =
     ride.serviceType === "PAKET"
@@ -146,7 +146,7 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
     }
 
     try {
-      if (isTransitRide) {
+      if (isTransitRide && ride.rideFee <= 0) {
         const freshGps = await ride.refreshPickupCoordsForSubmit();
         const pickupCoords = freshGps.ok
           ? { ok: true as const, lat: freshGps.lat, lng: freshGps.lng }
@@ -157,11 +157,17 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
           return;
         }
 
+        const pkgVolume =
+          ride.serviceType === "PAKET" && ride.packageDetails
+            ? packageVolumeCm3(ride.packageDetails)
+            : 0;
+
         setUiState("checking");
         const result = await fetchCheckDriverAvailability(
           pickupCoords.lat,
           pickupCoords.lng,
-          ride.serviceType
+          ride.serviceType,
+          { packageVolumeCm3: pkgVolume, quotedFare: ride.rideFee }
         );
 
         if (!result.success) {

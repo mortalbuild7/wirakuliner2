@@ -17,8 +17,12 @@ import {
 } from "@/lib/service-types";
 
 import {
-  CUSTOMER_DRIVER_RADIUS_KM,
   EMPTY_DRIVER_ZONE_MESSAGE,
+  POSTGIS_RPC_MAX_RADIUS_KM,
+  resolvePickupRadiusKm,
+} from "@/lib/jabodetabek-policy";
+import {
+  CUSTOMER_DRIVER_RADIUS_KM,
   MAX_RADIUS_METERS,
 } from "@/lib/driver-match-constants";
 
@@ -184,22 +188,30 @@ export async function countNearbyIdleDrivers(
     radiusKm?: number;
   }
 ): Promise<CountDriversResult> {
+  const radiusKm =
+    opts?.radiusKm ??
+    resolvePickupRadiusKm(opts?.serviceType ?? "NGOJEK", opts?.packageVolumeCm3 ?? 0);
+  const effectiveOpts = { ...opts, radiusKm };
   let rpcFallbackReason: string | null = null;
 
-  try {
-    const count = await countIdleDriversViaPostgisRpc(admin, lat, lng, opts);
-    return { count, matchEngine: "postgis", rpcFallbackReason: null };
-  } catch (rpcError) {
-    rpcFallbackReason = extractServerErrorMessage(rpcError);
-    console.error("LOG ERROR GEOLOKASI LENGKAP:", rpcError);
-    console.warn(
-      "[driver-match] PostGIS RPC gagal — mengaktifkan fallback Haversine:",
-      rpcFallbackReason
-    );
+  if (radiusKm <= POSTGIS_RPC_MAX_RADIUS_KM) {
+    try {
+      const count = await countIdleDriversViaPostgisRpc(admin, lat, lng, effectiveOpts);
+      return { count, matchEngine: "postgis", rpcFallbackReason: null };
+    } catch (rpcError) {
+      rpcFallbackReason = extractServerErrorMessage(rpcError);
+      console.error("LOG ERROR GEOLOKASI LENGKAP:", rpcError);
+      console.warn(
+        "[driver-match] PostGIS RPC gagal — mengaktifkan fallback Haversine:",
+        rpcFallbackReason
+      );
+    }
+  } else {
+    rpcFallbackReason = `Radius ${radiusKm} km melebihi batas RPC ${POSTGIS_RPC_MAX_RADIUS_KM} km`;
   }
 
   try {
-    const count = await countIdleDriversViaHaversineFallback(admin, lat, lng, opts);
+    const count = await countIdleDriversViaHaversineFallback(admin, lat, lng, effectiveOpts);
     return {
       count,
       matchEngine: "haversine",
@@ -304,7 +316,9 @@ export async function evaluateDriverProximityAvailability(
   serviceType: ServiceType = "NGOJEK",
   opts: EvaluateDriverProximityOpts = {}
 ): Promise<DriverAvailabilityResult> {
-  const radiusKm = opts.radiusKm ?? CUSTOMER_DRIVER_RADIUS_KM;
+  const radiusKm =
+    opts.radiusKm ??
+    resolvePickupRadiusKm(serviceType, opts.packageVolumeCm3 ?? 0);
 
   try {
     const parsed = parseCustomerCoords(rawLat, rawLng);
@@ -317,7 +331,7 @@ export async function evaluateDriverProximityAvailability(
       engine?: "postgis" | "haversine"
     ) => {
       console.log("Koordinat Customer:", coords[0], coords[1]);
-      console.log("Jumlah Driver Terdekat < 3KM yang Online:", count);
+      console.log("Jumlah Driver Terdekat yang Online:", count, `(radius ${radiusKm} km)`);
       console.log("Layanan diminta:", serviceType);
       console.log("Availability:", code, engine ? { match_engine: engine } : "");
     };
@@ -465,10 +479,15 @@ export async function findCustomerNearbyDrivers(
   }
 ): Promise<CustomerDriverMatchRow[]> {
   try {
+    const radiusKm =
+      opts.radiusKm ??
+      resolvePickupRadiusKm(opts.requestedService ?? "NGOJEK", opts.packageVolumeCm3 ?? 0);
+    const rpcRadius = Math.min(radiusKm, POSTGIS_RPC_MAX_RADIUS_KM);
+
     const { data, error } = await admin.rpc("find_nearest_priority_drivers_customer", {
       lat_customer: opts.lat,
       lng_customer: opts.lng,
-      max_radius_km: opts.radiusKm ?? CUSTOMER_DRIVER_RADIUS_KM,
+      max_radius_km: rpcRadius,
       requested_service: normalizeTransitService(opts.requestedService),
       package_volume_cm3: opts.packageVolumeCm3 ?? 0,
       p_skip_driver_ids: opts.skipDriverIds ?? [],

@@ -2,6 +2,12 @@ import { haversineKm } from "@/lib/geo-config";
 import { calculateDeliveryFee } from "@/lib/delivery-fee";
 import type { PaymentMethodChoice } from "@/components/wallet/payment-method-picker";
 import {
+  JABODETABEK_MOTOR_MAX_RIDE_KM,
+  OUTSIDE_JABODETABEK_MESSAGE,
+  packageUsesCargoVehicle,
+  validateTransitRideDistance,
+} from "@/lib/jabodetabek-policy";
+import {
   computePackageVolumeCm3,
   PAKET_CARGO_VOLUME_THRESHOLD_CM3,
   SERVICE_TYPE_LABEL,
@@ -11,8 +17,11 @@ import {
 /** Jarak minimum jemput–tujuan (km) — cegah order tidak masuk akal. */
 export const NGOJEK_MIN_DISTANCE_KM = 0.05;
 
-/** Jarak maksimum per ride (km) — batasi fraud koordinat jauh. */
-export const NGOJEK_MAX_DISTANCE_KM = 25;
+/**
+ * Jarak maksimum motor dalam cluster JABODETABEK.
+ * Layanan AKAP (NGOMOBIL / PAKET mobil) tidak memakai batas ini.
+ */
+export const NGOJEK_MAX_DISTANCE_KM = JABODETABEK_MOTOR_MAX_RIDE_KM;
 
 export type RideCoords = {
   pickupLat: number;
@@ -110,15 +119,13 @@ export function packageNeedsCargoVehicle(pkg: PackageDetailsInput): boolean {
   return packageVolumeCm3(pkg) > PAKET_CARGO_VOLUME_THRESHOLD_CM3;
 }
 
-/** Validasi bisnis sebelum memanggil API place-ride / transit. */
+/** Validasi bisnis sebelum memanggil API place-ride / transit — cluster JABODETABEK + AKAP. */
 export function validateTransitBooking(input: {
   userId: string | null;
   serviceType: ServiceType;
   destinationAddress: string;
   distanceKm: number;
-  pickupInServiceArea: boolean;
-  destinationInServiceArea: boolean;
-  sameServiceCity: boolean;
+  pickupInJabodetabek?: boolean;
   paymentMethod: PaymentMethodChoice;
   walletBalance: number | null;
   rideFee: number;
@@ -132,15 +139,19 @@ export function validateTransitBooking(input: {
     return { ok: false, error: "Isi alamat tujuan" };
   }
 
-  if (input.distanceKm < NGOJEK_MIN_DISTANCE_KM) {
-    return { ok: false, error: "Titik jemput dan tujuan terlalu dekat" };
-  }
+  const pkgVolume =
+    input.serviceType === "PAKET" && input.packageDetails
+      ? packageVolumeCm3(input.packageDetails)
+      : 0;
 
-  if (input.distanceKm > NGOJEK_MAX_DISTANCE_KM) {
-    return {
-      ok: false,
-      error: `Jarak maksimal ${NGOJEK_MAX_DISTANCE_KM} km`,
-    };
+  const distanceCheck = validateTransitRideDistance(
+    input.serviceType,
+    input.distanceKm,
+    pkgVolume,
+    NGOJEK_MIN_DISTANCE_KM
+  );
+  if (!distanceCheck.ok) {
+    return { ok: false, error: distanceCheck.error };
   }
 
   if (input.serviceType === "PAKET") {
@@ -148,28 +159,14 @@ export function validateTransitBooking(input: {
     if (!pkgCheck.ok) return pkgCheck;
   }
 
+  if (input.pickupInJabodetabek === false) {
+    return {
+      ok: false,
+      error: OUTSIDE_JABODETABEK_MESSAGE,
+    };
+  }
+
   const serviceLabel = SERVICE_TYPE_LABEL[input.serviceType];
-
-  if (!input.pickupInServiceArea) {
-    return {
-      ok: false,
-      error: `Titik jemput di luar wilayah layanan ${serviceLabel}`,
-    };
-  }
-
-  if (!input.destinationInServiceArea) {
-    return {
-      ok: false,
-      error: `Tujuan di luar wilayah layanan ${serviceLabel}`,
-    };
-  }
-
-  if (!input.sameServiceCity) {
-    return {
-      ok: false,
-      error: "Jemput dan tujuan harus dalam kota layanan yang sama",
-    };
-  }
 
   if (
     input.paymentMethod === "wallet" &&

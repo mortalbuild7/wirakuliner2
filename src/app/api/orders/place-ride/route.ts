@@ -10,7 +10,8 @@ import { computePackageVolumeCm3, isServiceType, type ServiceType } from "@/lib/
 import { notifyDriversNewOrder } from "@/lib/notify-drivers";
 import { evaluateRideMatchingContext } from "@/lib/ride-matching";
 import { checkRideServiceAvailability, checkServiceAvailability } from "@/lib/service-area";
-import { NGOJEK_MAX_DISTANCE_KM, NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
+import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
+import { validateTransitRideDistance } from "@/lib/jabodetabek-policy";
 import { debitCustomerForOrder } from "@/lib/wallet";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -111,16 +112,28 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
-  if (distanceKm > NGOJEK_MAX_DISTANCE_KM) {
-    return secureJsonResponse(
-      { error: `Jarak maksimal NGOJEK ${NGOJEK_MAX_DISTANCE_KM} km` },
-      { status: 400 }
-    );
-  }
 
   const serviceType: ServiceType = isServiceType(body.serviceType)
     ? body.serviceType
     : "NGOJEK";
+
+  let totalVolumeCm3 = 0;
+  if (serviceType === "PAKET" && body.packageDetails) {
+    totalVolumeCm3 = computePackageVolumeCm3(
+      body.packageDetails.lengthCm ?? 0,
+      body.packageDetails.widthCm ?? 0,
+      body.packageDetails.heightCm ?? 0
+    );
+  }
+
+  const distanceCheck = validateTransitRideDistance(
+    serviceType,
+    distanceKm,
+    totalVolumeCm3
+  );
+  if (!distanceCheck.ok) {
+    return secureJsonResponse({ error: distanceCheck.error }, { status: 400 });
+  }
 
   const supabase = await createClient();
   const {
@@ -134,7 +147,10 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient();
 
-  const isTransit = serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
+  const isTransit =
+    serviceType === "NGOJEK" ||
+    serviceType === "NGOMOBIL" ||
+    serviceType === "PAKET";
   const matchingCtx = isTransit
     ? await evaluateRideMatchingContext(
         admin,
@@ -142,7 +158,8 @@ export async function POST(req: Request) {
         pickupLng,
         destinationLat,
         destinationLng,
-        serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK"
+        serviceType,
+        { packageVolumeCm3: totalVolumeCm3 }
       )
     : null;
 
@@ -223,7 +240,6 @@ export async function POST(req: Request) {
     !useWallet &&
     (body.skipPayment === true || process.env.NEXT_PUBLIC_PAYMENT_BYPASS === "true");
 
-  let totalVolumeCm3 = 0;
   let packagePayload: Record<string, unknown> | null = null;
 
   if (serviceType === "PAKET") {

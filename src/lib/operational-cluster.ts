@@ -95,67 +95,38 @@ export async function resolveClusterIdForCoords(
 }
 
 /**
- * Cek ketersediaan layanan transit berbasis cluster.
- * Jemput & tujuan harus dalam cluster yang sama (fluid lintas kota).
+ * Cek ketersediaan layanan transit — cluster JABODETABEK (pick-up saja).
+ * Tujuan boleh lintas kota/provinsi (AKAP); tidak dibandingkan cluster tujuan.
  */
 export async function checkClusterRideAvailability(
   admin: SupabaseClient,
   pickupLat: number,
   pickupLng: number,
-  destLat: number,
-  destLng: number
+  _destLat?: number,
+  _destLng?: number
 ): Promise<ClusterAvailability> {
-  const pickupClusterId = await resolveClusterIdForCoords(admin, pickupLat, pickupLng);
-  if (!pickupClusterId) {
+  const { assertPickupInJabodetabekCluster } = await import(
+    "@/lib/jabodetabek-policy-server"
+  );
+  const pickupCheck = await assertPickupInJabodetabekCluster(
+    admin,
+    pickupLat,
+    pickupLng
+  );
+
+  if (!pickupCheck.ok) {
     return {
       available: false,
-      message: "Titik jemput di luar cluster operasional",
+      message: pickupCheck.message,
       clusterId: null,
       clusterName: null,
     };
   }
 
-  const destClusterId = await resolveClusterIdForCoords(admin, destLat, destLng);
-  if (!destClusterId) {
-    return {
-      available: false,
-      message: "Tujuan di luar cluster operasional",
-      clusterId: pickupClusterId,
-      clusterName: null,
-    };
-  }
-
-  if (pickupClusterId !== destClusterId) {
-    return {
-      available: false,
-      message: "Jemput dan tujuan harus dalam cluster operasional yang sama",
-      clusterId: pickupClusterId,
-      clusterName: null,
-    };
-  }
-
-  const clusters = await loadActiveOperationalClusters(admin);
-  const cluster = clusters.find((c) => c.id === pickupClusterId);
-
-  const { count } = await admin
-    .from("drivers")
-    .select("id", { count: "exact", head: true })
-    .eq("operational_cluster_id", pickupClusterId)
-    .neq("status", "offline");
-
-  if (!count || count === 0) {
-    return {
-      available: false,
-      message: "Belum ada driver aktif di cluster ini",
-      clusterId: pickupClusterId,
-      clusterName: cluster?.name ?? null,
-    };
-  }
-
   return {
     available: true,
-    clusterId: pickupClusterId,
-    clusterName: cluster?.name ?? null,
+    clusterId: pickupCheck.clusterId,
+    clusterName: pickupCheck.clusterName,
   };
 }
 
