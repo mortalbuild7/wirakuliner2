@@ -37,7 +37,10 @@ export async function POST(request: Request) {
     let body: {
       lat?: unknown;
       lng?: unknown;
+      latitude?: unknown;
+      longitude?: unknown;
       serviceType?: unknown;
+      service_type?: unknown;
       packageVolumeCm3?: unknown;
       quotedFare?: unknown;
     };
@@ -51,7 +54,10 @@ export async function POST(request: Request) {
       });
     }
 
-    const { lat, lng, serviceType, packageVolumeCm3, quotedFare } = body;
+    const lat = body.lat ?? body.latitude;
+    const lng = body.lng ?? body.longitude;
+    const serviceType = body.serviceType ?? body.service_type;
+    const { packageVolumeCm3, quotedFare } = body;
     const result = await runCheckDriverAvailability(request, {
       lat,
       lng,

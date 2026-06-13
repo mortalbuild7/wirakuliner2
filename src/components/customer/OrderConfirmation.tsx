@@ -12,7 +12,7 @@ import {
   notifyCustomerOrderToast,
   notifyFormValidationErrors,
 } from "@/lib/customer-order-feedback";
-import { NGOJEK_MIN_DISTANCE_KM, packageVolumeCm3 } from "@/lib/ngojek-ride-logic";
+import { packageVolumeCm3 } from "@/lib/ngojek-ride-logic";
 import { isTransitProximityServiceType } from "@/lib/jabodetabek-policy";
 import {
   CUSTOMER_GPS_SYNC_MSG,
@@ -86,19 +86,14 @@ function collectSubmitBlockers(
   if (uiState === "checking") blockers.push("sedang memeriksa driver");
   if (!ride.destAddress.trim()) blockers.push("alamat tujuan");
   if (ride.rideFee <= 0) blockers.push("tarif ride (belum dihitung)");
-  if (ride.distanceKm < NGOJEK_MIN_DISTANCE_KM) {
-    blockers.push(
-      `jarak minimal ${NGOJEK_MIN_DISTANCE_KM} km (saat ini ${ride.distanceKm.toFixed(3)} km)`
-    );
-  }
   if (!ride.userId) blockers.push("login customer");
 
   return blockers;
 }
 
 /**
- * Pemesanan customer — cek driver 3 km hanya saat tombol Pesan diklik.
- * Halaman terbuka tanpa gate; peringatan via toast/modal yang bisa ditutup.
+ * Pemesanan customer — cek driver hanya saat tombol Pesan diklik.
+ * Validasi radius/jarak sepenuhnya dipercayakan ke API backend.
  */
 export function OrderConfirmation({ ride }: OrderConfirmationProps) {
   const [uiState, setUiState] = useState<OrderUiState>("idle");
@@ -146,7 +141,7 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
     }
 
     try {
-      if (isTransitRide && ride.rideFee <= 0) {
+      if (isTransitRide) {
         const freshGps = await ride.refreshPickupCoordsForSubmit();
         const pickupCoords = freshGps.ok
           ? { ok: true as const, lat: freshGps.lat, lng: freshGps.lng }
@@ -162,23 +157,30 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
             ? packageVolumeCm3(ride.packageDetails)
             : 0;
 
+        const checkPayload = {
+          latitude: pickupCoords.lat,
+          longitude: pickupCoords.lng,
+          lat: pickupCoords.lat,
+          lng: pickupCoords.lng,
+          serviceType: ride.serviceType,
+          packageVolumeCm3: pkgVolume,
+          quotedFare: ride.rideFee,
+        };
+
+        console.log("[check-driver] request payload", checkPayload);
+
         setUiState("checking");
-        const result = await fetchCheckDriverAvailability(
-          pickupCoords.lat,
-          pickupCoords.lng,
-          ride.serviceType,
-          { packageVolumeCm3: pkgVolume, quotedFare: ride.rideFee }
-        );
+        const result = await fetchCheckDriverAvailability(checkPayload);
+
+        console.log("[check-driver] api response", result);
 
         if (!result.success) {
-          window.alert(result.error);
+          window.alert(`Debug Frontend: ${JSON.stringify(result)}`);
           return;
         }
 
         if (!result.available) {
-          if (process.env.NODE_ENV === "development") {
-            console.info("[driver-availability]", result);
-          }
+          window.alert(`Debug Frontend: ${JSON.stringify(result)}`);
           if (result.error_code === "INVALID_COORDINATES") {
             notifyCustomerOrderToast(CUSTOMER_GPS_SYNC_MSG, "warning");
             return;
