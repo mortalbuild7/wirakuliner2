@@ -1177,10 +1177,12 @@ export function DriverCockpit() {
       ) : (
         <main className="flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <section className="glass-card p-4">
-            <p className="text-sm text-muted-foreground">Profil driver</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+              Profil driver
+            </p>
             <div className="mt-2 flex items-center gap-3">
               {driver.photo_url ? (
-                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-slate-200/80">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-slate-200">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={driver.photo_url}
@@ -1189,34 +1191,42 @@ export function DriverCockpit() {
                   />
                 </div>
               ) : (
-                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
-                  <User className="h-7 w-7 text-muted-foreground" />
+                <span className="flex h-16 w-16 items-center justify-center rounded-full border border-slate-200 bg-slate-100">
+                  <User className="h-7 w-7 text-slate-500" />
                 </span>
               )}
-              <div>
-                <h1 className="text-xl font-bold text-slate-800">{driver.name}</h1>
-                <p className="text-xs text-muted-foreground">{driver.phone}</p>
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-xl font-bold text-slate-900">{driver.name}</h1>
+                <p className="truncate text-sm font-medium text-slate-600">{driver.phone}</p>
               </div>
             </div>
             {driver.vehicle_plate && (
-              <p className="text-xs text-emerald-300/80">{driver.vehicle_plate}</p>
-            )}
-            <p className="mt-2 text-xs text-muted-foreground">
-              Status:{" "}
-              <strong className="text-white">{DRIVER_STATUS_LABEL[driver.status]}</strong>
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Bergabung:{" "}
-              <strong className="text-white">{formatJoinDate(driver.created_at)}</strong>
-            </p>
-            {(driver.rating_count ?? 0) > 0 && (
-              <p className="mt-2 text-xs text-amber-200/90">
-                Rating:{" "}
-                <strong className="text-white">
-                  {Number(driver.rating_avg ?? 0).toFixed(1)} ★ ({driver.rating_count})
-                </strong>
+              <p className="mt-2 text-xs font-semibold text-emerald-700">
+                {driver.vehicle_plate}
               </p>
             )}
+            <div className="mt-3 space-y-1.5 rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
+              <p className="text-xs text-slate-600">
+                Status:{" "}
+                <strong className="font-bold text-emerald-800">
+                  {DRIVER_STATUS_LABEL[driver.status]}
+                </strong>
+              </p>
+              <p className="text-xs text-slate-600">
+                Bergabung:{" "}
+                <strong className="font-bold text-slate-900">
+                  {formatJoinDate(driver.created_at)}
+                </strong>
+              </p>
+              {(driver.rating_count ?? 0) > 0 && (
+                <p className="text-xs text-slate-600">
+                  Rating:{" "}
+                  <strong className="font-bold text-amber-800">
+                    {Number(driver.rating_avg ?? 0).toFixed(1)} ★ ({driver.rating_count})
+                  </strong>
+                </p>
+              )}
+            </div>
           </section>
 
           <section className="wira-wallet-card flex min-w-0 items-center justify-between gap-3">
@@ -1231,14 +1241,14 @@ export function DriverCockpit() {
 
           <section className="grid grid-cols-2 gap-3">
             <div className="glass-card p-4 text-center">
-              <Package className="mx-auto h-5 w-5 text-emerald-400" />
-              <p className="mt-2 text-2xl font-bold text-slate-800">{todayCount}</p>
-              <p className="text-[10px] text-muted-foreground">Selesai hari ini</p>
+              <Package className="mx-auto h-5 w-5 text-emerald-600" />
+              <p className="mt-2 text-2xl font-bold text-slate-900">{todayCount}</p>
+              <p className="text-[10px] font-medium text-slate-600">Selesai hari ini</p>
             </div>
             <div className="glass-card p-4 text-center">
-              <Award className="mx-auto h-5 w-5 text-cyan-400" />
-              <p className="mt-2 text-2xl font-bold text-slate-800">{driver.reward_points ?? 0}</p>
-              <p className="text-[10px] text-muted-foreground">Poin reward</p>
+              <Award className="mx-auto h-5 w-5 text-cyan-600" />
+              <p className="mt-2 text-2xl font-bold text-slate-900">{driver.reward_points ?? 0}</p>
+              <p className="text-[10px] font-medium text-slate-600">Poin reward</p>
             </div>
           </section>
 
@@ -1250,8 +1260,11 @@ export function DriverCockpit() {
 
           <ReceivedReviewsPanel driverMode />
 
-          <section className="glass-card space-y-3 p-4">
-            <p className="text-sm font-medium text-slate-800">Ketersediaan</p>
+          <section className="glass-card min-w-0 space-y-3 overflow-hidden p-4">
+            <p className="text-sm font-bold text-slate-800">Ketersediaan</p>
+            <p className="text-[11px] leading-snug text-slate-500">
+              Pilih status agar sistem tahu kapan Anda bisa menerima order baru.
+            </p>
             <DriverStatusToggle
               status={driver.status}
               onChange={setStatus}
