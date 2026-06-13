@@ -11,13 +11,13 @@ import {
 import type { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import {
   assertCustomerGeolocationReady,
-  notifyCustomerOrderError,
+  notifyCustomerOrderToast,
   notifyFormValidationErrors,
   withCustomerOrderTimeout,
 } from "@/lib/customer-order-feedback";
 import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
 import {
-  CUSTOMER_GPS_REQUIRED_MSG,
+  CUSTOMER_GPS_SYNC_MSG,
   validatePickupCoordinates,
 } from "@/lib/pickup-coords";
 import { cn } from "@/lib/utils";
@@ -99,8 +99,8 @@ function collectSubmitBlockers(
 }
 
 /**
- * Konfirmasi & pemesanan customer — pre-check driver 3 km sebelum order dibuat.
- * Tombol selalu bisa diklik; setiap hambatan ditampilkan via toast + alert di HP.
+ * Pemesanan customer — cek driver 3 km hanya saat tombol Pesan diklik.
+ * Halaman terbuka tanpa gate; peringatan via toast/modal yang bisa ditutup.
  */
 export function OrderConfirmation({ ride }: OrderConfirmationProps) {
   const [uiState, setUiState] = useState<OrderUiState>("idle");
@@ -132,13 +132,13 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
 
   const handleOrderNow = useCallback(async () => {
     if (busy) {
-      notifyCustomerOrderError("Mohon tunggu, pesanan sedang diproses.");
+      notifyCustomerOrderToast("Mohon tunggu, pesanan sedang diproses.", "info");
       return;
     }
 
     const geo = assertCustomerGeolocationReady();
     if (!geo.ok) {
-      notifyCustomerOrderError(geo.message);
+      notifyCustomerOrderToast(geo.message, "warning");
       return;
     }
 
@@ -150,9 +150,13 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
 
     try {
       if (isTransitRide) {
-        const pickupCoords = validatePickupCoordinates(ride.pickupLat, ride.pickupLng);
+        const freshGps = await ride.refreshPickupCoordsForSubmit();
+        const pickupCoords = freshGps.ok
+          ? { ok: true as const, lat: freshGps.lat, lng: freshGps.lng }
+          : validatePickupCoordinates(ride.pickupLat, ride.pickupLng);
+
         if (!pickupCoords.ok) {
-          notifyCustomerOrderError(CUSTOMER_GPS_REQUIRED_MSG);
+          notifyCustomerOrderToast(CUSTOMER_GPS_SYNC_MSG, "warning");
           return;
         }
 
@@ -173,18 +177,16 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
               console.info("[driver-availability]", result);
             }
             if (result.error_code === "INVALID_COORDINATES") {
-              notifyCustomerOrderError(
-                result.message ?? CUSTOMER_GPS_REQUIRED_MSG
-              );
+              notifyCustomerOrderToast(CUSTOMER_GPS_SYNC_MSG, "warning");
               return;
             }
             if (
               result.error_code === "RPC_ERROR" ||
               result.error_code === "SESSION_EXPIRED"
             ) {
-              notifyCustomerOrderError(
+              notifyCustomerOrderToast(
                 result.message ?? "Server error",
-                result.debug_info.server_error_detail ?? result.message
+                "error"
               );
               return;
             }
@@ -193,10 +195,11 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
             return;
           }
         } catch (error) {
-          notifyCustomerOrderError(
-            "Crash Frontend: gagal memeriksa ketersediaan driver.",
-            error
+          notifyCustomerOrderToast(
+            "Gagal memeriksa ketersediaan driver. Coba lagi.",
+            "error"
           );
+          console.error("[driver-availability]", error);
           return;
         }
       }
@@ -205,10 +208,12 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
       try {
         await ride.bookRide();
       } catch (error) {
-        notifyCustomerOrderError("Crash Frontend: gagal membuat pesanan.", error);
+        notifyCustomerOrderToast("Gagal membuat pesanan. Coba lagi.", "error");
+        console.error("[book-ride]", error);
       }
     } catch (error) {
-      notifyCustomerOrderError("Crash Frontend: tombol pesan error.", error);
+      notifyCustomerOrderToast("Terjadi kesalahan. Coba lagi.", "error");
+      console.error("[order-submit]", error);
     } finally {
       setUiState((current) => (current === "EMPTY_STATE" ? current : "idle"));
     }
@@ -240,7 +245,7 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
       </Button>
 
       {!canSubmit && !busy && submitBlockers.length > 0 && (
-        <p className="mt-2 text-center text-[11px] font-medium text-amber-800">
+        <p className="mt-2 text-center text-[11px] font-medium text-slate-500">
           Ketuk tombol untuk melihat syarat yang belum terpenuhi
         </p>
       )}

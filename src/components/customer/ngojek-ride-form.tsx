@@ -562,7 +562,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
               {ride.distanceKm.toFixed(2)} km
             </p>
             <p className="text-[10px] font-medium text-slate-600">
-              {ride.quoting ? "Memperbarui tarif wilayah…" : ride.feeDescription}
+              {ride.quoting ? "Memperbarui tarif…" : ride.feeDescription}
             </p>
           </div>
           <div className="text-right">

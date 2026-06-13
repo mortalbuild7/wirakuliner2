@@ -5,8 +5,8 @@ import {
   resolveRegionalIdsFromServiceCity,
 } from "@/lib/regional-transit-pricing";
 import { NGOJEK_MAX_DISTANCE_KM, NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
-import { evaluateRideMatchingContext, matchingContextToServiceArea } from "@/lib/ride-matching";
-import { checkRideServiceAvailability } from "@/lib/service-area";
+import { resolvePickupProvinceMeta } from "@/lib/ride-matching";
+import { findCityForCoords, loadActiveServiceCities } from "@/lib/service-area";
 import { isServiceType, type ServiceType } from "@/lib/service-types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -18,7 +18,7 @@ import {
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
 import { parseBoundedNumber } from "@/lib/security/validate";
 
-/** Preview tarif transit server-side — anti manipulasi harga di client. */
+/** Preview tarif transit — hanya jarak + tarif regional, tanpa gate driver/wilayah. */
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
   if (methodBlock) return methodBlock;
@@ -84,69 +84,26 @@ export async function POST(req: Request) {
 
   try {
     const admin = createAdminClient();
-    const isTransit = serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
+    const cities = await loadActiveServiceCities(admin);
+    const pickupCity = findCityForCoords(cities, pickupLat, pickupLng);
+    const { provinceId } = await resolvePickupProvinceMeta(admin, pickupLat, pickupLng);
 
-    const matchingCtx = isTransit
-      ? await evaluateRideMatchingContext(
-          admin,
-          pickupLat,
-          pickupLng,
-          destinationLat,
-          destinationLng,
-          serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK"
-        )
-      : null;
-
-    if (isTransit && matchingCtx && !matchingCtx.available) {
-      return secureJsonResponse({
-        distanceKm,
-        rideFee: 0,
-        areaAvailable: false,
-        areaMessage: matchingCtx.message ?? "Layanan tidak tersedia di wilayah ini",
-        error_code: matchingCtx.error_code,
-        debug_info: matchingCtx.availability_debug,
-      });
-    }
-
-    const serviceArea =
-      isTransit && matchingCtx
-        ? matchingContextToServiceArea(matchingCtx)
-        : await checkRideServiceAvailability(
-            admin,
-            pickupLat,
-            pickupLng,
-            destinationLat,
-            destinationLng,
-            serviceType
-          );
-
-    if (!serviceArea.available) {
-      return secureJsonResponse({
-        distanceKm,
-        rideFee: 0,
-        areaAvailable: false,
-        areaMessage: serviceArea.message ?? "Layanan tidak tersedia di wilayah ini",
-        error_code: serviceArea.error_code,
-        debug_info: serviceArea.debug_info,
-      });
-    }
-
-    const serviceCityId =
-      serviceArea.cityId ??
-      matchingCtx?.serviceCityId ??
-      matchingCtx?.operationalClusterId ??
-      null;
-
-    const { provinceId, cityId } = await resolveRegionalIdsFromServiceCity(
+    const serviceCityId = pickupCity?.id ?? null;
+    const { provinceId: tariffProvinceId, cityId } = await resolveRegionalIdsFromServiceCity(
       admin,
       serviceCityId
     );
 
-    const tariffProvinceId = provinceId ?? matchingCtx?.pickupProvinceId ?? null;
+    const effectiveProvinceId = tariffProvinceId ?? provinceId ?? null;
 
     const tariff =
-      tariffProvinceId != null
-        ? await fetchRegionalTransitTariff(admin, tariffProvinceId, cityId, serviceType)
+      effectiveProvinceId != null
+        ? await fetchRegionalTransitTariff(
+            admin,
+            effectiveProvinceId,
+            cityId,
+            serviceType
+          )
         : null;
 
     const fallbackBase =
@@ -154,31 +111,20 @@ export async function POST(req: Request) {
     const fallbackPerKm =
       serviceType === "NGOMOBIL" ? 2_700 : serviceType === "PAKET" ? 2_300 : 2_000;
 
-    const borderSurcharge = matchingCtx?.borderSurcharge ?? 0;
-    const baseFee = computeTransitFareFromTariff(
+    const rideFee = computeTransitFareFromTariff(
       tariff,
       distanceKm,
       fallbackBase,
       fallbackPerKm
     );
-    const rideFee = baseFee + borderSurcharge;
     const base = tariff ? Number(tariff.base_fare) : fallbackBase;
     const perKm = tariff ? Number(tariff.price_per_km) : fallbackPerKm;
-
-    const surchargeNote =
-      borderSurcharge > 0
-        ? ` + Rp ${borderSurcharge.toLocaleString("id-ID")} lintas wilayah`
-        : "";
 
     return secureJsonResponse({
       distanceKm,
       rideFee,
       serviceType,
-      areaAvailable: true,
-      borderSurcharge,
-      isBorderlineCrossing: matchingCtx?.isBorderlineCrossing ?? false,
-      matchingMode: matchingCtx?.matchingMode ?? null,
-      feeDescription: `Rp ${base.toLocaleString("id-ID")} + Rp ${perKm.toLocaleString("id-ID")}/km × ${distanceKm.toFixed(2)} km${surchargeNote}`,
+      feeDescription: `Rp ${base.toLocaleString("id-ID")} + Rp ${perKm.toLocaleString("id-ID")}/km × ${distanceKm.toFixed(2)} km`,
     });
   } catch (err) {
     const fallbackBase =
@@ -191,7 +137,6 @@ export async function POST(req: Request) {
       distanceKm,
       rideFee,
       serviceType,
-      areaAvailable: true,
       feeDescription: `Rp ${fallbackBase.toLocaleString("id-ID")} + Rp ${fallbackPerKm.toLocaleString("id-ID")}/km × ${distanceKm.toFixed(2)} km`,
       warning:
         err instanceof Error ? err.message : "Tarif estimasi — konfigurasi wilayah belum lengkap",

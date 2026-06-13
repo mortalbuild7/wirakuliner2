@@ -6,6 +6,12 @@ export const CUSTOMER_GPS_REQUIRED_MSG =
 export const CUSTOMER_GPS_INITIALIZING_MSG =
   "Sedang mengunci GPS HP Anda...";
 
+/** Hint saat GPS submit belum siap — minta user coba lagi sebentar. */
+export const CUSTOMER_GPS_SYNC_MSG =
+  "Sedang menyinkronkan GPS HP Anda, mohon tunggu 2 detik dan klik kembali.";
+
+export type CustomerServiceGateStatus = "INITIAL" | "CHECKING" | "AVAILABLE" | "UNAVAILABLE";
+
 export type CustomerGpsInitStatus = "INITIALIZING_GPS" | "READY";
 
 /** Status GPS customer — hanya berdasarkan koordinat valid, tanpa cek wilayah teks. */

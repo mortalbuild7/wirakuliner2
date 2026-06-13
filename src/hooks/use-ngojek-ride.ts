@@ -39,6 +39,7 @@ import {
 import {
   resolveCustomerGpsInitStatus,
   type CustomerGpsInitStatus,
+  type CustomerServiceGateStatus,
 } from "@/lib/pickup-coords";
 
 const REVERSE_MIN_KM = 0.025;
@@ -228,6 +229,7 @@ export function useNgojekRide() {
   const lastServerQuoteKeyRef = useRef("");
   const [gpsLoading, setGpsLoading] = useState(false);
   const hasAppliedInitialGpsRef = useRef(false);
+  const [serviceGateStatus] = useState<CustomerServiceGateStatus>("INITIAL");
 
   const showFlexiblePickup =
     serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
@@ -337,8 +339,6 @@ export function useNgojekRide() {
             distanceKm?: number;
             rideFee?: number;
             feeDescription?: string;
-            areaAvailable?: boolean;
-            areaMessage?: string;
             tooClose?: boolean;
             tooFar?: boolean;
           };
@@ -351,10 +351,13 @@ export function useNgojekRide() {
 
           lastServerQuoteKeyRef.current = quoteKey;
           setDistanceKm(Number(json.distanceKm ?? km));
-          if (json.tooClose || json.tooFar || json.rideFee === 0) {
+          if (json.tooClose || json.tooFar) {
             setRideFee(0);
           } else {
-            setRideFee(Number(json.rideFee ?? local.rideFee));
+            const serverFee = Number(json.rideFee);
+            setRideFee(
+              Number.isFinite(serverFee) && serverFee > 0 ? serverFee : local.rideFee
+            );
           }
           setFeeDescription(json.feeDescription ?? local.feeDescription);
         } catch {
@@ -664,6 +667,43 @@ export function useNgojekRide() {
     [pickupAddress, destAddress, serviceType]
   );
 
+  const refreshPickupCoordsForSubmit = useCallback(async (): Promise<
+    { ok: true; lat: number; lng: number } | { ok: false }
+  > => {
+    const geo = assertCustomerGeolocationReady();
+    if (!geo.ok) return { ok: false };
+
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = roundCoordForQuote(pos.coords.latitude);
+          const lng = roundCoordForQuote(pos.coords.longitude);
+          void (async () => {
+            const location = await safeGetAddressFromCoordinates(
+              lat,
+              lng,
+              "Lokasi perangkat saya"
+            );
+            setDeviceLocation(location, pos.coords.accuracy);
+            if (showFlexiblePickup) {
+              applyDeviceLocationToPickup();
+            } else {
+              patchPickupLocation(location);
+            }
+          })();
+          resolve({ ok: true, lat, lng });
+        },
+        () => resolve({ ok: false }),
+        { enableHighAccuracy: true, timeout: 8_000, maximumAge: 0 }
+      );
+    });
+  }, [
+    showFlexiblePickup,
+    setDeviceLocation,
+    applyDeviceLocationToPickup,
+    patchPickupLocation,
+  ]);
+
   const bookRide = useCallback(async () => {
     const validation = validateTransitBooking({
       userId,
@@ -861,8 +901,10 @@ export function useNgojekRide() {
     applyDestinationHit,
     handleDestMapChange,
     refreshPickupGps,
+    refreshPickupCoordsForSubmit,
     handleDestinationSearchSelect,
     showFlexiblePickup,
+    serviceGateStatus,
     bookRide,
     onQrisPaid,
     paymentBypass: isPaymentBypassEnabled(),

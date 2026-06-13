@@ -11,23 +11,25 @@ function formatErrorDetail(err: unknown): string {
   return "";
 }
 
-/** Toast + alert pop-up — terbaca langsung di HP fisik saat debugging. */
+/** Toast ringan — tanpa alert pop-up yang memblokir layar di HP. */
+export function notifyCustomerOrderToast(
+  message: string,
+  variant: "error" | "warning" | "info" = "error"
+): void {
+  if (variant === "warning") toast.warning(message);
+  else if (variant === "info") toast.message(message);
+  else toast.error(message);
+}
+
+/** Toast + log — untuk error submit; tidak memunculkan window.alert. */
 export function notifyCustomerOrderError(message: string, err?: unknown): void {
   const detail = formatErrorDetail(err);
-  const full = detail ? `${message}\n\nDetail: ${detail}` : message;
-
-  toast.error(message);
-  if (typeof window !== "undefined") {
-    window.alert(`⚠️ ${full}`);
-  }
-  console.error("[customer-order]", message, err);
+  notifyCustomerOrderToast(message, "error");
+  console.error("[customer-order]", message, detail || err);
 }
 
 export function notifyCustomerOrderInfo(message: string): void {
-  toast.message(message);
-  if (typeof window !== "undefined") {
-    window.alert(message);
-  }
+  notifyCustomerOrderToast(message, "info");
 }
 
 export type GeolocationGuardResult =
@@ -70,7 +72,7 @@ export function notifyFormValidationErrors(
 ): void {
   const keys = Array.isArray(errors) ? errors : Object.keys(errors);
   const message = `Form belum lengkap! Kolom bermasalah: ${keys.join(", ")}`;
-  notifyCustomerOrderError(message);
+  notifyCustomerOrderToast(message, "warning");
   console.log("Detail Error Form:", errors);
 }
 
