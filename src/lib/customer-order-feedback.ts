@@ -58,6 +58,22 @@ export function notifyCustomerOrderInfo(message: string): void {
   notifyCustomerOrderToast(message, "info");
 }
 
+/** Pesan blokir ketersediaan driver — disembunyikan dari UI saat testing HP fisik. */
+export function isDriverAvailabilityBlockMessage(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("driver belum") ||
+    m.includes("belum siap di wilayah") ||
+    m.includes("layanan tidak tersedia") ||
+    m.includes("jabodetabek") ||
+    m.includes("tidak tersedia di wilayah")
+  );
+}
+
+export function logCustomerOrderDebug(label: string, data: unknown): void {
+  console.log(`[DEBUG CUSTOMER ORDER] ${label}:`, data);
+}
+
 export type GeolocationGuardResult =
   | { ok: true }
   | { ok: false; message: string };

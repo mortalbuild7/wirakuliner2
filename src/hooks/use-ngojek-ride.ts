@@ -34,6 +34,8 @@ import type { PaymentMethodChoice } from "@/components/wallet/payment-method-pic
 import { createClient } from "@/lib/supabase/client";
 import {
   assertCustomerGeolocationReady,
+  isDriverAvailabilityBlockMessage,
+  logCustomerOrderDebug,
   notifyCustomerOrderError,
 } from "@/lib/customer-order-feedback";
 import {
@@ -763,6 +765,10 @@ export function useNgojekRide() {
 
       if (!res.ok) {
         const msg = json.error ?? `Gagal memesan ${serviceLabel}`;
+        logCustomerOrderDebug("place-ride response", { status: res.status, body: json });
+        if (isDriverAvailabilityBlockMessage(msg)) {
+          return;
+        }
         setPlaceError(msg);
         notifyCustomerOrderError(msg);
         return;

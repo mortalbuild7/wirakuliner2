@@ -15,6 +15,7 @@ import { OrderConfirmation } from "@/components/customer/OrderConfirmation";
 import { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import { cn } from "@/lib/utils";
 import { CUSTOMER_GPS_INITIALIZING_MSG } from "@/lib/pickup-coords";
+import { isDriverAvailabilityBlockMessage } from "@/lib/customer-order-feedback";
 import { LocationSearchBar } from "@/components/maps/LocationSearchBar";
 import { PickupMapContainer } from "@/components/maps/PickupMapContainer";
 import {
@@ -372,7 +373,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
         </Alert>
       )}
 
-      {ride.placeError && (
+      {ride.placeError && !isDriverAvailabilityBlockMessage(ride.placeError) && (
         <Alert variant="destructive" className="text-sm">
           {ride.placeError}
         </Alert>

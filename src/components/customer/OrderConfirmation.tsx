@@ -1,14 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Bike, Car, Loader2, MapPinOff, Package } from "lucide-react";
-import { toast } from "sonner";
+import { Bike, Car, Loader2, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EMPTY_DRIVER_ZONE_MESSAGE } from "@/lib/driver-match-constants";
 import { fetchCheckDriverAvailability } from "@/lib/check-driver-client";
 import type { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import {
   assertCustomerGeolocationReady,
+  logCustomerOrderDebug,
   notifyCustomerOrderToast,
   notifyFormValidationErrors,
 } from "@/lib/customer-order-feedback";
@@ -20,61 +19,11 @@ import {
 } from "@/lib/pickup-coords";
 import { cn } from "@/lib/utils";
 
-type OrderUiState = "idle" | "checking" | "EMPTY_STATE" | "placing";
+type OrderUiState = "idle" | "placing";
 
 type OrderConfirmationProps = {
   ride: ReturnType<typeof useNgojekRide>;
 };
-
-function EmptyDriverModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/55 p-4 sm:items-center"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="empty-driver-title"
-      onClick={onClose}
-    >
-      <div
-        className={cn(
-          "w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-6 shadow-xl",
-          "transition-all duration-200 ease-out"
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex flex-col items-center text-center">
-          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-800">
-            <MapPinOff className="h-7 w-7" />
-          </span>
-          <h2
-            id="empty-driver-title"
-            className="text-lg font-bold text-slate-900"
-          >
-            Driver belum tersedia
-          </h2>
-          <p className="mt-3 text-sm font-medium leading-relaxed text-slate-600">
-            {EMPTY_DRIVER_ZONE_MESSAGE}
-          </p>
-          <Button
-            type="button"
-            className="mt-6 w-full rounded-2xl bg-emerald-600 font-bold text-white hover:bg-emerald-700"
-            onClick={onClose}
-          >
-            Mengerti
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function collectSubmitBlockers(
   ride: ReturnType<typeof useNgojekRide>,
@@ -83,7 +32,7 @@ function collectSubmitBlockers(
   const blockers: string[] = [];
 
   if (ride.placing) blockers.push("pesanan sedang diproses");
-  if (uiState === "checking") blockers.push("sedang memeriksa driver");
+  if (uiState === "placing") blockers.push("sedang memproses pesanan");
   if (!ride.destAddress.trim()) blockers.push("alamat tujuan");
   if (ride.rideFee <= 0) blockers.push("tarif ride (belum dihitung)");
   if (!ride.userId) blockers.push("login customer");
@@ -92,8 +41,8 @@ function collectSubmitBlockers(
 }
 
 /**
- * Pemesanan customer — cek driver hanya saat tombol Pesan diklik.
- * Validasi radius/jarak sepenuhnya dipercayakan ke API backend.
+ * Pemesanan customer — cek driver hanya untuk log debug.
+ * Selama testing HP fisik: selalu lanjut ke pembuatan order (bypass UI blokir).
  */
 export function OrderConfirmation({ ride }: OrderConfirmationProps) {
   const [uiState, setUiState] = useState<OrderUiState>("idle");
@@ -116,11 +65,7 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
 
   const submitBlockers = collectSubmitBlockers(ride, uiState);
   const canSubmit = submitBlockers.length === 0;
-  const busy = ride.placing || uiState === "checking" || uiState === "placing";
-
-  const closeEmptyState = useCallback(() => {
-    setUiState("idle");
-  }, []);
+  const busy = ride.placing || uiState === "placing";
 
   const handleOrderNow = useCallback(async () => {
     if (busy) {
@@ -167,42 +112,33 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
           quotedFare: ride.rideFee,
         };
 
-        console.log("[check-driver] request payload", checkPayload);
-
-        setUiState("checking");
-        const result = await fetchCheckDriverAvailability(checkPayload);
-
-        console.log("[check-driver] api response", result);
-
-        if (!result.success) {
-          window.alert(`Debug Frontend: ${JSON.stringify(result)}`);
-          return;
-        }
-
-        if (!result.available) {
-          window.alert(`Debug Frontend: ${JSON.stringify(result)}`);
-          if (result.error_code === "INVALID_COORDINATES") {
-            notifyCustomerOrderToast(CUSTOMER_GPS_SYNC_MSG, "warning");
-            return;
-          }
-          toast.warning(EMPTY_DRIVER_ZONE_MESSAGE);
-          setUiState("EMPTY_STATE");
-          return;
-        }
+        void fetchCheckDriverAvailability(checkPayload)
+          .then((result) => {
+            logCustomerOrderDebug("check-driver response", result);
+            const isAvailable = true;
+            logCustomerOrderDebug("forced availability bypass", {
+              isAvailable,
+              serverAvailable:
+                result.success && "available" in result ? result.available : null,
+            });
+          })
+          .catch((error) => {
+            logCustomerOrderDebug("check-driver error", error);
+          });
       }
 
       setUiState("placing");
       try {
         await ride.bookRide();
       } catch (error) {
-        notifyCustomerOrderToast("Gagal membuat pesanan. Coba lagi.", "error");
+        logCustomerOrderDebug("book-ride error", error);
         console.error("[book-ride]", error);
       }
     } catch (error) {
-      notifyCustomerOrderToast("Terjadi kesalahan. Coba lagi.", "error");
+      logCustomerOrderDebug("order-submit error", error);
       console.error("[order-submit]", error);
     } finally {
-      setUiState((current) => (current === "EMPTY_STATE" ? current : "idle"));
+      setUiState("idle");
     }
   }, [busy, isTransitRide, ride, uiState]);
 
@@ -221,7 +157,7 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
         {busy ? (
           <>
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            {uiState === "checking" ? "Memeriksa driver..." : "Memesan..."}
+            Memesan...
           </>
         ) : (
           <>
@@ -236,11 +172,6 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
           Ketuk tombol untuk melihat syarat yang belum terpenuhi
         </p>
       )}
-
-      <EmptyDriverModal
-        open={uiState === "EMPTY_STATE"}
-        onClose={closeEmptyState}
-      />
     </>
   );
 }
