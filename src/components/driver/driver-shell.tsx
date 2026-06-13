@@ -5,12 +5,14 @@ import { Bike } from "lucide-react";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { DriverHeaderControls } from "@/components/driver/driver-header-controls";
 import { HelloWelcome } from "@/components/shared/HelloWelcome";
-import { DriverApkBottomBar, useDriverApkWebView } from "@/components/driver/driver-apk-bottom-bar";
+import { DriverApkBottomBar, useDriverApkWebView, useNativeDriverToolbar } from "@/components/driver/driver-apk-bottom-bar";
 import { cn } from "@/lib/utils";
 
 export function DriverShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isApk = useDriverApkWebView();
+  const isNativeToolbar = useNativeDriverToolbar();
+  const apkBottomPad = isApk && !isNativeToolbar;
   const isMinimal =
     pathname.startsWith("/driver/setup") || pathname.startsWith("/driver/app-entry");
   const isCockpit = pathname === "/driver" || pathname === "/driver/";
@@ -26,7 +28,7 @@ export function DriverShell({ children }: { children: React.ReactNode }) {
         <div
           className={cn(
             "mx-auto flex w-full max-w-mobile min-h-0 flex-1 flex-col",
-            isApk && "pb-[calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px))]"
+            apkBottomPad && "pb-[calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px))]"
           )}
         >
           {children}
@@ -53,7 +55,7 @@ export function DriverShell({ children }: { children: React.ReactNode }) {
           {!isApk && <DriverHeaderControls />}
         </div>
       </header>
-      <div className={cn("safe-pb-nav mx-auto max-w-mobile", isApk && "pb-[calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px))]")}>
+      <div className={cn("safe-pb-nav mx-auto max-w-mobile", apkBottomPad && "pb-[calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px))]")}>
         {children}
       </div>
       <DriverApkBottomBar />

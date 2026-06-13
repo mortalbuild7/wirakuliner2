@@ -11,6 +11,9 @@ import {
 } from "@/lib/customer-driver-match";
 import {
   CUSTOMER_SESSION_EXPIRED_MSG,
+  DEV_MOCK_CUSTOMER_ID,
+  formatServerCrashMessage,
+  toDriverAvailabilityResponse,
   type DriverAvailabilityErrorCode,
 } from "@/lib/driver-availability-types";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
@@ -26,6 +29,13 @@ export {
   EMPTY_DRIVER_ZONE_MESSAGE,
   type DriverAvailabilityResult,
 };
+
+function allowDevMockCustomerSession(): boolean {
+  return (
+    process.env.NODE_ENV === "development" ||
+    process.env.NEXT_PUBLIC_WIRA_DEV_MOCK_AUTH === "true"
+  );
+}
 
 function emptyDebugInfo(serviceType: ServiceType): DriverAvailabilityResult["debug_info"] {
   return {
@@ -56,7 +66,7 @@ function safeErrorResult(
     Number.isFinite(customerLng) && !isNaN(customerLng) ? customerLng : 0,
   ];
 
-  return {
+  return toDriverAvailabilityResponse({
     available: false,
     error_code: errorCode,
     message: detail,
@@ -68,7 +78,7 @@ function safeErrorResult(
       effective_coords: coords,
       server_error_detail: detail,
     },
-  };
+  });
 }
 
 async function assertCustomerSession(): Promise<
@@ -84,6 +94,10 @@ async function assertCustomerSession(): Promise<
     if (error) {
       const detail = extractServerErrorMessage(error);
       console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
+      if (allowDevMockCustomerSession()) {
+        console.warn("[driver-match] auth error — pakai mock customer id (dev)");
+        return { ok: true, userId: DEV_MOCK_CUSTOMER_ID };
+      }
       return {
         ok: false,
         message: `[Auth] ${detail}`,
@@ -91,6 +105,10 @@ async function assertCustomerSession(): Promise<
     }
 
     if (!user?.id) {
+      if (allowDevMockCustomerSession()) {
+        console.warn("[driver-match] session kosong — pakai mock customer id (dev)");
+        return { ok: true, userId: DEV_MOCK_CUSTOMER_ID };
+      }
       return {
         ok: false,
         message: CUSTOMER_SESSION_EXPIRED_MSG,
@@ -100,6 +118,10 @@ async function assertCustomerSession(): Promise<
     return { ok: true, userId: user.id };
   } catch (error) {
     console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
+    if (allowDevMockCustomerSession()) {
+      console.warn("[driver-match] assertCustomerSession crash — mock customer id (dev)");
+      return { ok: true, userId: DEV_MOCK_CUSTOMER_ID };
+    }
     return {
       ok: false,
       message: extractServerErrorMessage(error),
@@ -136,7 +158,8 @@ async function checkDriverMatchRateLimit(): Promise<{
 }
 
 /**
- * Cek ketersediaan driver dalam radius 3 km — selalu JSON, pesan error asli ke UI.
+ * Cek ketersediaan driver dalam radius 3 km — selalu JSON, tidak throw ke client.
+ * `error_message` berisi detail transparan untuk window.alert di HP.
  */
 export async function checkDriverAvailability(
   lat: unknown,
@@ -180,7 +203,7 @@ export async function checkDriverAvailability(
         Number.isFinite(customerLat) && !isNaN(customerLat) ? customerLat : 0,
         Number.isFinite(customerLng) && !isNaN(customerLng) ? customerLng : 0,
       ];
-      return {
+      return toDriverAvailabilityResponse({
         available: true,
         error_code: "NON_TRANSIT_SERVICE",
         effective_lat: coords[0],
@@ -190,7 +213,7 @@ export async function checkDriverAvailability(
           customer_coords: coords,
           effective_coords: coords,
         },
-      };
+      });
     }
 
     let admin;
@@ -201,10 +224,22 @@ export async function checkDriverAvailability(
       return safeErrorResult(serviceType, lat, lng, error, "RPC_ERROR");
     }
 
-    return await evaluateDriverProximityAvailability(admin, lat, lng, serviceType);
+    const result = await evaluateDriverProximityAvailability(
+      admin,
+      lat,
+      lng,
+      serviceType
+    );
+    return toDriverAvailabilityResponse(result);
   } catch (error) {
     console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
-    return safeErrorResult(serviceType, lat, lng, error, "RPC_ERROR");
+    return safeErrorResult(
+      serviceType,
+      lat,
+      lng,
+      formatServerCrashMessage(error),
+      "RPC_ERROR"
+    );
   }
 }
 

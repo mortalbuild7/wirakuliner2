@@ -1,4 +1,5 @@
 import type { ServiceType } from "@/lib/service-types";
+import { extractServerErrorMessage } from "@/lib/server-error-message";
 
 /** Kode diagnosis ketersediaan driver — untuk UI & log. */
 export type DriverAvailabilityErrorCode =
@@ -27,12 +28,42 @@ export type DriverAvailabilityDebugInfo = {
 
 export type DriverAvailabilityResult = {
   available: boolean;
+  success?: boolean;
   error_code: DriverAvailabilityErrorCode;
   message?: string;
+  /** Pesan transparan untuk alert debug di HP Customer. */
+  error_message?: string;
   effective_lat: number;
   effective_lng: number;
   debug_info: DriverAvailabilityDebugInfo;
 };
+
+/** UUID tiruan customer — hanya saat dev / mock auth diaktifkan. */
+export const DEV_MOCK_CUSTOMER_ID = "00000000-0000-4000-8000-000000000001";
+
+export function formatServerCrashMessage(error: unknown): string {
+  const detail = extractServerErrorMessage(error);
+  return `Server Crash: ${detail}`;
+}
+
+export function toDriverAvailabilityResponse(
+  result: DriverAvailabilityResult
+): DriverAvailabilityResult {
+  const detail =
+    result.debug_info?.server_error_detail?.trim() ||
+    result.message?.trim() ||
+    result.error_code;
+
+  const isCrash =
+    !result.available &&
+    (result.error_code === "RPC_ERROR" || result.error_code === "SESSION_EXPIRED");
+
+  return {
+    ...result,
+    success: result.available,
+    error_message: isCrash ? `Server Crash: ${detail}` : undefined,
+  };
+}
 
 export function isTransitProximityService(
   serviceType: ServiceType

@@ -114,8 +114,8 @@ async function countIdleDriversViaPostgisRpc(
 }
 
 /**
- * Fallback Haversine lokal — driver ONLINE (`idle`) dengan koordinat valid saja.
- * DB kolom: `current_lat` / `current_lng` (bukan latitude/longitude).
+ * Fallback Haversine — query tabel `drivers` tanpa RPC PostGIS.
+ * `broad=true` mengabaikan filter kategori (cadangan jika RPC/SQL enum bermasalah).
  */
 async function countIdleDriversViaHaversineFallback(
   admin: SupabaseClient,
@@ -125,25 +125,31 @@ async function countIdleDriversViaHaversineFallback(
     serviceType?: ServiceType;
     packageVolumeCm3?: number;
     radiusKm?: number;
+    broad?: boolean;
   }
 ): Promise<number> {
   const radiusKm = opts?.radiusKm ?? CUSTOMER_DRIVER_RADIUS_KM;
-  const category = resolveDriverCategoryForService(
-    opts?.serviceType ?? "NGOJEK",
-    opts?.packageVolumeCm3 ?? 0
-  );
 
-  const { data, error } = await admin
+  let query = admin
     .from("drivers")
-    .select("id, current_lat, current_lng, gps_trust")
+    .select("id, current_lat, current_lng, gps_trust, service_category")
     .eq("status", "idle")
-    .eq("service_category", category)
     .not("current_lat", "is", null)
     .not("current_lng", "is", null);
 
+  if (!opts?.broad) {
+    const category = resolveDriverCategoryForService(
+      opts?.serviceType ?? "NGOJEK",
+      opts?.packageVolumeCm3 ?? 0
+    );
+    query = query.eq("service_category", category);
+  }
+
+  const { data, error } = await query;
+
   if (error) {
     throw new Error(
-      `[Haversine fallback] ${extractServerErrorMessage(error)}`
+      `[Haversine fallback${opts?.broad ? " broad" : ""}] ${extractServerErrorMessage(error)}`
     );
   }
 
@@ -195,12 +201,37 @@ export async function countNearbyIdleDrivers(
       matchEngine: "haversine",
       rpcFallbackReason,
     };
-  } catch (fallbackError) {
-    const fallbackMsg = extractServerErrorMessage(fallbackError);
-    const combined = rpcFallbackReason
-      ? `RPC gagal: ${rpcFallbackReason} | Fallback gagal: ${fallbackMsg}`
-      : fallbackMsg;
-    throw new Error(combined);
+  } catch (categoryFallbackError) {
+    const categoryMsg = extractServerErrorMessage(categoryFallbackError);
+    console.warn(
+      "[driver-match] Haversine kategori gagal — mencoba broad table fallback:",
+      categoryMsg
+    );
+
+    try {
+      const count = await countIdleDriversViaHaversineFallback(admin, lat, lng, {
+        ...opts,
+        broad: true,
+      });
+      const combinedReason = rpcFallbackReason
+        ? `RPC: ${rpcFallbackReason} | Kategori: ${categoryMsg}`
+        : categoryMsg;
+      return {
+        count,
+        matchEngine: "haversine",
+        rpcFallbackReason: combinedReason,
+      };
+    } catch (broadFallbackError) {
+      const broadMsg = extractServerErrorMessage(broadFallbackError);
+      const combined = [
+        rpcFallbackReason ? `RPC gagal: ${rpcFallbackReason}` : null,
+        `Kategori gagal: ${categoryMsg}`,
+        `Broad gagal: ${broadMsg}`,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      throw new Error(combined);
+    }
   }
 }
 

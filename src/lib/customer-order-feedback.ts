@@ -11,6 +11,32 @@ function formatErrorDetail(err: unknown): string {
   return "";
 }
 
+/** Ekstrak pesan error dari throw client (server action / timeout / jaringan). */
+export function extractClientErrorMessage(error: unknown): string {
+  if (error == null) return "Unknown error";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message || "Unknown error";
+  if (typeof error === "object" && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+/** Toast + window.alert — transparansi error server di HP fisik. */
+export function notifyCustomerServerCrash(message: string, err?: unknown): void {
+  const detail = extractClientErrorMessage(err);
+  const full = detail && detail !== message ? `${message}\n\nDetail: ${detail}` : message;
+  toast.error(message);
+  if (typeof window !== "undefined") {
+    window.alert(`⚠️ ${full}`);
+  }
+  console.error("[customer-server-crash]", full);
+}
+
 /** Toast ringan — tanpa alert pop-up yang memblokir layar di HP. */
 export function notifyCustomerOrderToast(
   message: string,

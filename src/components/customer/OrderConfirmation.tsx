@@ -11,7 +11,9 @@ import {
 import type { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import {
   assertCustomerGeolocationReady,
+  extractClientErrorMessage,
   notifyCustomerOrderToast,
+  notifyCustomerServerCrash,
   notifyFormValidationErrors,
   withCustomerOrderTimeout,
 } from "@/lib/customer-order-feedback";
@@ -161,8 +163,9 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
         }
 
         setUiState("checking");
+        let result;
         try {
-          const result = await withCustomerOrderTimeout(
+          result = await withCustomerOrderTimeout(
             checkDriverAvailability(
               pickupCoords.lat,
               pickupCoords.lng,
@@ -171,35 +174,36 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
             30_000,
             "Memeriksa ketersediaan driver"
           );
+        } catch (error) {
+          notifyCustomerServerCrash(
+            `Server Crash: ${extractClientErrorMessage(error)}`,
+            error
+          );
+          return;
+        }
 
-          if (!result.available) {
-            if (process.env.NODE_ENV === "development") {
-              console.info("[driver-availability]", result);
-            }
-            if (result.error_code === "INVALID_COORDINATES") {
-              notifyCustomerOrderToast(CUSTOMER_GPS_SYNC_MSG, "warning");
-              return;
-            }
-            if (
-              result.error_code === "RPC_ERROR" ||
-              result.error_code === "SESSION_EXPIRED"
-            ) {
-              notifyCustomerOrderToast(
-                result.message ?? "Server error",
-                "error"
-              );
-              return;
-            }
-            toast.warning(EMPTY_DRIVER_ZONE_MESSAGE);
-            setUiState("EMPTY_STATE");
+        if (!result.available) {
+          if (process.env.NODE_ENV === "development") {
+            console.info("[driver-availability]", result);
+          }
+          if (result.error_code === "INVALID_COORDINATES") {
+            notifyCustomerOrderToast(CUSTOMER_GPS_SYNC_MSG, "warning");
             return;
           }
-        } catch (error) {
-          notifyCustomerOrderToast(
-            "Gagal memeriksa ketersediaan driver. Coba lagi.",
-            "error"
-          );
-          console.error("[driver-availability]", error);
+          if (
+            result.error_code === "RPC_ERROR" ||
+            result.error_code === "SESSION_EXPIRED"
+          ) {
+            notifyCustomerServerCrash(
+              result.error_message ??
+                result.message ??
+                `Server Crash: ${result.error_code}`,
+              result.debug_info?.server_error_detail ?? result.message
+            );
+            return;
+          }
+          toast.warning(EMPTY_DRIVER_ZONE_MESSAGE);
+          setUiState("EMPTY_STATE");
           return;
         }
       }

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as NavigationBar from "expo-navigation-bar";
-import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import type { WebViewMessageEvent, WebViewNavigation } from "react-native-webview";
 import { DriverLoginScreen } from "./components/DriverLoginScreen";
@@ -65,8 +65,9 @@ function webErrorGuardScript() {
   return `
     (function() {
       window.__WIRA_APK_WEBVIEW__ = true;
+      window.__WIRA_NATIVE_TOOLBAR__ = true;
       try {
-        document.documentElement.classList.add('wira-apk-webview');
+        document.documentElement.classList.add('wira-apk-webview', 'wira-native-toolbar-apk');
         document.documentElement.style.backgroundColor = '#ffffff';
         if (document.body) document.body.style.backgroundColor = '#ffffff';
       } catch (e) {}
@@ -150,6 +151,9 @@ function DriverWebShell({
   beforeLoadScript,
   webLoading,
   webError,
+  driverState,
+  onToggle,
+  onLogout,
   onWebLoadStart,
   onWebLoadEnd,
   onNavChange,
@@ -166,6 +170,9 @@ function DriverWebShell({
   beforeLoadScript: string;
   webLoading: boolean;
   webError: string | null;
+  driverState: DriverState;
+  onToggle: () => void;
+  onLogout: () => void;
   onWebLoadStart: () => void;
   onWebLoadEnd: () => void;
   onNavChange: (nav: WebViewNavigation) => void;
@@ -175,14 +182,14 @@ function DriverWebShell({
   onContentProcessTerminate: () => void;
   reloadWebView: (resetRetries?: boolean) => void;
 }) {
-  const insets = useSafeAreaInsets();
-
   useEffect(() => {
     if (Platform.OS !== "android") return;
     void NavigationBar.setBackgroundColorAsync("#ffffff");
     void NavigationBar.setButtonStyleAsync("dark");
     void NavigationBar.setVisibilityAsync("visible");
   }, []);
+
+  const toggleDisabled = driverState.delivering && driverState.online;
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
@@ -258,13 +265,44 @@ function DriverWebShell({
           </View>
         )}
         </View>
-        <View
-          style={[
-            styles.bottomSafeFill,
-            { minHeight: Math.max(insets.bottom, Platform.OS === "android" ? 12 : 0) },
-          ]}
-        />
       </View>
+      <SafeAreaView style={styles.toolbarWrap} edges={["bottom"]}>
+        <View style={styles.toolbar}>
+          <Pressable
+            style={[
+              styles.toggleBtn,
+              driverState.online ? styles.toggleOn : styles.toggleOff,
+              toggleDisabled && styles.toggleDisabled,
+            ]}
+            onPress={onToggle}
+            disabled={toggleDisabled}
+          >
+            <Text
+              style={[
+                styles.toggleText,
+                driverState.online ? styles.toggleTextOn : styles.toggleTextOff,
+              ]}
+            >
+              {driverState.online ? "● ONLINE" : "○ OFFLINE"}
+            </Text>
+            <Text
+              style={[
+                styles.toggleHint,
+                driverState.online ? styles.toggleHintOn : styles.toggleHintOff,
+              ]}
+            >
+              {driverState.delivering
+                ? "Mengantar"
+                : driverState.online
+                  ? "Siap terima order"
+                  : "Tidak menerima order"}
+            </Text>
+          </Pressable>
+          <Pressable style={styles.logoutBtn} onPress={onLogout}>
+            <Text style={styles.logoutText}>Keluar</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
     </SafeAreaView>
   );
 }
@@ -681,6 +719,9 @@ export default function App() {
         beforeLoadScript={beforeLoadScript}
         webLoading={webLoading}
         webError={webError}
+        driverState={driverState}
+        onToggle={() => void handleToggle()}
+        onLogout={() => void handleLogout()}
         onWebLoadStart={() => {
           setWebError(null);
           setWebLoading(true);
@@ -720,9 +761,71 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#ffffff",
   },
-  bottomSafeFill: {
-    width: "100%",
+  toolbarWrap: {
     backgroundColor: "#ffffff",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "ios" ? 6 : 12,
+  },
+  toggleBtn: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  toggleOn: {
+    borderColor: "#a7f3d0",
+    backgroundColor: "#ecfdf5",
+  },
+  toggleOff: {
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  toggleDisabled: {
+    opacity: 0.72,
+  },
+  toggleText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  toggleTextOn: {
+    color: "#065f46",
+  },
+  toggleTextOff: {
+    color: "#334155",
+  },
+  toggleHint: {
+    fontSize: 10,
+    marginTop: 2,
+    fontWeight: "500",
+  },
+  toggleHintOn: {
+    color: "#047857",
+  },
+  toggleHintOff: {
+    color: "#64748b",
+  },
+  logoutBtn: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  logoutText: {
+    color: "#dc2626",
+    fontSize: 12,
+    fontWeight: "700",
   },
   web: {
     flex: 1,

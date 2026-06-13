@@ -15,10 +15,32 @@ function detectApkWebView(): boolean {
   return Boolean(w.__WIRA_APK_WEBVIEW__ || w.ReactNativeWebView);
 }
 
+function detectNativeToolbar(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean((window as Window & { __WIRA_NATIVE_TOOLBAR__?: boolean }).__WIRA_NATIVE_TOOLBAR__);
+}
+
 function postNativeMessage(payload: Record<string, unknown>) {
   const rn = (window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } })
     .ReactNativeWebView;
   rn?.postMessage(JSON.stringify(payload));
+}
+
+export function useNativeDriverToolbar(): boolean {
+  const [native, setNative] = useState(detectNativeToolbar);
+
+  useEffect(() => {
+    setNative(detectNativeToolbar());
+    const timer = window.setInterval(() => {
+      if (detectNativeToolbar()) {
+        setNative(true);
+        window.clearInterval(timer);
+      }
+    }, 120);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return native;
 }
 
 export function useDriverApkWebView(): boolean {
@@ -65,9 +87,10 @@ function ApkToolbarShell({
   );
 }
 
-/** Toolbar bawah putih di WebView APK — menggantikan native bar gelap di shell Expo. */
+/** Toolbar bawah putih di WebView APK — fallback jika shell native belum menyediakan bar. */
 export function DriverApkBottomBar() {
   const isApk = useDriverApkWebView();
+  const isNativeToolbar = useNativeDriverToolbar();
   const { driver, loading: profileLoading, refresh } = useDriverProfile();
   const { loading, isOnline, isDelivering, setOnline, logout } = useDriverStatusActions(
     driver,
@@ -84,7 +107,7 @@ export function DriverApkBottomBar() {
     });
   }, [isApk, isOnline, isDelivering, driver]);
 
-  if (!isApk) return null;
+  if (!isApk || isNativeToolbar) return null;
 
   if (profileLoading) {
     return (
