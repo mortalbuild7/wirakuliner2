@@ -56,7 +56,10 @@ export async function checkDriverAvailability(
   }
 
   const admin = createAdminClient();
-  return checkDriverAvailabilityServer(admin, safeLat, safeLng, serviceType);
+  const count = await countNearbyIdleDrivers(admin, safeLat, safeLng, { serviceType });
+  console.log("Koordinat Customer:", safeLat, safeLng);
+  console.log("Jumlah Driver Terdekat < 3KM yang Online:", count);
+  return count > 0;
 }
 
 /** Opsional: jumlah driver terdekat (debug / admin preview). */

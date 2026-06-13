@@ -1,52 +1,54 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  resolveDriverCityLabel,
+  type DriverCityDisplayRow,
+} from "@/lib/admin/drivers-list-display";
 import type { Driver } from "@/types/database";
+import type { IndonesiaProvince } from "@/app/utils/indonesiaProvinces";
 import { ACCOUNT_STATUS_LABEL } from "@/lib/account-status";
-import { Bike, Pencil, Plus, ShieldCheck, UserX } from "lucide-react";
+import { Bike, Pencil, Plus, Search, ShieldCheck, UserX } from "lucide-react";
+
+type AdminDriverRow = Driver &
+  DriverCityDisplayRow & {
+    profiles: { email: string | null; account_status?: string | null; phone?: string | null } | null;
+  };
 
 type ServiceCity = { id: string; name: string };
 
-type DriverRow = Driver & {
-  profiles: { email: string | null; account_status?: string | null } | null;
-  service_cities?: { name: string } | { name: string }[] | null;
-};
+type FilterCityOption = { id: number; name: string; province_id: number };
+
+const SELECT_CLASS =
+  "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
 
 type Props = {
-  initialDrivers: DriverRow[];
+  initialDrivers: AdminDriverRow[];
   initialCities: ServiceCity[];
   scopeHint: string;
   adminTier: string;
+  isSuperAdmin?: boolean;
+  isCityAdmin?: boolean;
+  lockedProvinceId?: number | null;
+  lockedCityId?: number | null;
+  lockedCityName?: string | null;
+  provinces?: readonly IndonesiaProvince[];
 };
 
-function cityName(d: DriverRow): string {
-  if (Array.isArray(d.service_cities)) return d.service_cities[0]?.name ?? "—";
-  return d.service_cities?.name ?? "—";
-}
-
-/** Label armada fisik — pemisahan MOTOR_HYBRID / MOBIL_PASSENGER / MOBIL_CARGO. */
 const FLEET_LABEL: Record<string, string> = {
   MOTOR_HYBRID: "Motor Hybrid",
   MOBIL_PASSENGER: "Mobil Penumpang",
   MOBIL_CARGO: "Mobil Cargo",
 };
 
-/** Status legalitas SIM — selaras dengan fungsi SQL driver_sim_status(). */
 type SimStatus = "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "MISSING";
 
-/**
- * Hitung status SIM dari tanggal masa berlaku (aturan masa tenggang 30 hari):
- *   tanpa tanggal      → MISSING        (data lama / belum diunggah)
- *   < hari ini         → EXPIRED        (merah — dilarang beroperasi)
- *   ≤ 30 hari ke depan → EXPIRING_SOON  (kuning — masa tenggang, segera urus)
- *   selain itu         → ACTIVE         (hijau — legalitas aman)
- */
 function simStatus(expiry?: string | null): SimStatus {
   if (!expiry) return "MISSING";
   const exp = new Date(`${expiry}T00:00:00`);
@@ -59,7 +61,6 @@ function simStatus(expiry?: string | null): SimStatus {
   return "ACTIVE";
 }
 
-/** Konfigurasi visual badge per status — Hijau / Kuning / Merah / Abu. */
 const SIM_BADGE: Record<SimStatus, { label: string; className: string }> = {
   ACTIVE: {
     label: "SIM Aktif",
@@ -79,7 +80,6 @@ const SIM_BADGE: Record<SimStatus, { label: string; className: string }> = {
   },
 };
 
-/** Format tanggal SIM ringkas untuk baris tabel (mis. "12 Agu 2027"). */
 function formatSimDate(expiry?: string | null): string | null {
   if (!expiry) return null;
   return new Date(`${expiry}T00:00:00`).toLocaleDateString("id-ID", {
@@ -89,8 +89,7 @@ function formatSimDate(expiry?: string | null): string | null {
   });
 }
 
-/** Badge indikator legalitas SIM — pantauan visual sekilas mata untuk admin. */
-function SimStatusBadge({ d }: { d: DriverRow }) {
+function SimStatusBadge({ d }: { d: AdminDriverRow }) {
   const status = simStatus(d.sim_expiry_date);
   const cfg = SIM_BADGE[status];
   const dateLabel = formatSimDate(d.sim_expiry_date);
@@ -106,7 +105,6 @@ function SimStatusBadge({ d }: { d: DriverRow }) {
       {dateLabel && (
         <span className="text-[10px] text-slate-500">s/d {dateLabel}</span>
       )}
-      {/* Tautan bukti fisik — buka Public URL dokumen di tab baru */}
       {d.sim_document_url && (
         <a
           href={d.sim_document_url}
@@ -121,34 +119,145 @@ function SimStatusBadge({ d }: { d: DriverRow }) {
   );
 }
 
+function buildDriversQueryString(opts: {
+  isSuperAdmin: boolean;
+  search: string;
+  provinceId: string;
+  cityId: string;
+}): string {
+  const params = new URLSearchParams();
+  params.set("region", opts.isSuperAdmin ? "all" : "scoped");
+  if (opts.search) params.set("q", opts.search);
+  if (opts.isSuperAdmin && opts.provinceId) {
+    params.set("provinceId", opts.provinceId);
+  }
+  if (opts.isSuperAdmin && opts.cityId) {
+    params.set("cityId", opts.cityId);
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export function DashboardDriversTable({
   initialDrivers,
   initialCities,
   scopeHint,
   adminTier,
+  isSuperAdmin = false,
+  isCityAdmin = false,
+  lockedProvinceId = null,
+  lockedCityId = null,
+  lockedCityName = null,
+  provinces = [],
 }: Props) {
-  const [drivers, setDrivers] = useState<DriverRow[]>(initialDrivers);
+  const [drivers, setDrivers] = useState<AdminDriverRow[]>(initialDrivers);
   const [cities] = useState(initialCities);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchDebounced, setSearchDebounced] = useState("");
+  const [provinceId, setProvinceId] = useState(
+    isCityAdmin && lockedProvinceId ? String(lockedProvinceId) : ""
+  );
+  const [cityId, setCityId] = useState(
+    isCityAdmin && lockedCityId ? String(lockedCityId) : ""
+  );
+  const [filterCities, setFilterCities] = useState<FilterCityOption[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+
   const [editId, setEditId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", phone: "", plate: "", service_city_id: "" });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    phone: "",
+    plate: "",
+    service_city_id: "",
+  });
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const isFirstSearchEffect = useRef(true);
+
+  const wilayahLocked = isCityAdmin || (!isSuperAdmin && adminTier === "PROVINCE_ADMIN");
+
+  const lockedProvinceLabel = useMemo(() => {
+    if (!lockedProvinceId) return "Wilayah Anda";
+    return (
+      provinces.find((p) => p.id === lockedProvinceId)?.name ??
+      `Provinsi ID ${lockedProvinceId}`
+    );
+  }, [lockedProvinceId, provinces]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearchDebounced(searchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (!isSuperAdmin || !provinceId) {
+      setFilterCities([]);
+      if (!isCityAdmin) setCityId("");
+      return;
+    }
+
+    let cancelled = false;
+    setCitiesLoading(true);
+
+    void fetch(
+      `/api/admin/drivers/filter-cities?provinceId=${encodeURIComponent(provinceId)}`,
+      { credentials: "include" }
+    )
+      .then((res) => res.json())
+      .then((json: { cities?: FilterCityOption[] }) => {
+        if (cancelled) return;
+        setFilterCities(json.cities ?? []);
+        setCitiesLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setCitiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSuperAdmin, provinceId, isCityAdmin]);
+
   const load = useCallback(async () => {
     setListLoading(true);
-    const res = await fetch("/api/admin/drivers", { credentials: "include" });
+    const qs = buildDriversQueryString({
+      isSuperAdmin,
+      search: searchDebounced,
+      provinceId,
+      cityId,
+    });
+
+    const res = await fetch(`/api/admin/drivers${qs}`, { credentials: "include" });
     const json = (await res.json().catch(() => ({}))) as {
-      drivers?: DriverRow[];
+      drivers?: AdminDriverRow[];
       error?: string;
     };
-    if (!res.ok) setError(json.error ?? "Gagal memuat driver");
-    else setDrivers(json.drivers ?? []);
-    setListLoading(false);
-  }, []);
 
-  function openEdit(d: DriverRow) {
+    if (!res.ok) {
+      setError(json.error ?? "Gagal memuat driver");
+    } else {
+      const rows = json.drivers ?? [];
+      console.log("Daftar Driver Terambil:", rows);
+      setDrivers(rows);
+      setError(null);
+    }
+    setListLoading(false);
+  }, [isSuperAdmin, searchDebounced, provinceId, cityId]);
+
+  useEffect(() => {
+    if (isFirstSearchEffect.current) {
+      isFirstSearchEffect.current = false;
+      return;
+    }
+    void load();
+  }, [load]);
+
+  function openEdit(d: AdminDriverRow) {
     setEditId(d.id);
     setEditForm({
       name: d.name,
@@ -185,10 +294,10 @@ export function DashboardDriversTable({
     }
     setSuccess("Data driver diperbarui");
     setEditId(null);
-    load();
+    void load();
   }
 
-  async function toggleSuspend(d: DriverRow) {
+  async function toggleSuspend(d: AdminDriverRow) {
     const suspended = d.profiles?.account_status === "suspended";
     const action = suspended ? "unsuspend" : "suspend";
     if (action === "suspend") {
@@ -202,7 +311,11 @@ export function DashboardDriversTable({
     }
   }
 
-  async function patchDriverAction(id: string, action: "suspend" | "unsuspend", note?: string) {
+  async function patchDriverAction(
+    id: string,
+    action: "suspend" | "unsuspend",
+    note?: string
+  ) {
     setError(null);
     const res = await fetch(`/api/admin/drivers/${id}`, {
       method: "PATCH",
@@ -216,7 +329,7 @@ export function DashboardDriversTable({
       return;
     }
     setSuccess(action === "suspend" ? "Akun driver disuspend" : "Akun driver diaktifkan");
-    load();
+    void load();
   }
 
   async function deleteDriver(id: string, name: string) {
@@ -232,7 +345,7 @@ export function DashboardDriversTable({
       return;
     }
     setSuccess(`Driver ${name} dihapus`);
-    load();
+    void load();
   }
 
   return (
@@ -247,13 +360,81 @@ export function DashboardDriversTable({
             {scopeHint} · Tier {adminTier}
           </p>
         </div>
-        {/* Redirect ke form pendaftaran nasional (armada MOTOR/MOBIL/CARGO) */}
         <Button asChild className="gap-2">
           <Link href="/admin/drivers/new">
             <Plus className="h-4 w-4" />
             Daftarkan Driver Baru
           </Link>
         </Button>
+      </div>
+
+      <div className="mb-4 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="sm:col-span-2 lg:col-span-2">
+          <Label className="text-xs font-medium text-slate-700">Pencarian</Label>
+          <div className="relative mt-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              className="pl-9 text-slate-900"
+              placeholder="Cari NIK atau No. Telepon..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-xs font-medium text-slate-700">Provinsi</Label>
+          <select
+            className={`${SELECT_CLASS} mt-1`}
+            value={provinceId}
+            onChange={(e) => {
+              setProvinceId(e.target.value);
+              setCityId("");
+            }}
+            disabled={wilayahLocked || !isSuperAdmin}
+          >
+            <option value="">
+              {isSuperAdmin ? "— Semua provinsi —" : lockedProvinceLabel}
+            </option>
+            {isSuperAdmin &&
+              provinces.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+          </select>
+        </div>
+
+        <div>
+          <Label className="text-xs font-medium text-slate-700">Kota / Kabupaten</Label>
+          <select
+            className={`${SELECT_CLASS} mt-1`}
+            value={cityId}
+            onChange={(e) => setCityId(e.target.value)}
+            disabled={
+              wilayahLocked ||
+              !isSuperAdmin ||
+              (!provinceId && !isCityAdmin) ||
+              citiesLoading
+            }
+          >
+            <option value="">
+              {isCityAdmin
+                ? lockedCityName ?? `Kota ID ${lockedCityId ?? ""}`
+                : citiesLoading
+                  ? "Memuat kota..."
+                  : provinceId
+                    ? "— Semua kota —"
+                    : "— Pilih provinsi dulu —"}
+            </option>
+            {isSuperAdmin &&
+              filterCities.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+          </select>
+        </div>
       </div>
 
       {error && (
@@ -270,7 +451,7 @@ export function DashboardDriversTable({
       {editId && (
         <Card className="mb-6 border-amber-500/30">
           <CardHeader>
-            <CardTitle className="text-lg">Edit Data Driver</CardTitle>
+            <CardTitle className="text-lg text-slate-900">Edit Data Driver</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={saveEdit} className="grid gap-4 sm:grid-cols-2">
@@ -300,7 +481,7 @@ export function DashboardDriversTable({
               <div>
                 <Label>Kota layanan</Label>
                 <select
-                  className="mt-1 flex h-11 w-full rounded-2xl border border-slate-200/60 bg-slate-50 px-4 text-sm text-slate-800"
+                  className="mt-1 flex h-11 w-full rounded-2xl border border-slate-200/60 bg-slate-50 px-4 text-sm text-slate-900"
                   value={editForm.service_city_id}
                   onChange={(e) =>
                     setEditForm({ ...editForm, service_city_id: e.target.value })
@@ -327,12 +508,12 @@ export function DashboardDriversTable({
         </Card>
       )}
 
-      <div className="wira-table-wrap min-w-[800px]">
+      <div className="wira-table-wrap min-w-[900px]">
         <table>
           <thead>
             <tr>
               <th className="px-4 py-3">Nama</th>
-              <th className="px-4 py-3">Kontak</th>
+              <th className="px-4 py-3">Kontak / NIK</th>
               <th className="px-4 py-3">Armada</th>
               <th className="px-4 py-3">Legalitas SIM</th>
               <th className="px-4 py-3">Kota</th>
@@ -351,44 +532,57 @@ export function DashboardDriversTable({
             ) : drivers.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-slate-600">
-                  Tidak ada driver di wilayah ini.
+                  Tidak ada driver yang cocok dengan filter ini.
                 </td>
               </tr>
             ) : (
               drivers.map((d) => {
-                const acct = d.profiles?.account_status ?? "active";
+                const acct = (d.profiles?.account_status ?? "active").toLowerCase();
                 const suspended = acct === "suspended" || acct === "blocked";
+                const acctLabel =
+                  ACCOUNT_STATUS_LABEL[acct as keyof typeof ACCOUNT_STATUS_LABEL] ??
+                  (acct === "pending" ? "Menunggu" : acct);
+
                 return (
                   <tr key={d.id}>
-                    <td className="px-4 py-3 font-medium text-slate-800">{d.name}</td>
-                    <td className="px-4 py-3 text-slate-800">
+                    <td className="px-4 py-3 font-medium text-slate-900">{d.name}</td>
+                    <td className="px-4 py-3 text-slate-900">
                       {d.phone}
                       <br />
-                      <span className="text-xs text-slate-600">{d.profiles?.email ?? "—"}</span>
+                      <span className="text-xs text-slate-600">
+                        {d.profiles?.email ?? "—"}
+                      </span>
+                      {d.nik && (
+                        <>
+                          <br />
+                          <span className="text-xs text-slate-500">NIK {d.nik}</span>
+                        </>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-800">
+                    <td className="px-4 py-3 text-xs text-slate-900">
                       {FLEET_LABEL[d.service_category ?? ""] ?? "Motor Hybrid"}
                     </td>
                     <td className="px-4 py-3">
                       <SimStatusBadge d={d} />
                     </td>
-                    <td className="px-4 py-3 text-slate-800">{cityName(d)}</td>
-                    <td className="px-4 py-3 capitalize text-slate-800">{d.status}</td>
+                    <td className="px-4 py-3 text-slate-900">
+                      {resolveDriverCityLabel(d)}
+                    </td>
+                    <td className="px-4 py-3 capitalize text-slate-900">{d.status}</td>
                     <td className="px-4 py-3">
                       <span
                         className={
                           suspended ? "font-medium text-red-600" : "text-emerald-600"
                         }
                       >
-                        {ACCOUNT_STATUS_LABEL[acct as keyof typeof ACCOUNT_STATUS_LABEL] ??
-                          acct}
+                        {acctLabel}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <Button size="sm" variant="outline" onClick={() => openEdit(d)}>
                           <Pencil className="mr-1 h-3.5 w-3.5" />
-                          Edit Data
+                          Edit
                         </Button>
                         <Button
                           size="sm"
@@ -396,7 +590,7 @@ export function DashboardDriversTable({
                           onClick={() => toggleSuspend(d)}
                         >
                           <UserX className="mr-1 h-3.5 w-3.5" />
-                          {suspended ? "Aktifkan" : "Suspend Akun"}
+                          {suspended ? "Aktifkan" : "Suspend"}
                         </Button>
                         <Button
                           size="sm"

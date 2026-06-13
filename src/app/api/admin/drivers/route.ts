@@ -1,9 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/admin-server";
 import {
-  applyRegionalEntityScope,
-  serviceCityWithinAdminScope,
-} from "@/lib/admin/regional-scope";
+  fetchAdminDriversList,
+  type AdminDriverListQuery,
+} from "@/lib/admin/drivers-list";
+import { serviceCityWithinAdminScope } from "@/lib/admin/regional-scope";
 import {
   enforceMethod,
   enforceRateLimit,
@@ -25,20 +26,35 @@ export async function GET(req: Request) {
     return secureJsonResponse({ error: auth.error }, { status: auth.status });
   }
 
-  const admin = createAdminClient();
-  let query = admin
-    .from("drivers")
-    .select("*, profiles(email, account_status), service_cities(name)")
-    .order("created_at", { ascending: false });
+  const url = new URL(req.url);
+  const regionParam = url.searchParams.get("region");
+  const regionFilter =
+    regionParam === "scoped" ? "scoped" : regionParam === "all" ? "all" : undefined;
 
-  query = applyRegionalEntityScope(query, auth);
+  const provinceIdRaw = url.searchParams.get("provinceId");
+  const cityIdRaw = url.searchParams.get("cityId");
+  const search = url.searchParams.get("q") ?? undefined;
 
-  const { data, error } = await query;
+  const listQuery: AdminDriverListQuery = {
+    regionFilter,
+    search,
+    provinceId:
+      provinceIdRaw && Number.isInteger(Number(provinceIdRaw))
+        ? Number(provinceIdRaw)
+        : undefined,
+    cityId:
+      cityIdRaw && Number.isInteger(Number(cityIdRaw))
+        ? Number(cityIdRaw)
+        : undefined,
+  };
+
+  const { drivers, error } = await fetchAdminDriversList(auth, listQuery);
+
   if (error) {
-    return secureJsonResponse({ error: error.message }, { status: 500 });
+    return secureJsonResponse({ error }, { status: 500 });
   }
 
-  return secureJsonResponse({ ok: true, drivers: data ?? [] });
+  return secureJsonResponse({ ok: true, drivers });
 }
 
 export async function POST(req: Request) {

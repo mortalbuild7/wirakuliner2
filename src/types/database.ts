@@ -75,6 +75,8 @@ export interface Driver {
   profile_id: string | null;
   name: string;
   phone: string;
+  /** NIK 16 digit — opsional; dipakai filter admin. */
+  nik?: string | null;
   vehicle_plate: string | null;
   photo_url?: string | null;
   /** Legalitas SIM — nomor kartu (digit saja). */
@@ -97,9 +99,13 @@ export interface Driver {
   operational_cluster_id?: string | null;
   service_category?: DriverServiceCategory;
   province_id?: number | null;
+  /** Cache nama provinsi operasional — laporan & audit wilayah. */
+  province_name?: string | null;
   /** Provinsi pendaftaran — intra-provinsi & komisi City Admin lintas batas. */
   registration_province_id?: number | null;
   city_id?: number | null;
+  /** Cache nama kota/kabupaten operasional. */
+  city_name?: string | null;
   created_at?: string;
   rating_avg?: number;
   rating_count?: number;

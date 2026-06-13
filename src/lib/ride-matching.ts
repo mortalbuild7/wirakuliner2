@@ -1,8 +1,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reverseGeocodeCoords } from "@/lib/geocode-server";
-import { haversineKm } from "@/lib/geo-config";
 import {
+  countNearbyIdleDrivers,
+  CUSTOMER_DRIVER_RADIUS_KM,
   EMPTY_DRIVER_ZONE_MESSAGE,
   findCustomerNearbyDrivers,
 } from "@/lib/customer-driver-match";
@@ -56,9 +57,7 @@ function normalizeProvinceName(name: string): string {
 }
 
 /**
- * Resolve provinsi jemput dari koordinat:
- * 1. Zona layanan resmi (service_cities) jika ada
- * 2. Reverse geocode → cocokkan nama ke tabel provinces
+ * Resolve provinsi jemput dari koordinat (metadata tarif/laporan — bukan gate ketersediaan).
  */
 export async function resolvePickupProvinceId(
   admin: SupabaseClient,
@@ -115,8 +114,8 @@ export function computeBorderSurcharge(
 }
 
 /**
- * Evaluasi konteks matching customer — radius GPS ketat 3 km dari titik jemput.
- * Driver di luar 3 km (meski satu provinsi) tidak diizinkan menerima order.
+ * Evaluasi ketersediaan NGOJEK/NGOMOBIL — HANYA radius GPS 3 km dari titik jemput.
+ * Nama kota/provinsi di profil driver tidak memblokir layanan.
  */
 export async function evaluateRideMatchingContext(
   admin: SupabaseClient,
@@ -127,9 +126,6 @@ export async function evaluateRideMatchingContext(
   serviceType: "NGOJEK" | "NGOMOBIL" = "NGOJEK"
 ): Promise<RideMatchingContext> {
   const pickupSvc = await checkServiceAvailability(admin, pickupLat, pickupLng);
-  const destSvc = await checkServiceAvailability(admin, destLat, destLng);
-
-  const hasOfficialBranch = Boolean(pickupSvc.available && pickupSvc.cityId);
   const clusterId = await resolveClusterIdForCoords(admin, pickupLat, pickupLng);
 
   const { provinceId, provinceName } = await resolvePickupProvinceId(
@@ -138,32 +134,34 @@ export async function evaluateRideMatchingContext(
     pickupLng
   );
 
-  const destProvince = await resolvePickupProvinceId(admin, destLat, destLng);
+  const driverCount = await countNearbyIdleDrivers(admin, pickupLat, pickupLng, {
+    serviceType,
+  });
 
-  if (
-    hasOfficialBranch &&
-    destSvc.available &&
-    pickupSvc.cityId &&
-    destSvc.cityId &&
-    pickupSvc.cityId !== destSvc.cityId &&
-    !clusterId
-  ) {
+  console.log("Koordinat Customer:", pickupLat, pickupLng);
+  console.log("Jumlah Driver Terdekat < 3KM yang Online:", driverCount);
+
+  const baseContext = {
+    pickupLat,
+    pickupLng,
+    destLat,
+    destLng,
+    pickupProvinceId: provinceId,
+    pickupProvinceName: provinceName,
+    hasOfficialBranch: Boolean(pickupSvc.available && pickupSvc.cityId),
+    serviceCityId: pickupSvc.cityId,
+    serviceCityName: pickupSvc.cityName,
+    operationalClusterId: clusterId,
+    matchingMode: null as RideMatchingMode | null,
+    isBorderlineCrossing: false,
+    borderSurcharge: 0,
+  };
+
+  if (driverCount === 0) {
     return {
-      pickupLat,
-      pickupLng,
-      destLat,
-      destLng,
-      pickupProvinceId: provinceId,
-      pickupProvinceName: provinceName,
-      hasOfficialBranch,
-      serviceCityId: pickupSvc.cityId,
-      serviceCityName: pickupSvc.cityName,
-      operationalClusterId: clusterId,
-      matchingMode: null,
-      isBorderlineCrossing: false,
-      borderSurcharge: 0,
+      ...baseContext,
       available: false,
-      message: "Jemput dan tujuan harus dalam wilayah layanan yang sama",
+      message: EMPTY_DRIVER_ZONE_MESSAGE,
     };
   }
 
@@ -172,70 +170,15 @@ export async function evaluateRideMatchingContext(
     lng: pickupLng,
     requestedService: serviceType,
     limit: 1,
+    radiusKm: CUSTOMER_DRIVER_RADIUS_KM,
   });
 
-  if (!drivers.length) {
-    return {
-      pickupLat,
-      pickupLng,
-      destLat,
-      destLng,
-      pickupProvinceId: provinceId,
-      pickupProvinceName: provinceName,
-      hasOfficialBranch,
-      serviceCityId: pickupSvc.cityId,
-      serviceCityName: pickupSvc.cityName,
-      operationalClusterId: clusterId,
-      matchingMode: null,
-      isBorderlineCrossing: false,
-      borderSurcharge: 0,
-      available: false,
-      message: EMPTY_DRIVER_ZONE_MESSAGE,
-    };
-  }
-
-  if (
-    destProvince.provinceId != null &&
-    provinceId != null &&
-    destProvince.provinceId !== provinceId &&
-    hasOfficialBranch
-  ) {
-    const crossDestKm = haversineKm(pickupLat, pickupLng, destLat, destLng);
-    if (crossDestKm > INTRA_PROVINCE_RADIUS_KM * 2) {
-      return {
-        pickupLat,
-        pickupLng,
-        destLat,
-        destLng,
-        pickupProvinceId: provinceId,
-        pickupProvinceName: provinceName,
-        hasOfficialBranch,
-        serviceCityId: pickupSvc.cityId,
-        serviceCityName: pickupSvc.cityName,
-        operationalClusterId: clusterId,
-        matchingMode: "customer_proximity",
-        isBorderlineCrossing: false,
-        borderSurcharge: 0,
-        available: false,
-        message: "Tujuan di luar provinsi jemput untuk layanan ini",
-      };
-    }
-  }
+  const nearestKm = drivers[0]?.distance_km ?? null;
 
   return {
-    pickupLat,
-    pickupLng,
-    destLat,
-    destLng,
-    pickupProvinceId: provinceId,
-    pickupProvinceName: provinceName,
-    hasOfficialBranch,
-    serviceCityId: pickupSvc.cityId,
-    serviceCityName: pickupSvc.cityName,
-    operationalClusterId: clusterId,
+    ...baseContext,
     matchingMode: "customer_proximity",
-    isBorderlineCrossing: false,
-    borderSurcharge: 0,
+    borderSurcharge: computeBorderSurcharge(null, nearestKm),
     available: true,
   };
 }

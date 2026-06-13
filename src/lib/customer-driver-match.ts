@@ -32,7 +32,8 @@ function normalizeTransitService(
 }
 
 /**
- * COUNT driver idle dalam radius 3 km — satu round-trip RPC, bbox + Haversine di DB.
+ * COUNT driver idle (ONLINE di app) dalam radius GPS — PostGIS ST_DWithin / Haversine di DB.
+ * Tidak memfilter nama kota/provinsi administratif.
  */
 export async function countNearbyIdleDrivers(
   admin: SupabaseClient,
@@ -56,7 +57,18 @@ export async function countNearbyIdleDrivers(
   return Number(data ?? 0);
 }
 
-/** Pre-check ketersediaan driver sebelum order customer dibuat. */
+function logProximityCheck(
+  lat: number,
+  lng: number,
+  driverCount: number,
+  serviceType: ServiceType
+): void {
+  console.log("Koordinat Customer:", lat, lng);
+  console.log("Jumlah Driver Terdekat < 3KM yang Online:", driverCount);
+  console.log("Layanan diminta:", serviceType);
+}
+
+/** Pre-check ketersediaan driver sebelum order customer dibuat — murni radius GPS. */
 export async function checkDriverAvailabilityServer(
   admin: SupabaseClient,
   lat: number,
@@ -65,11 +77,16 @@ export async function checkDriverAvailabilityServer(
 ): Promise<boolean> {
   const safeLat = clampCoord(lat, -90, 90);
   const safeLng = clampCoord(lng, -180, 180);
-  if (safeLat == null || safeLng == null) return false;
+  if (safeLat == null || safeLng == null) {
+    console.log("Koordinat Customer: invalid", lat, lng);
+    console.log("Jumlah Driver Terdekat < 3KM yang Online:", 0);
+    return false;
+  }
 
   const count = await countNearbyIdleDrivers(admin, safeLat, safeLng, {
     serviceType,
   });
+  logProximityCheck(safeLat, safeLng, count, serviceType);
   return count > 0;
 }
 

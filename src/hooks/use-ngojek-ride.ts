@@ -94,8 +94,13 @@ const EMPTY_PACKAGE: PackageDetailsInput = {
   heightCm: 10,
 };
 
-async function fetchServiceArea(lat: number, lng: number) {
+async function fetchServiceArea(
+  lat: number,
+  lng: number,
+  serviceType?: ServiceType
+) {
   const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+  if (serviceType) params.set("serviceType", serviceType);
   const res = await fetch(`/api/service-area/check?${params}`);
   if (!res.ok) return null;
   return (await res.json()) as {
@@ -304,6 +309,14 @@ export function useNgojekRide() {
           setFeeDescription(json.feeDescription ?? local.feeDescription);
           if (json.areaAvailable === false && json.areaMessage) {
             setAreaMessage(json.areaMessage);
+            setPickupAreaOk(false);
+            setDestAreaOk(true);
+            setSameCityOk(true);
+          } else if (json.areaAvailable === true) {
+            setPickupAreaOk(true);
+            setDestAreaOk(true);
+            setSameCityOk(true);
+            setAreaMessage(null);
           }
         } catch {
           if (gen !== quoteGenRef.current || controller.signal.aborted) return;
@@ -325,38 +338,62 @@ export function useNgojekRide() {
 
   useEffect(() => {
     let cancelled = false;
+    const isTransit = serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
 
-    void (async () => {
-      const [pickup, dest] = await Promise.all([
-        fetchServiceArea(pickupLat, pickupLng),
-        fetchServiceArea(destLat, destLng),
-      ]);
-      if (cancelled) return;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (isTransit) {
+          const pickup = await fetchServiceArea(pickupLat, pickupLng, serviceType);
+          if (cancelled) return;
 
-      const pickupOk = pickup?.available !== false;
-      const destOk = dest?.available !== false;
-      const sameCity =
-        !pickup?.cityId || !dest?.cityId || pickup.cityId === dest.cityId;
+          const pickupOk = pickup?.available !== false;
+          setPickupAreaOk(pickupOk);
+          setDestAreaOk(true);
+          setSameCityOk(true);
 
-      setPickupAreaOk(pickupOk);
-      setDestAreaOk(destOk);
-      setSameCityOk(sameCity);
+          if (!pickupOk) {
+            setAreaMessage(
+              pickup?.message ??
+                "Maaf, layanan Wira Kuliner belum tersedia atau driver belum siap di wilayah ini. Kami akan segera hadir!"
+            );
+          } else {
+            setAreaMessage(null);
+          }
+          return;
+        }
 
-      if (!pickupOk) {
-        setAreaMessage(pickup?.message ?? "Jemput di luar wilayah layanan");
-      } else if (!destOk) {
-        setAreaMessage("Tujuan di luar wilayah layanan");
-      } else if (!sameCity) {
-        setAreaMessage("Jemput dan tujuan harus dalam kota layanan yang sama");
-      } else {
-        setAreaMessage(null);
-      }
-    })();
+        const [pickup, dest] = await Promise.all([
+          fetchServiceArea(pickupLat, pickupLng),
+          fetchServiceArea(destLat, destLng),
+        ]);
+        if (cancelled) return;
+
+        const pickupOk = pickup?.available !== false;
+        const destOk = dest?.available !== false;
+        const sameCity =
+          !pickup?.cityId || !dest?.cityId || pickup.cityId === dest.cityId;
+
+        setPickupAreaOk(pickupOk);
+        setDestAreaOk(destOk);
+        setSameCityOk(sameCity);
+
+        if (!pickupOk) {
+          setAreaMessage(pickup?.message ?? "Jemput di luar wilayah layanan");
+        } else if (!destOk) {
+          setAreaMessage("Tujuan di luar wilayah layanan");
+        } else if (!sameCity) {
+          setAreaMessage("Jemput dan tujuan harus dalam kota layanan yang sama");
+        } else {
+          setAreaMessage(null);
+        }
+      })();
+    }, 300);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [pickupLat, pickupLng, destLat, destLng]);
+  }, [pickupLat, pickupLng, destLat, destLng, serviceType]);
 
   /** GPS sekali — hanya mengisi currentDeviceLocation, tidak mengunci pickup. */
   useEffect(() => {

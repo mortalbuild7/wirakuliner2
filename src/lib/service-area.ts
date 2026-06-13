@@ -140,7 +140,7 @@ export async function checkFoodServiceAvailability(
 }
 
 /**
- * NGOJEK / NGOMOBIL: intra-provinsi + borderline buffer (30–50 km).
+ * NGOJEK / NGOMOBIL: ketersediaan murni radius GPS 3 km (tanpa gate nama kota).
  * Kuliner & PAKET: service_cities per kota (legacy).
  */
 export async function checkRideServiceAvailability(
@@ -155,17 +155,40 @@ export async function checkRideServiceAvailability(
     serviceType === "NGOJEK" || serviceType === "NGOMOBIL" || serviceType == null;
 
   if (useTransitMatching) {
-    const { evaluateRideMatchingContext, matchingContextToServiceArea } =
-      await import("@/lib/ride-matching");
-    const ctx = await evaluateRideMatchingContext(
+    const { checkDriverAvailabilityServer } = await import(
+      "@/lib/customer-driver-match"
+    );
+    const { resolveClusterIdForCoords } = await import("@/lib/operational-cluster");
+    const { resolvePickupProvinceId } = await import("@/lib/ride-matching");
+
+    const available = await checkDriverAvailabilityServer(
       admin,
       pickupLat,
       pickupLng,
-      destLat,
-      destLng,
       serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK"
     );
-    return matchingContextToServiceArea(ctx);
+
+    const pickupMeta = await checkServiceAvailability(admin, pickupLat, pickupLng);
+    const clusterId = await resolveClusterIdForCoords(admin, pickupLat, pickupLng);
+    const { provinceName } = await resolvePickupProvinceId(admin, pickupLat, pickupLng);
+
+    if (!available) {
+      const { EMPTY_DRIVER_ZONE_MESSAGE } = await import(
+        "@/lib/customer-driver-match"
+      );
+      return {
+        available: false,
+        message: EMPTY_DRIVER_ZONE_MESSAGE,
+        cityId: pickupMeta.cityId ?? clusterId,
+        cityName: pickupMeta.cityName ?? provinceName,
+      };
+    }
+
+    return {
+      available: true,
+      cityId: pickupMeta.cityId ?? clusterId,
+      cityName: pickupMeta.cityName ?? provinceName,
+    };
   }
 
   const pickup = await checkServiceAvailability(admin, pickupLat, pickupLng);
