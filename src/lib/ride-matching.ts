@@ -1,24 +1,18 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { reverseGeocodeCoords } from "@/lib/geocode-server";
 import {
-  countNearbyIdleDrivers,
   CUSTOMER_DRIVER_RADIUS_KM,
   EMPTY_DRIVER_ZONE_MESSAGE,
+  evaluateDriverProximityAvailability,
   findCustomerNearbyDrivers,
+  type DriverAvailabilityResult,
 } from "@/lib/customer-driver-match";
-import {
-  checkServiceAvailability,
-  loadActiveServiceCities,
-  findCityForCoords,
-  type ServiceAvailability,
-} from "@/lib/service-area";
 import { resolveClusterIdForCoords } from "@/lib/operational-cluster";
+import { loadActiveServiceCities, findCityForCoords } from "@/lib/service-area";
 import type { PriorityDriverMatchRow, RideMatchingMode } from "@/lib/ride-matching-types";
 
 export type { PriorityDriverMatchRow, RideMatchingMode } from "@/lib/ride-matching-types";
 
-/** Radius standar per mode matching. */
 export const INTRA_CLUSTER_RADIUS_KM = 5;
 export const INTRA_PROVINCE_RADIUS_KM = 15;
 export const BORDERLINE_BUFFER_KM_MIN = 30;
@@ -44,65 +38,35 @@ export type RideMatchingContext = {
   borderSurcharge: number;
   available: boolean;
   message?: string;
+  error_code?: DriverAvailabilityResult["error_code"];
+  availability_debug?: DriverAvailabilityResult["debug_info"];
 };
 
-/** Normalisasi nama provinsi untuk lookup tabel `provinces`. */
-function normalizeProvinceName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/^provinsi\s+/i, "")
-    .replace(/^prov\.\s*/i, "")
-    .replace(/\s+/g, " ");
-}
-
-/**
- * Resolve provinsi jemput dari koordinat (metadata tarif/laporan — bukan gate ketersediaan).
- */
-export async function resolvePickupProvinceId(
+/** Metadata provinsi/kota dari koordinat — hanya laporan/tarif, bukan gate ketersediaan. */
+export async function resolvePickupProvinceMeta(
   admin: SupabaseClient,
   lat: number,
   lng: number
 ): Promise<{ provinceId: number | null; provinceName: string | null }> {
   const cities = await loadActiveServiceCities(admin);
   const hit = findCityForCoords(cities, lat, lng);
-  if (hit) {
-    const { data: sc } = await admin
-      .from("service_cities")
-      .select("province_id, provinces(name)")
-      .eq("id", hit.id)
-      .maybeSingle();
+  if (!hit) return { provinceId: null, provinceName: null };
 
-    const provJoin = sc?.provinces as { name: string } | { name: string }[] | null;
-    const provName = Array.isArray(provJoin) ? provJoin[0]?.name : provJoin?.name;
+  const { data: sc } = await admin
+    .from("service_cities")
+    .select("province_id, provinces(name)")
+    .eq("id", hit.id)
+    .maybeSingle();
 
-    return {
-      provinceId: (sc?.province_id as number | null) ?? null,
-      provinceName: provName ?? null,
-    };
-  }
+  const provJoin = sc?.provinces as { name: string } | { name: string }[] | null;
+  const provName = Array.isArray(provJoin) ? provJoin[0]?.name : provJoin?.name;
 
-  const geo = await reverseGeocodeCoords(lat, lng);
-  if (!geo?.label) return { provinceId: null, provinceName: null };
-
-  const parts = geo.label.split(",").map((p) => p.trim());
-  const { data: provinces } = await admin.from("provinces").select("id, name");
-
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const partNorm = normalizeProvinceName(parts[i]);
-    const match = (provinces ?? []).find((p) => {
-      const n = normalizeProvinceName(p.name as string);
-      return n === partNorm || n.includes(partNorm) || partNorm.includes(n);
-    });
-    if (match) {
-      return { provinceId: match.id as number, provinceName: match.name as string };
-    }
-  }
-
-  return { provinceId: null, provinceName: null };
+  return {
+    provinceId: (sc?.province_id as number | null) ?? null,
+    provinceName: provName ?? null,
+  };
 }
 
-/** Hitung biaya lintas wilayah Rp 5.000 (dekat) – Rp 10.000 (jauh). */
 export function computeBorderSurcharge(
   mode: RideMatchingMode | null,
   nearestDriverDistanceKm?: number | null
@@ -114,60 +78,68 @@ export function computeBorderSurcharge(
 }
 
 /**
- * Evaluasi ketersediaan NGOJEK/NGOMOBIL — HANYA radius GPS 3 km dari titik jemput.
- * Nama kota/provinsi di profil driver tidak memblokir layanan.
+ * Evaluasi matching NGOJEK/NGOMOBIL — gate HANYA radius GPS 3 km (PostGIS).
+ * Tidak ada pengecekan string kota/provinsi.
  */
 export async function evaluateRideMatchingContext(
   admin: SupabaseClient,
-  pickupLat: number,
-  pickupLng: number,
-  destLat: number,
-  destLng: number,
+  pickupLat: unknown,
+  pickupLng: unknown,
+  destLat: unknown,
+  destLng: unknown,
   serviceType: "NGOJEK" | "NGOMOBIL" = "NGOJEK"
 ): Promise<RideMatchingContext> {
-  const pickupSvc = await checkServiceAvailability(admin, pickupLat, pickupLng);
-  const clusterId = await resolveClusterIdForCoords(admin, pickupLat, pickupLng);
-
-  const { provinceId, provinceName } = await resolvePickupProvinceId(
+  const availability = await evaluateDriverProximityAvailability(
     admin,
     pickupLat,
-    pickupLng
+    pickupLng,
+    serviceType
   );
 
-  const driverCount = await countNearbyIdleDrivers(admin, pickupLat, pickupLng, {
-    serviceType,
-  });
+  const effectiveLat = availability.effective_lat;
+  const effectiveLng = availability.effective_lng;
 
-  console.log("Koordinat Customer:", pickupLat, pickupLng);
-  console.log("Jumlah Driver Terdekat < 3KM yang Online:", driverCount);
+  const cities = await loadActiveServiceCities(admin);
+  const pickupCity = findCityForCoords(cities, effectiveLat, effectiveLng);
+  const clusterId = await resolveClusterIdForCoords(admin, effectiveLat, effectiveLng);
+  const { provinceId, provinceName } = await resolvePickupProvinceMeta(
+    admin,
+    effectiveLat,
+    effectiveLng
+  );
+
+  const destLatNum = Number(destLat);
+  const destLngNum = Number(destLng);
 
   const baseContext = {
-    pickupLat,
-    pickupLng,
-    destLat,
-    destLng,
+    pickupLat: effectiveLat,
+    pickupLng: effectiveLng,
+    destLat: Number.isFinite(destLatNum) ? destLatNum : effectiveLat,
+    destLng: Number.isFinite(destLngNum) ? destLngNum : effectiveLng,
     pickupProvinceId: provinceId,
     pickupProvinceName: provinceName,
-    hasOfficialBranch: Boolean(pickupSvc.available && pickupSvc.cityId),
-    serviceCityId: pickupSvc.cityId,
-    serviceCityName: pickupSvc.cityName,
+    hasOfficialBranch: Boolean(pickupCity),
+    serviceCityId: pickupCity?.id ?? null,
+    serviceCityName: pickupCity?.name ?? null,
     operationalClusterId: clusterId,
     matchingMode: null as RideMatchingMode | null,
     isBorderlineCrossing: false,
     borderSurcharge: 0,
+    error_code: availability.error_code,
+    availability_debug: availability.debug_info,
   };
 
-  if (driverCount === 0) {
+  if (!availability.available) {
     return {
       ...baseContext,
       available: false,
-      message: EMPTY_DRIVER_ZONE_MESSAGE,
+      message: availability.message ?? EMPTY_DRIVER_ZONE_MESSAGE,
     };
   }
 
   const drivers = await findCustomerNearbyDrivers(admin, {
-    lat: pickupLat,
-    lng: pickupLng,
+    lat: effectiveLat,
+    lng: effectiveLng,
     requestedService: serviceType,
     limit: 1,
     radiusKm: CUSTOMER_DRIVER_RADIUS_KM,
@@ -183,9 +155,6 @@ export async function evaluateRideMatchingContext(
   };
 }
 
-/**
- * Pencarian driver terdekat untuk customer NGOJEK/NGOMOBIL — radius GPS ketat 3 km.
- */
 export async function findTransitPriorityDrivers(
   admin: SupabaseClient,
   opts: {
@@ -218,14 +187,27 @@ export async function findTransitPriorityDrivers(
   }));
 }
 
-/** Adapter ke ServiceAvailability untuk kompatibilitas form booking. */
+export type ServiceAreaFromMatching = {
+  available: boolean;
+  message?: string;
+  cityId: string | null;
+  cityName: string | null;
+  error_code?: DriverAvailabilityResult["error_code"];
+  debug_info?: DriverAvailabilityResult["debug_info"];
+};
+
 export function matchingContextToServiceArea(
   ctx: RideMatchingContext
-): ServiceAvailability {
+): ServiceAreaFromMatching {
   return {
     available: ctx.available,
     message: ctx.message,
     cityId: ctx.serviceCityId ?? ctx.operationalClusterId,
     cityName: ctx.serviceCityName ?? ctx.pickupProvinceName,
+    error_code: ctx.error_code,
+    debug_info: ctx.availability_debug,
   };
 }
+
+/** @deprecated — gunakan resolvePickupProvinceMeta */
+export const resolvePickupProvinceId = resolvePickupProvinceMeta;

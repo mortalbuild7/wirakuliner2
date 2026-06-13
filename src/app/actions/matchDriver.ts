@@ -6,20 +6,21 @@ import {
   countNearbyIdleDrivers,
   CUSTOMER_DRIVER_RADIUS_KM,
   EMPTY_DRIVER_ZONE_MESSAGE,
+  evaluateDriverProximityAvailability,
   MAX_RADIUS_METERS,
+  type DriverAvailabilityResult,
 } from "@/lib/customer-driver-match";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
 import { checkDistributedRateLimit } from "@/lib/security/upstash-rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ServiceType } from "@/lib/service-types";
 
-export { MAX_RADIUS_METERS, CUSTOMER_DRIVER_RADIUS_KM, EMPTY_DRIVER_ZONE_MESSAGE };
-
-function clampCoord(value: number, min: number, max: number): number | null {
-  if (!Number.isFinite(value)) return null;
-  if (value < min || value > max) return null;
-  return value;
-}
+export {
+  MAX_RADIUS_METERS,
+  CUSTOMER_DRIVER_RADIUS_KM,
+  EMPTY_DRIVER_ZONE_MESSAGE,
+  type DriverAvailabilityResult,
+};
 
 async function assertDriverMatchRateLimit(): Promise<void> {
   const h = await headers();
@@ -38,40 +39,45 @@ async function assertDriverMatchRateLimit(): Promise<void> {
 }
 
 /**
- * Cek apakah ada driver online (idle) dalam radius 3 km dari titik jemput.
- * Dipanggil dari UI customer sebelum order dibuat.
+ * Cek ketersediaan driver dalam radius 3 km — murni GPS + respons debug terstruktur.
+ * Menerima koordinat string/number dari form atau browser.
  */
 export async function checkDriverAvailability(
-  lat: number,
-  lng: number,
+  lat: unknown,
+  lng: unknown,
   serviceType: ServiceType = "NGOJEK"
-): Promise<boolean> {
+): Promise<DriverAvailabilityResult> {
   await assertDriverMatchRateLimit();
-  const safeLat = clampCoord(lat, -90, 90);
-  const safeLng = clampCoord(lng, -180, 180);
-  if (safeLat == null || safeLng == null) return false;
 
-  if (serviceType !== "NGOJEK" && serviceType !== "NGOMOBIL") {
-    return true;
+  if (serviceType !== "NGOJEK" && serviceType !== "NGOMOBIL" && serviceType !== "PAKET") {
+    return {
+      available: true,
+      error_code: "NON_TRANSIT_SERVICE",
+      effective_lat: Number(lat) || 0,
+      effective_lng: Number(lng) || 0,
+      debug_info: {
+        customer_coords: [Number(lat) || 0, Number(lng) || 0],
+        effective_coords: [Number(lat) || 0, Number(lng) || 0],
+        checked_drivers_count: 0,
+        nearest_driver_km: null,
+        nearest_driver_id: null,
+        service_type: serviceType,
+        radius_km: CUSTOMER_DRIVER_RADIUS_KM,
+      },
+    };
   }
 
   const admin = createAdminClient();
-  const count = await countNearbyIdleDrivers(admin, safeLat, safeLng, { serviceType });
-  console.log("Koordinat Customer:", safeLat, safeLng);
-  console.log("Jumlah Driver Terdekat < 3KM yang Online:", count);
-  return count > 0;
+  return evaluateDriverProximityAvailability(admin, lat, lng, serviceType);
 }
 
-/** Opsional: jumlah driver terdekat (debug / admin preview). */
+/** Jumlah driver terdekat (debug / admin preview). */
 export async function getNearbyDriverCount(
-  lat: number,
-  lng: number,
+  lat: unknown,
+  lng: unknown,
   serviceType: ServiceType = "NGOJEK"
 ): Promise<number> {
-  const safeLat = clampCoord(lat, -90, 90);
-  const safeLng = clampCoord(lng, -180, 180);
-  if (safeLat == null || safeLng == null) return 0;
-
   const admin = createAdminClient();
-  return countNearbyIdleDrivers(admin, safeLat, safeLng, { serviceType });
+  const result = await checkDriverAvailabilityServer(admin, lat, lng, serviceType);
+  return result.debug_info.checked_drivers_count;
 }

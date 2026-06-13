@@ -3,15 +3,19 @@
 import { useEffect, useRef } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { haversineKm } from "@/lib/geo-config";
 import {
   DRIVER_GPS_ADMIN_CHANNEL,
   DRIVER_GPS_BROADCAST_EVENT,
   driverGpsChannel,
   type DriverGpsBroadcastPayload,
-  isValidGpsBroadcastPayload,
 } from "@/lib/driver-gps-realtime";
 
 const BROADCAST_MIN_MS = 2_000;
+/** Interval maksimum persist DB — balance akurasi matching vs baterai. */
+const PERSIST_MAX_INTERVAL_MS = 20_000;
+/** Persist juga saat driver bergerak ≥ ~25 m. */
+const PERSIST_MOVEMENT_KM = 0.025;
 
 /**
  * Kirim posisi driver via Realtime Broadcast (WebSocket) — tanpa UPDATE DB tiap detik.
@@ -53,11 +57,16 @@ export function useDriverGpsBroadcast(
 ) {
   const lastBroadcastRef = useRef(0);
   const lastPersistRef = useRef(0);
+  const lastPersistCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const channelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(null);
   const adminChannelRef = useRef<ReturnType<SupabaseClient["channel"]> | null>(null);
 
   useEffect(() => {
     if (!enabled || !driverId || !status || status === "offline") {
+      lastBroadcastRef.current = 0;
+      lastPersistRef.current = 0;
+      lastPersistCoordsRef.current = null;
+
       const supabase = createClient();
       if (channelRef.current) supabase.removeChannel(channelRef.current);
       if (adminChannelRef.current) supabase.removeChannel(adminChannelRef.current);
@@ -88,6 +97,14 @@ export function useDriverGpsBroadcast(
 
   return async (lat: number, lng: number) => {
     if (!enabled || !driverId || !status || status === "offline") return;
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      Math.abs(lat) < 1e-9 ||
+      Math.abs(lng) < 1e-9
+    ) {
+      return;
+    }
 
     const now = Date.now();
     const payload: DriverGpsBroadcastPayload = {
@@ -109,9 +126,16 @@ export function useDriverGpsBroadcast(
       void adminChannelRef.current?.send(message);
     }
 
-    const PERSIST_MS = 60_000;
-    if (now - lastPersistRef.current >= PERSIST_MS) {
+    const lastCoords = lastPersistCoordsRef.current;
+    const movedKm = lastCoords
+      ? haversineKm(lastCoords.lat, lastCoords.lng, lat, lng)
+      : Number.POSITIVE_INFINITY;
+    const intervalDue = now - lastPersistRef.current >= PERSIST_MAX_INTERVAL_MS;
+    const movementDue = movedKm >= PERSIST_MOVEMENT_KM;
+
+    if (intervalDue || movementDue) {
       lastPersistRef.current = now;
+      lastPersistCoordsRef.current = { lat, lng };
       await onPersist(lat, lng);
     }
   };

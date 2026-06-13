@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchWithDriverAuth } from "@/lib/driver-native-session";
+import { flushDriverGpsToServer } from "@/lib/driver-gps-sync";
 import type { Driver, DriverStatus } from "@/types/database";
 
 export function useDriverStatusActions(
@@ -29,6 +30,9 @@ export function useDriverStatusActions(
         if (!res.ok) {
           alert((j as { error?: string }).error ?? "Gagal ubah status");
           return false;
+        }
+        if (next === "idle" || next === "delivering") {
+          await flushDriverGpsToServer();
         }
         await refresh();
         return true;

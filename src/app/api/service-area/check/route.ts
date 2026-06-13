@@ -1,5 +1,5 @@
 import { checkServiceAvailability } from "@/lib/service-area";
-import { checkDriverAvailabilityServer } from "@/lib/customer-driver-match";
+import { evaluateDriverProximityAvailability } from "@/lib/customer-driver-match";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isServiceType, type ServiceType } from "@/lib/service-types";
 import {
@@ -8,7 +8,6 @@ import {
   secureJsonResponse,
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
-import { parseBoundedNumber } from "@/lib/security/validate";
 
 export async function GET(req: Request) {
   const methodBlock = enforceMethod(req, ["GET"]);
@@ -17,37 +16,39 @@ export async function GET(req: Request) {
   if (rl) return rl;
 
   const url = new URL(req.url);
-  const lat = parseBoundedNumber(url.searchParams.get("lat"), -90, 90);
-  const lng = parseBoundedNumber(url.searchParams.get("lng"), -180, 180);
+  const latRaw = url.searchParams.get("lat");
+  const lngRaw = url.searchParams.get("lng");
   const serviceTypeRaw = url.searchParams.get("serviceType");
   const serviceType: ServiceType | null = isServiceType(serviceTypeRaw)
     ? serviceTypeRaw
     : null;
 
-  if (lat == null || lng == null) {
-    return secureJsonResponse({ error: "Koordinat tidak valid" }, { status: 400 });
-  }
-
   const admin = createAdminClient();
 
-  if (serviceType === "NGOJEK" || serviceType === "NGOMOBIL") {
-    const available = await checkDriverAvailabilityServer(
+  if (serviceType === "NGOJEK" || serviceType === "NGOMOBIL" || serviceType === "PAKET") {
+    const result = await evaluateDriverProximityAvailability(
       admin,
-      lat,
-      lng,
+      latRaw,
+      lngRaw,
       serviceType
     );
-    const meta = await checkServiceAvailability(admin, lat, lng);
+
     return secureJsonResponse({
       ok: true,
-      available,
-      message: available
-        ? null
-        : "Maaf, layanan Wira Kuliner belum tersedia atau driver belum siap di wilayah ini. Kami akan segera hadir!",
-      cityId: meta.cityId,
-      cityName: meta.cityName,
+      available: result.available,
+      error_code: result.error_code,
+      message: result.message ?? null,
       matchMode: "gps_proximity",
+      effective_lat: result.effective_lat,
+      effective_lng: result.effective_lng,
+      debug_info: result.debug_info,
     });
+  }
+
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return secureJsonResponse({ error: "Koordinat tidak valid" }, { status: 400 });
   }
 
   const result = await checkServiceAvailability(admin, lat, lng);

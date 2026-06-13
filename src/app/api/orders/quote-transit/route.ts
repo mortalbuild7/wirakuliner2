@@ -103,6 +103,8 @@ export async function POST(req: Request) {
         rideFee: 0,
         areaAvailable: false,
         areaMessage: matchingCtx.message ?? "Layanan tidak tersedia di wilayah ini",
+        error_code: matchingCtx.error_code,
+        debug_info: matchingCtx.availability_debug,
       });
     }
 
@@ -124,6 +126,8 @@ export async function POST(req: Request) {
         rideFee: 0,
         areaAvailable: false,
         areaMessage: serviceArea.message ?? "Layanan tidak tersedia di wilayah ini",
+        error_code: serviceArea.error_code,
+        debug_info: serviceArea.debug_info,
       });
     }
 

@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { evaluateDriverProximityAvailability } from "@/lib/customer-driver-match";
 import { haversineKm } from "@/lib/geo-config";
+import type { DriverAvailabilityDebugInfo, DriverAvailabilityErrorCode } from "@/lib/driver-availability-types";
 
 export const SERVICE_UNAVAILABLE_MSG =
   "Layanan ini masih belum tersedia diwilayah anda";
@@ -19,6 +21,8 @@ export type ServiceAvailability = {
   message?: string;
   cityId: string | null;
   cityName: string | null;
+  error_code?: DriverAvailabilityErrorCode;
+  debug_info?: DriverAvailabilityDebugInfo;
 };
 
 function toNum(v: unknown): number {
@@ -105,7 +109,7 @@ export async function checkServiceAvailability(
   };
 }
 
-/** Validasi pesanan kuliner: lokasi antar + merchant di kota yang sama. */
+/** Validasi pesanan kuliner (NGEMIL) — driver proximity GPS di titik antar, tanpa gate nama kota. */
 export async function checkFoodServiceAvailability(
   admin: SupabaseClient,
   merchant: {
@@ -120,101 +124,120 @@ export async function checkFoodServiceAvailability(
   const anchorLat = dineIn ? merchant.latitude : deliveryLat;
   const anchorLng = dineIn ? merchant.longitude : deliveryLng;
 
-  const area = await checkServiceAvailability(admin, anchorLat, anchorLng);
-  if (!area.available) return area;
+  const result = await evaluateDriverProximityAvailability(
+    admin,
+    anchorLat,
+    anchorLng,
+    "NGOJEK"
+  );
 
-  if (
-    merchant.service_city_id &&
-    area.cityId &&
-    merchant.service_city_id !== area.cityId
-  ) {
+  const cities = await loadActiveServiceCities(admin);
+  const city = findCityForCoords(cities, result.effective_lat, result.effective_lng);
+
+  if (!result.available) {
     return {
       available: false,
-      message: SERVICE_UNAVAILABLE_MSG,
-      cityId: area.cityId,
-      cityName: area.cityName,
+      message: result.message ?? SERVICE_UNAVAILABLE_MSG,
+      cityId: city?.id ?? null,
+      cityName: city?.name ?? null,
+      error_code: result.error_code,
+      debug_info: result.debug_info,
     };
   }
 
-  return area;
+  return {
+    available: true,
+    cityId: city?.id ?? null,
+    cityName: city?.name ?? null,
+    error_code: result.error_code,
+    debug_info: result.debug_info,
+  };
 }
 
 /**
- * NGOJEK / NGOMOBIL: ketersediaan murni radius GPS 3 km (tanpa gate nama kota).
- * Kuliner & PAKET: service_cities per kota (legacy).
+ * NGOJEK / NGOMOBIL / PAKET: gate ketersediaan murni radius GPS 3 km.
+ * Kuliner (NGEMIL): driver proximity di titik antar, tanpa cocokkan nama kota.
  */
 export async function checkRideServiceAvailability(
   admin: SupabaseClient,
-  pickupLat: number,
-  pickupLng: number,
-  destLat: number,
-  destLng: number,
+  pickupLat: unknown,
+  pickupLng: unknown,
+  destLat: unknown,
+  destLng: unknown,
   serviceType?: "NGOJEK" | "NGOMOBIL" | "PAKET"
 ): Promise<ServiceAvailability> {
   const useTransitMatching =
     serviceType === "NGOJEK" || serviceType === "NGOMOBIL" || serviceType == null;
 
   if (useTransitMatching) {
-    const { checkDriverAvailabilityServer } = await import(
-      "@/lib/customer-driver-match"
-    );
     const { resolveClusterIdForCoords } = await import("@/lib/operational-cluster");
-    const { resolvePickupProvinceId } = await import("@/lib/ride-matching");
+    const { resolvePickupProvinceMeta } = await import("@/lib/ride-matching");
 
-    const available = await checkDriverAvailabilityServer(
+    const transitType = serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK";
+    const result = await evaluateDriverProximityAvailability(
       admin,
       pickupLat,
       pickupLng,
-      serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK"
+      transitType
     );
 
-    const pickupMeta = await checkServiceAvailability(admin, pickupLat, pickupLng);
-    const clusterId = await resolveClusterIdForCoords(admin, pickupLat, pickupLng);
-    const { provinceName } = await resolvePickupProvinceId(admin, pickupLat, pickupLng);
+    const effectiveLat = result.effective_lat;
+    const effectiveLng = result.effective_lng;
+    const cities = await loadActiveServiceCities(admin);
+    const pickupCity = findCityForCoords(cities, effectiveLat, effectiveLng);
+    const clusterId = await resolveClusterIdForCoords(admin, effectiveLat, effectiveLng);
+    const { provinceName } = await resolvePickupProvinceMeta(
+      admin,
+      effectiveLat,
+      effectiveLng
+    );
 
-    if (!available) {
-      const { EMPTY_DRIVER_ZONE_MESSAGE } = await import(
-        "@/lib/customer-driver-match"
-      );
+    if (!result.available) {
       return {
         available: false,
-        message: EMPTY_DRIVER_ZONE_MESSAGE,
-        cityId: pickupMeta.cityId ?? clusterId,
-        cityName: pickupMeta.cityName ?? provinceName,
+        message: result.message,
+        cityId: pickupCity?.id ?? clusterId,
+        cityName: pickupCity?.name ?? provinceName,
+        error_code: result.error_code,
+        debug_info: result.debug_info,
       };
     }
 
     return {
       available: true,
-      cityId: pickupMeta.cityId ?? clusterId,
-      cityName: pickupMeta.cityName ?? provinceName,
+      cityId: pickupCity?.id ?? clusterId,
+      cityName: pickupCity?.name ?? provinceName,
+      error_code: result.error_code,
+      debug_info: result.debug_info,
     };
   }
 
-  const pickup = await checkServiceAvailability(admin, pickupLat, pickupLng);
-  if (!pickup.available) {
-    return {
-      ...pickup,
-      message: pickup.message ?? "Titik jemput di luar wilayah layanan",
-    };
-  }
+  const result = await evaluateDriverProximityAvailability(
+    admin,
+    pickupLat,
+    pickupLng,
+    "PAKET"
+  );
 
-  const dest = await checkServiceAvailability(admin, destLat, destLng);
-  if (!dest.available) {
-    return {
-      ...dest,
-      message: "Tujuan di luar wilayah layanan NGOJEK",
-    };
-  }
-
-  if (pickup.cityId && dest.cityId && pickup.cityId !== dest.cityId) {
+  if (!result.available) {
     return {
       available: false,
-      message: "Jemput dan tujuan harus dalam kota layanan yang sama",
-      cityId: pickup.cityId,
-      cityName: pickup.cityName,
+      message: result.message,
+      cityId: null,
+      cityName: null,
+      error_code: result.error_code,
+      debug_info: result.debug_info,
     };
   }
 
-  return pickup;
+  const cities = await loadActiveServiceCities(admin);
+  const pickupCity = findCityForCoords(cities, result.effective_lat, result.effective_lng);
+
+  return {
+    available: true,
+    cityId: pickupCity?.id ?? null,
+    cityName: pickupCity?.name ?? null,
+    error_code: result.error_code,
+    debug_info: result.debug_info,
+  };
 }

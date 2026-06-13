@@ -27,6 +27,11 @@ import {
 import type { QrisPaymentData } from "@/components/payment/qris-payment-panel";
 import type { PaymentMethodChoice } from "@/components/wallet/payment-method-picker";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
+import {
+  CUSTOMER_GPS_REQUIRED_MSG,
+  validatePickupCoordinates,
+} from "@/lib/pickup-coords";
 
 const REVERSE_MIN_KM = 0.025;
 /** Perubahan koordinat di bawah ini dianggap sama (hindari jitter GPS / geocode). */
@@ -107,6 +112,12 @@ async function fetchServiceArea(
     available?: boolean;
     message?: string | null;
     cityId?: string | null;
+    error_code?: string;
+    debug_info?: {
+      customer_coords: [number, number];
+      effective_coords: [number, number];
+      checked_drivers_count: number;
+    };
   };
 }
 
@@ -343,20 +354,46 @@ export function useNgojekRide() {
     const timer = window.setTimeout(() => {
       void (async () => {
         if (isTransit) {
-          const pickup = await fetchServiceArea(pickupLat, pickupLng, serviceType);
+          const pickupCoords = validatePickupCoordinates(pickupLat, pickupLng);
+          if (!pickupCoords.ok) {
+            setPickupAreaOk(false);
+            setDestAreaOk(true);
+            setSameCityOk(true);
+            setAreaMessage(CUSTOMER_GPS_REQUIRED_MSG);
+            toast.error(CUSTOMER_GPS_REQUIRED_MSG);
+            return;
+          }
+
+          const pickup = await fetchServiceArea(
+            pickupCoords.lat,
+            pickupCoords.lng,
+            serviceType
+          );
           if (cancelled) return;
+
+          if (pickup?.error_code === "INVALID_COORDINATES") {
+            setPickupAreaOk(false);
+            setDestAreaOk(true);
+            setSameCityOk(true);
+            setAreaMessage(pickup.message ?? CUSTOMER_GPS_REQUIRED_MSG);
+            toast.error(pickup.message ?? CUSTOMER_GPS_REQUIRED_MSG);
+            return;
+          }
 
           const pickupOk = pickup?.available !== false;
           setPickupAreaOk(pickupOk);
           setDestAreaOk(true);
           setSameCityOk(true);
 
-          if (!pickupOk) {
-            setAreaMessage(
-              pickup?.message ??
-                "Maaf, layanan Wira Kuliner belum tersedia atau driver belum siap di wilayah ini. Kami akan segera hadir!"
-            );
-          } else {
+        if (!pickupOk) {
+          setAreaMessage(
+            pickup?.message ??
+              "Maaf, layanan Wira Kuliner belum tersedia atau driver belum siap di wilayah ini. Kami akan segera hadir!"
+          );
+          if (process.env.NODE_ENV === "development" && pickup?.debug_info) {
+            console.info("[service-area/pickup]", pickup.debug_info);
+          }
+        } else {
             setAreaMessage(null);
           }
           return;

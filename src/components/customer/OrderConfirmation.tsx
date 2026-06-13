@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Bike, Car, Loader2, MapPinOff, Package } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   checkDriverAvailability,
@@ -9,6 +10,10 @@ import {
 } from "@/app/actions/matchDriver";
 import type { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
+import {
+  CUSTOMER_GPS_REQUIRED_MSG,
+  validatePickupCoordinates,
+} from "@/lib/pickup-coords";
 import { cn } from "@/lib/utils";
 
 type OrderUiState = "idle" | "checking" | "EMPTY_STATE" | "placing";
@@ -115,14 +120,28 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
     if (!canSubmit) return;
 
     if (isTransitRide) {
+      const pickupCoords = validatePickupCoordinates(ride.pickupLat, ride.pickupLng);
+      if (!pickupCoords.ok) {
+        toast.error(CUSTOMER_GPS_REQUIRED_MSG);
+        return;
+      }
+
       setUiState("checking");
       try {
-        const available = await checkDriverAvailability(
-          ride.pickupLat,
-          ride.pickupLng,
+        const result = await checkDriverAvailability(
+          pickupCoords.lat,
+          pickupCoords.lng,
           ride.serviceType
         );
-        if (!available) {
+        if (!result.available) {
+          if (process.env.NODE_ENV === "development") {
+            console.info("[driver-availability]", result);
+          }
+          if (result.error_code === "INVALID_COORDINATES") {
+            toast.error(result.message ?? CUSTOMER_GPS_REQUIRED_MSG);
+            setUiState("idle");
+            return;
+          }
           setUiState("EMPTY_STATE");
           return;
         }

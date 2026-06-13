@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { fetchWithDriverAuth } from "@/lib/driver-native-session";
+import { flushDriverGpsToServer } from "@/lib/driver-gps-sync";
 import { useDriverProfile } from "@/hooks/use-driver-profile";
 import { useDriverLocation } from "@/hooks/use-driver-location";
 import { useDriverMapLocation } from "@/hooks/use-driver-map-location";
@@ -465,6 +466,9 @@ export function DriverCockpit() {
       const j = await res.json().catch(() => ({}));
       alert(j.error ?? "Gagal ubah status");
       return;
+    }
+    if (next === "idle" || next === "delivering") {
+      await flushDriverGpsToServer();
     }
     await refresh();
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Toaster } from "sonner";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, ShoppingBag, MapPin, Sparkles, User } from "lucide-react";
@@ -110,6 +111,8 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
           })}
         </div>
       </nav>
+
+      <Toaster position="top-center" richColors closeButton />
     </div>
   );
 }
