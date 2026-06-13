@@ -142,7 +142,7 @@ export async function registerDriverNational(
     localCity.canonicalName
   );
 
-  if (!city || city.city_id == null) {
+  if (!city || city.city_id == null || city.province_id == null) {
     return {
       ok: false,
       error:
@@ -154,7 +154,7 @@ export async function registerDriverNational(
   const { error: citySyncErr } = await admin.from("cities").upsert(
     {
       id: city.city_id,
-      province_id: data.provinceId,
+      province_id: city.province_id,
       name: cityLabel,
       is_active: true,
     },

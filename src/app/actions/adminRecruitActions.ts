@@ -12,6 +12,7 @@ import {
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncAdminJwtMetadata } from "@/lib/sync-admin-jwt-metadata";
 import {
+  ensureProvinceRowInDb,
   resolveCityIdForAdminProfile,
   validateCityInLocalMaster,
 } from "@/lib/regional-city-resolve";
@@ -120,32 +121,31 @@ export async function recruitNewAdmin(
 
   const admin = createAdminClient();
 
+  let dbProvinceId: number | null = null;
+
   if (provinceId && provinceMeta) {
-    const { error: provErr } = await admin.from("provinces").upsert(
-      { id: provinceMeta.id, name: provinceMeta.name },
-      { onConflict: "name" }
-    );
-    if (provErr) {
-      return { ok: false, error: provErr.message };
+    const prov = await ensureProvinceRowInDb(admin, provinceId);
+    if (!prov.ok) {
+      return { ok: false, error: prov.error };
     }
+    dbProvinceId = prov.dbProvinceId;
+    provinceId = dbProvinceId;
   }
 
-  if (data.adminRole === "CITY_ADMIN" && cityId && canonicalCityName) {
+  if (data.adminRole === "CITY_ADMIN" && cityId && canonicalCityName && dbProvinceId) {
     const cityLabel = canonicalCityName;
 
-    if (provinceId) {
-      const { error: cityErr } = await admin.from("cities").upsert(
-        {
-          id: cityId,
-          province_id: provinceId,
-          name: cityLabel,
-          is_active: true,
-        },
-        { onConflict: "id" }
-      );
-      if (cityErr) {
-        return { ok: false, error: cityErr.message };
-      }
+    const { error: cityErr } = await admin.from("cities").upsert(
+      {
+        id: cityId,
+        province_id: dbProvinceId,
+        name: cityLabel,
+        is_active: true,
+      },
+      { onConflict: "id" }
+    );
+    if (cityErr) {
+      return { ok: false, error: cityErr.message };
     }
   }
 

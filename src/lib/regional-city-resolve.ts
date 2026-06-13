@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getIndonesiaProvinceById } from "@/app/utils/indonesiaProvinces";
 import {
@@ -18,6 +19,43 @@ type ServiceCityRow = {
 
 function cityLabelFromServiceRow(name: string): string {
   return (name.split(",")[0] ?? name).trim();
+}
+
+/**
+ * Sinkronkan baris `provinces` dan kembalikan ID efektif di database.
+ * Form memakai ID aplikasi (1–38); DB bisa memakai ID Kemendagri (mis. Jawa Barat = 31).
+ * Upsert `onConflict: name` memastikan FK `cities.province_id` selalu valid.
+ */
+export async function ensureProvinceRowInDb(
+  admin: SupabaseClient,
+  appProvinceId: number
+): Promise<
+  | { ok: true; dbProvinceId: number; provinceName: string }
+  | { ok: false; error: string }
+> {
+  const meta = getIndonesiaProvinceById(appProvinceId);
+  if (!meta) {
+    return { ok: false, error: "Provinsi tidak valid" };
+  }
+
+  const { data: province, error } = await admin
+    .from("provinces")
+    .upsert({ id: meta.id, name: meta.name }, { onConflict: "name" })
+    .select("id, name")
+    .single();
+
+  if (error || !province) {
+    return {
+      ok: false,
+      error: error?.message ?? "Gagal menyimpan provinsi induk",
+    };
+  }
+
+  return {
+    ok: true,
+    dbProvinceId: province.id,
+    provinceName: province.name,
+  };
 }
 
 async function provinceIdAliases(provinceId: number): Promise<Set<number>> {
@@ -91,19 +129,23 @@ export async function resolveCityIdForAdminProfile(
   const validated = validateCityInLocalMaster(provinceId, cityName);
   if (!validated.ok) return null;
 
+  const admin = createAdminClient();
+  const prov = await ensureProvinceRowInDb(admin, provinceId);
+  if (!prov.ok) return null;
+  const dbProvinceId = prov.dbProvinceId;
+
   const serviceCity = await findActiveServiceCityByName(
     provinceId,
     validated.canonicalName
   );
   if (serviceCity?.city_id != null) return serviceCity.city_id;
 
-  const admin = createAdminClient();
   const targetKey = normalizeCityNameForDedup(validated.canonicalName);
 
   const { data: cityRows } = await admin
     .from("cities")
     .select("id, name")
-    .eq("province_id", provinceId);
+    .eq("province_id", dbProvinceId);
 
   for (const row of cityRows ?? []) {
     if (normalizeCityNameForDedup(row.name) === targetKey) {
