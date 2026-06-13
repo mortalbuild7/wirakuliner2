@@ -38,7 +38,10 @@ export function useDriverApkWebView(): boolean {
   return isApk;
 }
 
-/** Bottom Panel Status — latar putih solid (bukan menu navigasi). */
+/**
+ * Outer wrapper panel bawah driver (setara DashboardClient bottom status).
+ * Wajib putih solid — tanpa blur/transparansi agar peta gelap tidak tembus.
+ */
 function DriverBottomStatusPanel({
   children,
   loading,
@@ -47,28 +50,33 @@ function DriverBottomStatusPanel({
   loading?: boolean;
 }) {
   return (
-    <nav
+    <div
+      role="navigation"
       aria-label="Status driver"
+      data-driver-bottom-panel
       className={cn(
-        "driver-apk-bottom-bar fixed bottom-0 left-0 right-0 z-[80]",
-        "border-t border-gray-200 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.05)]",
+        "driver-apk-bottom-bar pointer-events-auto fixed inset-x-0 bottom-0 z-[100] isolate",
+        "border-t border-gray-200 !bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.05)]",
         loading && "opacity-90"
       )}
-      style={{ backgroundColor: "#ffffff" }}
+      style={{
+        backgroundColor: "#ffffff",
+        paddingBottom: "max(env(safe-area-inset-bottom, 0px), 8px)",
+      }}
     >
       <div
-        className="bg-white pb-[max(env(safe-area-inset-bottom,0px),8px)]"
+        className="driver-apk-bottom-bar__plate absolute inset-0 bg-white"
         style={{ backgroundColor: "#ffffff" }}
-      >
-        <div className="mx-auto flex max-w-mobile items-center gap-2.5 px-3 py-2.5">
-          {children}
-        </div>
+        aria-hidden
+      />
+      <div className="relative mx-auto flex max-w-mobile items-center gap-2.5 px-3 py-2.5">
+        {children}
       </div>
-    </nav>
+    </div>
   );
 }
 
-/** Panel bawah APK: switch ONLINE/OFF + tombol Keluar — background putih bersih. */
+/** Panel bawah APK: switch ONLINE/OFF + tombol Keluar — outer wrapper putih bersih. */
 export function DriverApkBottomBar() {
   const isApk = useDriverApkWebView();
   const { driver, loading: profileLoading, refresh } = useDriverProfile();

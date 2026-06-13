@@ -154,14 +154,15 @@
     background-color: #ffffff;
   }
 
-  html.wira-apk-webview .driver-apk-bottom-bar {
+  html.wira-apk-webview .driver-apk-bottom-bar,
+  html.wira-apk-webview [data-driver-bottom-panel] {
     background-color: #ffffff !important;
     background-image: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
 
-  html.wira-apk-webview .driver-apk-bottom-bar > div {
+  html.wira-apk-webview .driver-apk-bottom-bar__plate {
     background-color: #ffffff !important;
   }
 
