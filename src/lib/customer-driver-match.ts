@@ -10,6 +10,7 @@ import type {
   DriverAvailabilityResult,
 } from "@/lib/driver-availability-types";
 import { haversineKm } from "@/lib/geo-config";
+import { extractServerErrorMessage } from "@/lib/server-error-message";
 import {
   resolveDriverCategoryForService,
   type ServiceType,
@@ -50,6 +51,7 @@ type NearestIdleDriver = {
 type CountDriversResult = {
   count: number;
   matchEngine: "postgis" | "haversine";
+  rpcFallbackReason?: string | null;
 };
 
 function normalizeTransitService(
@@ -140,8 +142,9 @@ async function countIdleDriversViaHaversineFallback(
     .not("current_lng", "is", null);
 
   if (error) {
-    console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
-    return 0;
+    throw new Error(
+      `[Haversine fallback] ${extractServerErrorMessage(error)}`
+    );
   }
 
   let count = 0;
@@ -171,16 +174,33 @@ export async function countNearbyIdleDrivers(
     radiusKm?: number;
   }
 ): Promise<CountDriversResult> {
+  let rpcFallbackReason: string | null = null;
+
   try {
     const count = await countIdleDriversViaPostgisRpc(admin, lat, lng, opts);
-    return { count, matchEngine: "postgis" };
+    return { count, matchEngine: "postgis", rpcFallbackReason: null };
   } catch (rpcError) {
+    rpcFallbackReason = extractServerErrorMessage(rpcError);
     console.error("LOG ERROR GEOLOKASI LENGKAP:", rpcError);
     console.warn(
-      "[driver-match] PostGIS RPC gagal — mengaktifkan fallback Haversine lokal"
+      "[driver-match] PostGIS RPC gagal — mengaktifkan fallback Haversine:",
+      rpcFallbackReason
     );
+  }
+
+  try {
     const count = await countIdleDriversViaHaversineFallback(admin, lat, lng, opts);
-    return { count, matchEngine: "haversine" };
+    return {
+      count,
+      matchEngine: "haversine",
+      rpcFallbackReason,
+    };
+  } catch (fallbackError) {
+    const fallbackMsg = extractServerErrorMessage(fallbackError);
+    const combined = rpcFallbackReason
+      ? `RPC gagal: ${rpcFallbackReason} | Fallback gagal: ${fallbackMsg}`
+      : fallbackMsg;
+    throw new Error(combined);
   }
 }
 
@@ -289,7 +309,7 @@ export async function evaluateDriverProximityAvailability(
       );
     }
 
-    const { count, matchEngine } = await countNearbyIdleDrivers(
+    const { count, matchEngine, rpcFallbackReason } = await countNearbyIdleDrivers(
       admin,
       parsed.lat,
       parsed.lng,
@@ -316,6 +336,8 @@ export async function evaluateDriverProximityAvailability(
       service_type: serviceType,
       radius_km: radiusKm,
       match_engine: matchEngine,
+      server_error_detail: null,
+      rpc_fallback_reason: rpcFallbackReason ?? null,
     };
 
     if (count > 0) {
@@ -348,6 +370,7 @@ export async function evaluateDriverProximityAvailability(
       effectiveCoords
     );
   } catch (error) {
+    const detail = extractServerErrorMessage(error);
     console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
     const fallbackLat = parseFloat(String(rawLat ?? "").trim());
     const fallbackLng = parseFloat(String(rawLng ?? "").trim());
@@ -360,7 +383,7 @@ export async function evaluateDriverProximityAvailability(
       {
         available: false,
         error_code: "RPC_ERROR",
-        message: "Gagal memeriksa ketersediaan driver. Coba lagi.",
+        message: detail,
         effective_lat: coords[0],
         effective_lng: coords[1],
         debug_info: {
@@ -369,6 +392,8 @@ export async function evaluateDriverProximityAvailability(
           nearest_driver_id: null,
           service_type: serviceType,
           radius_km: radiusKm,
+          server_error_detail: detail,
+          rpc_fallback_reason: null,
         },
       },
       coords,

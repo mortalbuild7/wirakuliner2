@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Bike, Car, Loader2, MapPinOff, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,12 @@ import {
   EMPTY_DRIVER_ZONE_MESSAGE,
 } from "@/app/actions/matchDriver";
 import type { useNgojekRide } from "@/hooks/use-ngojek-ride";
+import {
+  assertCustomerGeolocationReady,
+  notifyCustomerOrderError,
+  notifyFormValidationErrors,
+  withCustomerOrderTimeout,
+} from "@/lib/customer-order-feedback";
 import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
 import {
   CUSTOMER_GPS_REQUIRED_MSG,
@@ -29,15 +35,6 @@ function EmptyDriverModal({
   open: boolean;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
   if (!open) return null;
 
   return (
@@ -81,8 +78,36 @@ function EmptyDriverModal({
   );
 }
 
+function collectSubmitBlockers(
+  ride: ReturnType<typeof useNgojekRide>,
+  uiState: OrderUiState
+): string[] {
+  const blockers: string[] = [];
+
+  if (ride.placing) blockers.push("pesanan sedang diproses");
+  if (uiState === "checking") blockers.push("sedang memeriksa driver");
+  if (!ride.destAddress.trim()) blockers.push("alamat tujuan");
+  if (!ride.areaAvailable) {
+    blockers.push(
+      ride.areaMessage
+        ? `wilayah layanan (${ride.areaMessage})`
+        : "wilayah layanan belum siap"
+    );
+  }
+  if (ride.rideFee <= 0) blockers.push("tarif ride (belum dihitung)");
+  if (ride.distanceKm < NGOJEK_MIN_DISTANCE_KM) {
+    blockers.push(
+      `jarak minimal ${NGOJEK_MIN_DISTANCE_KM} km (saat ini ${ride.distanceKm.toFixed(3)} km)`
+    );
+  }
+  if (!ride.userId) blockers.push("login customer");
+
+  return blockers;
+}
+
 /**
  * Konfirmasi & pemesanan customer — pre-check driver 3 km sebelum order dibuat.
+ * Tombol selalu bisa diklik; setiap hambatan ditampilkan via toast + alert di HP.
  */
 export function OrderConfirmation({ ride }: OrderConfirmationProps) {
   const [uiState, setUiState] = useState<OrderUiState>("idle");
@@ -104,84 +129,107 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
         ? Car
         : Bike;
 
-  const canSubmit =
-    !ride.placing &&
-    uiState !== "checking" &&
-    ride.destAddress.trim().length > 0 &&
-    ride.areaAvailable &&
-    ride.rideFee > 0 &&
-    ride.distanceKm >= NGOJEK_MIN_DISTANCE_KM;
+  const submitBlockers = collectSubmitBlockers(ride, uiState);
+  const canSubmit = submitBlockers.length === 0;
+  const busy = ride.placing || uiState === "checking" || uiState === "placing";
 
   const closeEmptyState = useCallback(() => {
     setUiState("idle");
   }, []);
 
   const handleOrderNow = useCallback(async () => {
-    if (!canSubmit) return;
+    if (busy) {
+      notifyCustomerOrderError("Mohon tunggu, pesanan sedang diproses.");
+      return;
+    }
 
-    if (isTransitRide) {
-      const pickupCoords = validatePickupCoordinates(ride.pickupLat, ride.pickupLng);
-      if (!pickupCoords.ok) {
-        toast.error(CUSTOMER_GPS_REQUIRED_MSG);
-        return;
-      }
+    const geo = assertCustomerGeolocationReady();
+    if (!geo.ok) {
+      notifyCustomerOrderError(geo.message);
+      return;
+    }
 
-      setUiState("checking");
-      try {
-        const result = await checkDriverAvailability(
-          pickupCoords.lat,
-          pickupCoords.lng,
-          ride.serviceType
-        );
-        if (!result.available) {
-          if (process.env.NODE_ENV === "development") {
-            console.info("[driver-availability]", result);
-          }
-          if (result.error_code === "INVALID_COORDINATES") {
-            toast.error(result.message ?? CUSTOMER_GPS_REQUIRED_MSG);
-            setUiState("idle");
-            return;
-          }
-          if (result.error_code === "RPC_ERROR") {
-            toast.error(
-              result.message ?? "Gagal memeriksa ketersediaan driver. Coba lagi."
-            );
-            setUiState("idle");
-            return;
-          }
-          setUiState("EMPTY_STATE");
+    const blockers = collectSubmitBlockers(ride, uiState);
+    if (blockers.length > 0) {
+      notifyFormValidationErrors(blockers);
+      return;
+    }
+
+    try {
+      if (isTransitRide) {
+        const pickupCoords = validatePickupCoordinates(ride.pickupLat, ride.pickupLng);
+        if (!pickupCoords.ok) {
+          notifyCustomerOrderError(CUSTOMER_GPS_REQUIRED_MSG);
           return;
         }
-      } catch (error) {
-        console.error("[driver-availability] unexpected", error);
-        setUiState("idle");
-        toast.error("Gagal memeriksa ketersediaan driver. Coba lagi.");
-        return;
+
+        setUiState("checking");
+        try {
+          const result = await withCustomerOrderTimeout(
+            checkDriverAvailability(
+              pickupCoords.lat,
+              pickupCoords.lng,
+              ride.serviceType
+            ),
+            30_000,
+            "Memeriksa ketersediaan driver"
+          );
+
+          if (!result.available) {
+            if (process.env.NODE_ENV === "development") {
+              console.info("[driver-availability]", result);
+            }
+            if (result.error_code === "INVALID_COORDINATES") {
+              notifyCustomerOrderError(
+                result.message ?? CUSTOMER_GPS_REQUIRED_MSG
+              );
+              return;
+            }
+            if (
+              result.error_code === "RPC_ERROR" ||
+              result.error_code === "SESSION_EXPIRED"
+            ) {
+              notifyCustomerOrderError(
+                result.message ?? "Server error",
+                result.debug_info.server_error_detail ?? result.message
+              );
+              return;
+            }
+            setUiState("EMPTY_STATE");
+            return;
+          }
+        } catch (error) {
+          notifyCustomerOrderError(
+            "Crash Frontend: gagal memeriksa ketersediaan driver.",
+            error
+          );
+          return;
+        }
       }
-    }
 
-    setUiState("placing");
-    try {
-      await ride.bookRide();
+      setUiState("placing");
+      try {
+        await ride.bookRide();
+      } catch (error) {
+        notifyCustomerOrderError("Crash Frontend: gagal membuat pesanan.", error);
+      }
+    } catch (error) {
+      notifyCustomerOrderError("Crash Frontend: tombol pesan error.", error);
     } finally {
-      setUiState((s) => (s === "EMPTY_STATE" ? s : "idle"));
+      setUiState((current) => (current === "EMPTY_STATE" ? current : "idle"));
     }
-  }, [
-    canSubmit,
-    isTransitRide,
-    ride.pickupLat,
-    ride.pickupLng,
-    ride.serviceType,
-    ride,
-  ]);
-
-  const busy = ride.placing || uiState === "checking" || uiState === "placing";
+  }, [busy, isTransitRide, ride, uiState]);
 
   return (
     <>
       <Button
-        className="h-12 w-full rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-md hover:bg-emerald-700"
-        disabled={!canSubmit || busy}
+        type="button"
+        className={cn(
+          "h-12 w-full rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-md hover:bg-emerald-700",
+          !canSubmit && !busy && "opacity-70"
+        )}
+        disabled={busy}
+        aria-disabled={!canSubmit && !busy}
         onClick={() => void handleOrderNow()}
       >
         {busy ? (
@@ -196,6 +244,12 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
           </>
         )}
       </Button>
+
+      {!canSubmit && !busy && submitBlockers.length > 0 && (
+        <p className="mt-2 text-center text-[11px] font-medium text-amber-800">
+          Ketuk tombol untuk melihat syarat yang belum terpenuhi
+        </p>
+      )}
 
       <EmptyDriverModal
         open={uiState === "EMPTY_STATE"}

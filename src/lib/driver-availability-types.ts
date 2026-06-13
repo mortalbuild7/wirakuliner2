@@ -6,6 +6,7 @@ export type DriverAvailabilityErrorCode =
   | "INVALID_COORDINATES"
   | "NO_ONLINE_DRIVER_IN_RADIUS"
   | "RPC_ERROR"
+  | "SESSION_EXPIRED"
   | "NON_TRANSIT_SERVICE";
 
 export type DriverAvailabilityDebugInfo = {
@@ -18,6 +19,10 @@ export type DriverAvailabilityDebugInfo = {
   radius_km: number;
   /** `postgis` = RPC Supabase; `haversine` = kalkulator lokal cadangan. */
   match_engine?: "postgis" | "haversine";
+  /** Pesan error mentah dari server — untuk alert di HP. */
+  server_error_detail?: string | null;
+  /** Alasan RPC diganti Haversine (jika fallback aktif). */
+  rpc_fallback_reason?: string | null;
 };
 
 export type DriverAvailabilityResult = {
@@ -34,3 +39,6 @@ export function isTransitProximityService(
 ): boolean {
   return serviceType === "NGOJEK" || serviceType === "NGOMOBIL" || serviceType === "PAKET";
 }
+
+export const CUSTOMER_SESSION_EXPIRED_MSG =
+  "Sesi login di HP Anda habis, mohon login ulang";

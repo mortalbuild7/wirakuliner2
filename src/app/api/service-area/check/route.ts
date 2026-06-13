@@ -1,5 +1,6 @@
 import { checkServiceAvailability } from "@/lib/service-area";
 import { evaluateDriverProximityAvailability } from "@/lib/customer-driver-match";
+import { extractServerErrorMessage } from "@/lib/server-error-message";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isServiceType, type ServiceType } from "@/lib/service-types";
 import {
@@ -29,13 +30,15 @@ export async function GET(req: Request) {
       try {
         admin = createAdminClient();
       } catch (error) {
+        const detail = extractServerErrorMessage(error);
         console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
         return secureJsonResponse({
           ok: true,
           available: false,
           error_code: "RPC_ERROR",
-          message: "Gagal memeriksa ketersediaan driver. Coba lagi.",
+          message: detail,
           matchMode: "gps_proximity",
+          debug_info: { server_error_detail: detail },
         });
       }
 
@@ -79,12 +82,14 @@ export async function GET(req: Request) {
       cityName: result.cityName,
     });
   } catch (error) {
+    const detail = extractServerErrorMessage(error);
     console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
     return secureJsonResponse({
       ok: true,
       available: false,
       error_code: "RPC_ERROR",
-      message: "Gagal memeriksa ketersediaan driver. Coba lagi.",
+      message: detail,
+      debug_info: { server_error_detail: detail },
     });
   }
 }

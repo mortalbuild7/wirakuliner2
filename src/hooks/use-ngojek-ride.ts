@@ -27,7 +27,10 @@ import {
 import type { QrisPaymentData } from "@/components/payment/qris-payment-panel";
 import type { PaymentMethodChoice } from "@/components/wallet/payment-method-picker";
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
+import {
+  assertCustomerGeolocationReady,
+  notifyCustomerOrderError,
+} from "@/lib/customer-order-feedback";
 import {
   CUSTOMER_GPS_REQUIRED_MSG,
   validatePickupCoordinates,
@@ -353,6 +356,7 @@ export function useNgojekRide() {
 
     const timer = window.setTimeout(() => {
       void (async () => {
+        try {
         if (isTransit) {
           const pickupCoords = validatePickupCoordinates(pickupLat, pickupLng);
           if (!pickupCoords.ok) {
@@ -360,7 +364,7 @@ export function useNgojekRide() {
             setDestAreaOk(true);
             setSameCityOk(true);
             setAreaMessage(CUSTOMER_GPS_REQUIRED_MSG);
-            toast.error(CUSTOMER_GPS_REQUIRED_MSG);
+            notifyCustomerOrderError(CUSTOMER_GPS_REQUIRED_MSG);
             return;
           }
 
@@ -376,7 +380,7 @@ export function useNgojekRide() {
             setDestAreaOk(true);
             setSameCityOk(true);
             setAreaMessage(pickup.message ?? CUSTOMER_GPS_REQUIRED_MSG);
-            toast.error(pickup.message ?? CUSTOMER_GPS_REQUIRED_MSG);
+            notifyCustomerOrderError(pickup.message ?? CUSTOMER_GPS_REQUIRED_MSG);
             return;
           }
 
@@ -423,6 +427,10 @@ export function useNgojekRide() {
         } else {
           setAreaMessage(null);
         }
+        } catch (error) {
+          if (cancelled) return;
+          notifyCustomerOrderError("Crash Frontend: gagal cek wilayah layanan.", error);
+        }
       })();
     }, 300);
 
@@ -434,7 +442,12 @@ export function useNgojekRide() {
 
   /** GPS sekali — hanya mengisi currentDeviceLocation, tidak mengunci pickup. */
   useEffect(() => {
-    if (!navigator.geolocation) return;
+    const geo = assertCustomerGeolocationReady();
+    if (!geo.ok) {
+      notifyCustomerOrderError(geo.message);
+      return;
+    }
+
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -442,18 +455,25 @@ export function useNgojekRide() {
         const lng = roundCoordForQuote(pos.coords.longitude);
         setGpsLoading(false);
         void (async () => {
-          const res = await getAddressFromCoordinates(lat, lng);
-          const address =
-            res.ok && res.location.address
-              ? res.location.address
-              : "Lokasi perangkat saya";
-          setDeviceLocation(
-            { address, latitude: lat, longitude: lng },
-            pos.coords.accuracy
-          );
+          try {
+            const res = await getAddressFromCoordinates(lat, lng);
+            const address =
+              res.ok && res.location.address
+                ? res.location.address
+                : "Lokasi perangkat saya";
+            setDeviceLocation(
+              { address, latitude: lat, longitude: lng },
+              pos.coords.accuracy
+            );
+          } catch (error) {
+            notifyCustomerOrderError("Gagal mengurai alamat dari GPS.", error);
+          }
         })();
       },
-      () => setGpsLoading(false),
+      (error) => {
+        setGpsLoading(false);
+        notifyCustomerOrderError("Gagal mendapatkan lokasi GPS HP Anda.", error);
+      },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 }
     );
   }, [setDeviceLocation]);
@@ -745,6 +765,9 @@ export function useNgojekRide() {
         router.push(`/login?next=${encodeURIComponent("/customer/ride")}`);
         return;
       }
+      notifyCustomerOrderError(
+        `Form belum lengkap! Kolom bermasalah: ${validation.error}`
+      );
       setPlaceError(validation.error);
       return;
     }
@@ -782,13 +805,17 @@ export function useNgojekRide() {
       };
 
       if (!res.ok) {
-        setPlaceError(json.error ?? `Gagal memesan ${serviceLabel}`);
+        const msg = json.error ?? `Gagal memesan ${serviceLabel}`;
+        setPlaceError(msg);
+        notifyCustomerOrderError(msg);
         return;
       }
 
       const orderId = json.orderId;
       if (!orderId) {
-        setPlaceError("Respons order tidak valid");
+        const msg = "Respons order tidak valid";
+        setPlaceError(msg);
+        notifyCustomerOrderError(msg);
         return;
       }
 
@@ -810,7 +837,9 @@ export function useNgojekRide() {
             error?: string;
           };
           if (!confirmRes.ok) {
-            setPlaceError(confirmJson.error ?? "Gagal mengonfirmasi pembayaran");
+            const msg = confirmJson.error ?? "Gagal mengonfirmasi pembayaran";
+            setPlaceError(msg);
+            notifyCustomerOrderError(msg);
             return;
           }
           saveTrackSnapshot(orderId);
@@ -826,7 +855,9 @@ export function useNgojekRide() {
         setQrisPayment(qris);
       }
     } catch (e) {
-      setPlaceError(e instanceof Error ? e.message : "Koneksi gagal. Coba lagi.");
+      const msg = e instanceof Error ? e.message : "Koneksi gagal. Coba lagi.";
+      setPlaceError(msg);
+      notifyCustomerOrderError("Crash Frontend: gagal submit pesanan.", e);
     } finally {
       setPlacing(false);
     }
