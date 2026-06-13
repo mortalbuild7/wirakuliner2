@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "id.web.wirakuliner.driver",
+      "backgroundColor": "#ffffff",
       "adaptiveIcon": {
         "backgroundColor": "#f8fafc",
         "foregroundImage": "./assets/android-icon-foreground.png",

@@ -36,7 +36,7 @@ export function HelloWelcome() {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed left-4 top-4 z-[9999] h-24 w-24 transition-opacity duration-500 md:h-32 md:w-32",
+        "pointer-events-none fixed left-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[9999] h-44 w-44 transition-opacity duration-500 sm:h-52 sm:w-52 md:h-60 md:w-60",
         fading ? "opacity-0" : "opacity-100"
       )}
       aria-hidden

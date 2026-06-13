@@ -5,9 +5,12 @@ import { Bike } from "lucide-react";
 import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { DriverHeaderControls } from "@/components/driver/driver-header-controls";
 import { HelloWelcome } from "@/components/shared/HelloWelcome";
+import { DriverApkBottomBar, useDriverApkWebView } from "@/components/driver/driver-apk-bottom-bar";
+import { cn } from "@/lib/utils";
 
 export function DriverShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const isApk = useDriverApkWebView();
   const isMinimal =
     pathname.startsWith("/driver/setup") || pathname.startsWith("/driver/app-entry");
   const isCockpit = pathname === "/driver" || pathname === "/driver/";
@@ -20,7 +23,15 @@ export function DriverShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="driver-panel wira-mesh flex min-h-[100dvh] flex-col">
         <HelloWelcome />
-        <div className="mx-auto flex w-full max-w-mobile min-h-0 flex-1 flex-col">{children}</div>
+        <div
+          className={cn(
+            "mx-auto flex w-full max-w-mobile min-h-0 flex-1 flex-col",
+            isApk && "pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))]"
+          )}
+        >
+          {children}
+        </div>
+        <DriverApkBottomBar />
       </div>
     );
   }
@@ -39,10 +50,13 @@ export function DriverShell({ children }: { children: React.ReactNode }) {
               <PoweredByDaffacell variant="header" className="text-slate-500" />
             </div>
           </div>
-          <DriverHeaderControls />
+          {!isApk && <DriverHeaderControls />}
         </div>
       </header>
-      <div className="safe-pb-nav mx-auto max-w-mobile">{children}</div>
+      <div className={cn("safe-pb-nav mx-auto max-w-mobile", isApk && "pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))]")}>
+        {children}
+      </div>
+      <DriverApkBottomBar />
     </div>
   );
 }

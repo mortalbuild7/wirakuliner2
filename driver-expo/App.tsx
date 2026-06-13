@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import type { WebViewMessageEvent, WebViewNavigation } from "react-native-webview";
 import { DriverLoginScreen } from "./components/DriverLoginScreen";
@@ -134,6 +134,118 @@ function isDriverWebPath(url: string) {
 
 type AppPhase = "boot" | "login" | "app";
 type DriverState = { online: boolean; delivering: boolean; hasDriver: boolean };
+
+function DriverWebShell({
+  webRef,
+  activeWebUrl,
+  webUrlIndex,
+  sessionKey,
+  beforeLoadScript,
+  webLoading,
+  webError,
+  onWebLoadStart,
+  onWebLoadEnd,
+  onNavChange,
+  onMessage,
+  onWebError,
+  onHttpError,
+  onContentProcessTerminate,
+  reloadWebView,
+}: {
+  webRef: React.RefObject<WebView | null>;
+  activeWebUrl: string;
+  webUrlIndex: number;
+  sessionKey: string;
+  beforeLoadScript: string;
+  webLoading: boolean;
+  webError: string | null;
+  onWebLoadStart: () => void;
+  onWebLoadEnd: () => void;
+  onNavChange: (nav: WebViewNavigation) => void;
+  onMessage: (event: WebViewMessageEvent) => void;
+  onWebError: (description: string, errorCode?: number, failedUrl?: string) => void;
+  onHttpError: (statusCode: number, url?: string, description?: string) => void;
+  onContentProcessTerminate: () => void;
+  reloadWebView: (resetRetries?: boolean) => void;
+}) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <SafeAreaView style={styles.root} edges={["top"]}>
+      <StatusBar style="dark" backgroundColor="#ffffff" />
+      <View style={[styles.webWrap, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+        <WebView
+          key={`${sessionKey}-${webUrlIndex}`}
+          ref={webRef}
+          source={{ uri: activeWebUrl }}
+          style={styles.web}
+          startInLoadingState
+          cacheEnabled
+          cacheMode={Platform.OS === "android" ? "LOAD_CACHE_ELSE_NETWORK" : undefined}
+          injectedJavaScriptBeforeContentLoaded={beforeLoadScript}
+          onLoadStart={onWebLoadStart}
+          onLoadEnd={onWebLoadEnd}
+          onNavigationStateChange={onNavChange}
+          onShouldStartLoadWithRequest={(req) => isDriverWebPath(req.url)}
+          onMessage={onMessage}
+          onError={(e) => {
+            const { description, code, url } = e.nativeEvent;
+            onWebError(description, code, url);
+          }}
+          onHttpError={(e) => {
+            const { statusCode, url, description } = e.nativeEvent;
+            onHttpError(statusCode, url, description);
+          }}
+          onContentProcessDidTerminate={onContentProcessTerminate}
+          renderError={(errorDomain, errorCode, errorDesc) => (
+            <View style={styles.errorScreen}>
+              <Text style={styles.errorTitle}>Gagal memuat halaman driver</Text>
+              <Text style={styles.errorBody}>
+                {errorDesc || "Koneksi timeout — periksa internet Anda."}
+              </Text>
+              {errorDomain ? (
+                <Text style={styles.errorMeta}>Domain: {errorDomain}</Text>
+              ) : null}
+              <Text style={styles.errorMeta}>Kode: {errorCode}</Text>
+              <Pressable style={styles.errorRetryBtn} onPress={() => reloadWebView(true)}>
+                <Text style={styles.errorRetryText}>Coba lagi</Text>
+              </Pressable>
+            </View>
+          )}
+          geolocationEnabled
+          javaScriptEnabled
+          domStorageEnabled
+          sharedCookiesEnabled
+          thirdPartyCookiesEnabled
+          allowsBackForwardNavigationGestures
+          setSupportMultipleWindows={false}
+          originWhitelist={["https://*", "http://*"]}
+          userAgent={
+            Platform.OS === "android"
+              ? "WIRADriverExpo/1.0 Android"
+              : "WIRADriverExpo/1.0 iOS"
+          }
+        />
+        {(webLoading || webError) && (
+          <View style={styles.loader} pointerEvents={webError ? "auto" : "none"}>
+            {webError ? (
+              <>
+                <Text style={styles.errorTitle}>Tidak bisa terhubung ke server</Text>
+                <Text style={styles.errorBody}>{webError}</Text>
+                <Text style={styles.errorMeta}>URL: {activeWebUrl.replace("https://", "")}</Text>
+                <Pressable style={styles.errorRetryBtn} onPress={() => reloadWebView(true)}>
+                  <Text style={styles.errorRetryText}>Coba lagi</Text>
+                </Pressable>
+              </>
+            ) : (
+              <ActivityIndicator size="large" color="#34d399" />
+            )}
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
+  );
+}
 
 export default function App() {
   const webRef = useRef<WebView | null>(null);
@@ -533,126 +645,30 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.root} edges={["top"]}>
-        <StatusBar style="dark" backgroundColor="#f8fafc" />
-        <WebView
-          key={`${session?.user?.id ?? "webview"}-${webUrlIndex}`}
-          ref={webRef}
-          source={{ uri: activeWebUrl }}
-          style={styles.web}
-          startInLoadingState
-          cacheEnabled
-          cacheMode={Platform.OS === "android" ? "LOAD_CACHE_ELSE_NETWORK" : undefined}
-          injectedJavaScriptBeforeContentLoaded={beforeLoadScript}
-          onLoadStart={() => {
-            setWebError(null);
-            setWebLoading(true);
-          }}
-          onLoadEnd={onWebLoadEnd}
-          onNavigationStateChange={onNavChange}
-          onShouldStartLoadWithRequest={(req) => isDriverWebPath(req.url)}
-          onMessage={onMessage}
-          onError={(e) => {
-            const { description, code, url } = e.nativeEvent;
-            handleWebLoadFailure(description, code, url);
-          }}
-          onHttpError={(e) => {
-            const { statusCode, url, description } = e.nativeEvent;
-            if (statusCode >= 500) {
-              handleWebLoadFailure(description || `HTTP ${statusCode}`, statusCode, url);
-            }
-          }}
-          onContentProcessDidTerminate={() => {
-            reloadWebView(false);
-          }}
-          renderError={(errorDomain, errorCode, errorDesc) => (
-            <View style={styles.errorScreen}>
-              <Text style={styles.errorTitle}>Gagal memuat halaman driver</Text>
-              <Text style={styles.errorBody}>
-                {errorDesc || "Koneksi timeout — periksa internet Anda."}
-              </Text>
-              {errorDomain ? (
-                <Text style={styles.errorMeta}>Domain: {errorDomain}</Text>
-              ) : null}
-              <Text style={styles.errorMeta}>Kode: {errorCode}</Text>
-              <Pressable style={styles.errorRetryBtn} onPress={() => reloadWebView(true)}>
-                <Text style={styles.errorRetryText}>Coba lagi</Text>
-              </Pressable>
-            </View>
-          )}
-          geolocationEnabled
-          javaScriptEnabled
-          domStorageEnabled
-          sharedCookiesEnabled
-          thirdPartyCookiesEnabled
-          allowsBackForwardNavigationGestures
-          setSupportMultipleWindows={false}
-          originWhitelist={["https://*", "http://*"]}
-          userAgent={
-            Platform.OS === "android"
-              ? "WIRADriverExpo/1.0 Android"
-              : "WIRADriverExpo/1.0 iOS"
+      <DriverWebShell
+        webRef={webRef}
+        activeWebUrl={activeWebUrl}
+        webUrlIndex={webUrlIndex}
+        sessionKey={session?.user?.id ?? "webview"}
+        beforeLoadScript={beforeLoadScript}
+        webLoading={webLoading}
+        webError={webError}
+        onWebLoadStart={() => {
+          setWebError(null);
+          setWebLoading(true);
+        }}
+        onWebLoadEnd={onWebLoadEnd}
+        onNavChange={onNavChange}
+        onMessage={onMessage}
+        onWebError={handleWebLoadFailure}
+        onHttpError={(statusCode, url, description) => {
+          if (statusCode >= 500) {
+            handleWebLoadFailure(description || `HTTP ${statusCode}`, statusCode, url);
           }
-        />
-        {(webLoading || webError) && (
-          <View
-            style={styles.loader}
-            pointerEvents={webError ? "auto" : "none"}
-          >
-            {webError ? (
-              <>
-                <Text style={styles.errorTitle}>Tidak bisa terhubung ke server</Text>
-                <Text style={styles.errorBody}>{webError}</Text>
-                <Text style={styles.errorMeta}>
-                  URL: {activeWebUrl.replace("https://", "")}
-                </Text>
-                <Pressable style={styles.errorRetryBtn} onPress={() => reloadWebView(true)}>
-                  <Text style={styles.errorRetryText}>Coba lagi</Text>
-                </Pressable>
-              </>
-            ) : (
-              <ActivityIndicator size="large" color="#34d399" />
-            )}
-          </View>
-        )}
-        <SafeAreaView style={styles.toolbarWrap} edges={["bottom"]}>
-          <View style={styles.toolbar}>
-            <Pressable
-              style={[
-                styles.toggleBtn,
-                driverState.online ? styles.toggleOn : styles.toggleOff,
-                driverState.delivering && driverState.online && styles.toggleDisabled,
-              ]}
-              onPress={handleToggle}
-              disabled={driverState.delivering && driverState.online}
-            >
-              <Text
-                style={[
-                  styles.toggleText,
-                  driverState.online ? styles.toggleTextOn : styles.toggleTextOff,
-                ]}
-              >
-                {driverState.online ? "● ONLINE" : "○ OFFLINE"}
-              </Text>
-              <Text
-                style={[
-                  styles.toggleHint,
-                  driverState.online ? styles.toggleHintOn : styles.toggleHintOff,
-                ]}
-              >
-                {driverState.delivering
-                  ? "Mengantar"
-                  : driverState.online
-                    ? "Siap terima order"
-                    : "Tidak menerima order"}
-              </Text>
-            </Pressable>
-            <Pressable style={styles.logoutBtn} onPress={handleLogout}>
-              <Text style={styles.logoutText}>Keluar</Text>
-            </Pressable>
-          </View>
-        </SafeAreaView>
-      </SafeAreaView>
+        }}
+        onContentProcessTerminate={() => reloadWebView(false)}
+        reloadWebView={reloadWebView}
+      />
     </SafeAreaProvider>
   );
 }
@@ -666,83 +682,21 @@ const styles = StyleSheet.create({
   },
   root: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#ffffff",
+  },
+  webWrap: {
+    flex: 1,
+    backgroundColor: "#ffffff",
   },
   web: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#ffffff",
   },
   loader: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(248,250,252,0.92)",
-  },
-  toolbarWrap: {
-    backgroundColor: "#ffffff",
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
-  },
-  toolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === "ios" ? 6 : 12,
-  },
-  toggleBtn: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  toggleOn: {
-    borderColor: "#a7f3d0",
-    backgroundColor: "#ecfdf5",
-  },
-  toggleOff: {
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
-  },
-  toggleDisabled: {
-    opacity: 0.72,
-  },
-  toggleText: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  toggleTextOn: {
-    color: "#065f46",
-  },
-  toggleTextOff: {
-    color: "#334155",
-  },
-  toggleHint: {
-    fontSize: 10,
-    marginTop: 2,
-    fontWeight: "500",
-  },
-  toggleHintOn: {
-    color: "#047857",
-  },
-  toggleHintOff: {
-    color: "#64748b",
-  },
-  logoutBtn: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#fecaca",
-    backgroundColor: "#fef2f2",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  logoutText: {
-    color: "#dc2626",
-    fontSize: 12,
-    fontWeight: "700",
+    backgroundColor: "rgba(255,255,255,0.94)",
   },
   errorScreen: {
     flex: 1,

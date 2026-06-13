@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DriverHeaderControls } from "@/components/driver/driver-header-controls";
+import { useDriverApkWebView } from "@/components/driver/driver-apk-bottom-bar";
 import {
   playDriverIncomingOrderSound,
   unlockDriverOrderAudio,
@@ -115,6 +116,7 @@ function saveDismissed(driverId: string, ids: Set<string>) {
 
 export function DriverCockpit() {
   const { driver, userId, loading, refresh } = useDriverProfile();
+  const isApk = useDriverApkWebView();
   const [tab, setTab] = useState<Tab>("map");
   const [statusLoading, setStatusLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -622,8 +624,9 @@ export function DriverCockpit() {
   const orderTotal = (o: OrderRow) =>
     Number(o.total_product_amount) + Number(o.delivery_fee);
 
-  const orderCardBottom =
-    "bottom-[max(7rem,calc(0.75rem+env(safe-area-inset-bottom)))]";
+  const orderCardBottom = isApk
+    ? "bottom-[max(8.5rem,calc(5.5rem+env(safe-area-inset-bottom)))]"
+    : "bottom-[max(7rem,calc(0.75rem+env(safe-area-inset-bottom)))]";
   const orderItems = activeOrder?.order_items ?? [];
 
   return (
@@ -674,7 +677,7 @@ export function DriverCockpit() {
               ))}
             </div>
           </div>
-          <DriverHeaderControls />
+          {!isApk && <DriverHeaderControls />}
         </div>
       </header>
 
