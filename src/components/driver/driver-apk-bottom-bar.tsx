@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useDriverProfile } from "@/hooks/use-driver-profile";
 import { useDriverStatusActions } from "@/hooks/use-driver-status-actions";
+import { isCapacitorNative } from "@/lib/capacitor";
 import { cn } from "@/lib/utils";
 import { Loader2, LogOut, Power } from "lucide-react";
 
@@ -11,8 +12,16 @@ function detectApkWebView(): boolean {
   const w = window as Window & {
     ReactNativeWebView?: unknown;
     __WIRA_APK_WEBVIEW__?: boolean;
+    __WIRA_NATIVE_TOOLBAR__?: boolean;
   };
-  return Boolean(w.__WIRA_APK_WEBVIEW__ || w.ReactNativeWebView);
+  return Boolean(w.__WIRA_APK_WEBVIEW__ || w.ReactNativeWebView || isCapacitorNative());
+}
+
+function hasNativeToolbar(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean(
+    (window as Window & { __WIRA_NATIVE_TOOLBAR__?: boolean }).__WIRA_NATIVE_TOOLBAR__
+  );
 }
 
 function postNativeMessage(payload: Record<string, unknown>) {
@@ -25,17 +34,33 @@ export function useDriverApkWebView(): boolean {
   const [isApk, setIsApk] = useState(detectApkWebView);
 
   useEffect(() => {
-    setIsApk(detectApkWebView());
+    const sync = () => setIsApk(detectApkWebView());
+    sync();
     const timer = window.setInterval(() => {
-      if (detectApkWebView()) {
-        setIsApk(true);
-        window.clearInterval(timer);
-      }
+      sync();
+      if (detectApkWebView()) window.clearInterval(timer);
     }, 120);
     return () => window.clearInterval(timer);
   }, []);
 
   return isApk;
+}
+
+/** Padding bawah konten — hanya jika bar web (bukan toolbar native Expo) aktif. */
+export function useDriverApkBottomPadding(): boolean {
+  const isApk = useDriverApkWebView();
+  const [needsPadding, setNeedsPadding] = useState(
+    () => detectApkWebView() && !hasNativeToolbar()
+  );
+
+  useEffect(() => {
+    const sync = () => setNeedsPadding(detectApkWebView() && !hasNativeToolbar());
+    sync();
+    const timer = window.setInterval(sync, 200);
+    return () => window.clearInterval(timer);
+  }, [isApk]);
+
+  return needsPadding;
 }
 
 /**
@@ -55,12 +80,13 @@ function DriverBottomStatusPanel({
       aria-label="Status driver"
       data-driver-bottom-panel
       className={cn(
-        "driver-apk-bottom-bar pointer-events-auto fixed inset-x-0 bottom-0 z-[100] isolate",
-        "border-t border-gray-200 !bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.05)]",
+        "driver-apk-bottom-bar pointer-events-auto fixed inset-x-0 bottom-0 z-[200] isolate",
+        "border-t border-gray-200 bg-[#ffffff] shadow-[0_-4px_12px_rgba(0,0,0,0.05)]",
         loading && "opacity-90"
       )}
       style={{
         backgroundColor: "#ffffff",
+        backgroundImage: "none",
         paddingBottom: "max(env(safe-area-inset-bottom, 0px), 8px)",
       }}
     >
@@ -79,11 +105,20 @@ function DriverBottomStatusPanel({
 /** Panel bawah APK: switch ONLINE/OFF + tombol Keluar — outer wrapper putih bersih. */
 export function DriverApkBottomBar() {
   const isApk = useDriverApkWebView();
+  const [hideForNativeToolbar, setHideForNativeToolbar] = useState(hasNativeToolbar);
   const { driver, loading: profileLoading, refresh } = useDriverProfile();
   const { loading, isOnline, isDelivering, setOnline, logout } = useDriverStatusActions(
     driver,
     refresh
   );
+
+  useEffect(() => {
+    if (!isApk) return;
+    const timer = window.setInterval(() => {
+      setHideForNativeToolbar(hasNativeToolbar());
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, [isApk]);
 
   useEffect(() => {
     if (!isApk) return;
@@ -95,7 +130,7 @@ export function DriverApkBottomBar() {
     });
   }, [isApk, isOnline, isDelivering, driver]);
 
-  if (!isApk) return null;
+  if (!isApk || hideForNativeToolbar) return null;
 
   if (profileLoading) {
     return (

@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DriverHeaderControls } from "@/components/driver/driver-header-controls";
-import { useDriverApkWebView } from "@/components/driver/driver-apk-bottom-bar";
+import { useDriverApkBottomPadding, useDriverApkWebView } from "@/components/driver/driver-apk-bottom-bar";
 import {
   playDriverIncomingOrderSound,
   unlockDriverOrderAudio,
@@ -122,6 +122,7 @@ function saveDismissed(driverId: string, ids: Set<string>) {
 export function DriverCockpit() {
   const { driver, userId, loading, refresh } = useDriverProfile();
   const isApk = useDriverApkWebView();
+  const apkWebBottomPad = useDriverApkBottomPadding();
   const [tab, setTab] = useState<Tab>("map");
   const [statusLoading, setStatusLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -656,7 +657,9 @@ export function DriverCockpit() {
     Number(o.total_product_amount) + Number(o.delivery_fee);
 
   const orderCardBottom = isApk
-    ? "bottom-[max(9rem,calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px)))]"
+    ? apkWebBottomPad
+      ? "bottom-[max(9rem,calc(5.75rem+max(env(safe-area-inset-bottom,0px),8px)))]"
+      : "bottom-[max(1rem,env(safe-area-inset-bottom))]"
     : "bottom-[max(7rem,calc(0.75rem+env(safe-area-inset-bottom)))]";
   const orderItems = activeOrder?.order_items ?? [];
 
@@ -678,7 +681,7 @@ export function DriverCockpit() {
           </div>
         </div>
       )}
-      <header className="shrink-0 border-b border-slate-200/60 glass-panel">
+      <header className="shrink-0 border-b border-slate-200/80 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-2 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-emerald-500 shadow-md shadow-emerald-500/20">
@@ -708,7 +711,7 @@ export function DriverCockpit() {
               ))}
             </div>
           </div>
-          {!isApk && <DriverHeaderControls />}
+          <DriverHeaderControls />
         </div>
       </header>
 
