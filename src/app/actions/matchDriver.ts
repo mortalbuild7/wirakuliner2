@@ -1,13 +1,13 @@
 "use server";
 
 import { runCheckDriverAvailability } from "@/lib/check-driver-handler";
+import { checkDriverAvailabilityServer } from "@/lib/customer-driver-match";
+import type { DriverAvailabilityResult } from "@/lib/driver-availability-types";
 import {
   CUSTOMER_DRIVER_RADIUS_KM,
   EMPTY_DRIVER_ZONE_MESSAGE,
   MAX_RADIUS_METERS,
-  checkDriverAvailabilityServer,
-  type DriverAvailabilityResult,
-} from "@/lib/customer-driver-match";
+} from "@/lib/driver-match-constants";
 import { extractServerErrorMessage } from "@/lib/server-error-message";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ServiceType } from "@/lib/service-types";

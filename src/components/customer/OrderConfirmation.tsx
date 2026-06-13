@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { Bike, Car, Loader2, MapPinOff, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { EMPTY_DRIVER_ZONE_MESSAGE } from "@/lib/customer-driver-match";
+import { EMPTY_DRIVER_ZONE_MESSAGE } from "@/lib/driver-match-constants";
 import { fetchCheckDriverAvailability } from "@/lib/check-driver-client";
 import type { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import {

@@ -16,19 +16,23 @@ import {
   type ServiceType,
 } from "@/lib/service-types";
 
-/** Radius maksimal pencarian driver dari titik jemput customer (GPS). */
-export const MAX_RADIUS_METERS = 3000;
-export const CUSTOMER_DRIVER_RADIUS_KM = MAX_RADIUS_METERS / 1000;
+import {
+  CUSTOMER_DRIVER_RADIUS_KM,
+  EMPTY_DRIVER_ZONE_MESSAGE,
+  MAX_RADIUS_METERS,
+} from "@/lib/driver-match-constants";
 
-export const EMPTY_DRIVER_ZONE_MESSAGE =
-  "Maaf, driver belum siap di wilayah ini. Coba lagi beberapa saat.";
-
+export {
+  MAX_RADIUS_METERS,
+  CUSTOMER_DRIVER_RADIUS_KM,
+  EMPTY_DRIVER_ZONE_MESSAGE,
+} from "@/lib/driver-match-constants";
+export { isTransitProximityService } from "@/lib/driver-availability-types";
 export type {
   DriverAvailabilityDebugInfo,
   DriverAvailabilityErrorCode,
   DriverAvailabilityResult,
 } from "@/lib/driver-availability-types";
-export { isTransitProximityService } from "@/lib/driver-availability-types";
 export { parseCustomerCoords, DEFAULT_OPS_CENTER } from "@/lib/coord-parse";
 
 export type CustomerDriverMatchRow = {
