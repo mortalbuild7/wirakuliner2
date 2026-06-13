@@ -44,6 +44,10 @@ import {
   type CustomerServiceGateStatus,
 } from "@/lib/pickup-coords";
 
+export type BookRideResult =
+  | { ok: true; orderId: string }
+  | { ok: false; error: string };
+
 const REVERSE_MIN_KM = 0.025;
 /** Perubahan koordinat di bawah ini dianggap sama (hindari jitter GPS / geocode). */
 const COORD_QUOTE_MIN_MOVE_KM = 0.03;
@@ -706,7 +710,7 @@ export function useNgojekRide() {
     patchPickupLocation,
   ]);
 
-  const bookRide = useCallback(async () => {
+  const bookRide = useCallback(async (): Promise<BookRideResult> => {
     const validation = validateTransitBooking({
       userId,
       serviceType,
@@ -722,31 +726,38 @@ export function useNgojekRide() {
     if (!validation.ok) {
       if (!userId) {
         router.push(`/login?next=${encodeURIComponent("/customer/ride")}`);
-        return;
+        return { ok: false, error: "Silakan login terlebih dahulu" };
       }
-      notifyCustomerOrderError(
-        `Form belum lengkap! Kolom bermasalah: ${validation.error}`
-      );
+      const err = `Form belum lengkap: ${validation.error}`;
+      notifyCustomerOrderError(err);
       setPlaceError(validation.error);
-      return;
+      return { ok: false, error: err };
     }
 
     setPlacing(true);
     setPlaceError(null);
 
     try {
-      const payload = buildPlaceRidePayload({
-        pickupAddress,
-        destinationAddress: destAddress,
-        pickupLat,
-        pickupLng,
-        destLat,
-        destLng,
-        paymentMethod,
-        paymentBypass: isPaymentBypassEnabled(),
-        serviceType,
-        packageDetails: serviceType === "PAKET" ? packageDetails : undefined,
-      });
+      const paymentBypass = isPaymentBypassEnabled();
+      const payload = {
+        ...buildPlaceRidePayload({
+          pickupAddress,
+          destinationAddress: destAddress,
+          pickupLat,
+          pickupLng,
+          destLat,
+          destLng,
+          paymentMethod,
+          paymentBypass: true,
+          serviceType,
+          packageDetails: serviceType === "PAKET" ? packageDetails : undefined,
+        }),
+        forceCreateOrder: true,
+        skipPayment: true,
+        quotedRideFee: rideFee,
+      };
+
+      logCustomerOrderDebug("place-ride request", payload);
 
       const res = await fetch("/api/orders/place-ride", {
         method: "POST",
@@ -761,35 +772,35 @@ export function useNgojekRide() {
         paid?: boolean;
         needsPayment?: boolean;
         rideFee?: number;
+        driversNotified?: boolean;
       };
+
+      logCustomerOrderDebug("place-ride response", { status: res.status, body: json });
 
       if (!res.ok) {
         const msg = json.error ?? `Gagal memesan ${serviceLabel}`;
-        logCustomerOrderDebug("place-ride response", { status: res.status, body: json });
-        if (isDriverAvailabilityBlockMessage(msg)) {
-          return;
+        if (!isDriverAvailabilityBlockMessage(msg)) {
+          setPlaceError(msg);
+          notifyCustomerOrderError(msg);
         }
-        setPlaceError(msg);
-        notifyCustomerOrderError(msg);
-        return;
+        return { ok: false, error: msg };
       }
 
       const orderId = json.orderId;
       if (!orderId) {
-        const msg = "Respons order tidak valid";
+        const msg = "Respons order tidak valid (orderId kosong)";
         setPlaceError(msg);
-        notifyCustomerOrderError(msg);
-        return;
+        return { ok: false, error: msg };
       }
 
       if (json.paid) {
         saveTrackSnapshot(orderId);
         router.push(`/customer/orders/${orderId}`);
-        return;
+        return { ok: true, orderId };
       }
 
       if (json.needsPayment) {
-        if (isPaymentBypassEnabled()) {
+        if (paymentBypass || payload.skipPayment) {
           const confirmRes = await fetch("/api/orders/confirm-payment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -799,15 +810,18 @@ export function useNgojekRide() {
           const confirmJson = (await confirmRes.json().catch(() => ({}))) as {
             error?: string;
           };
+          logCustomerOrderDebug("confirm-payment response", {
+            status: confirmRes.status,
+            body: confirmJson,
+          });
           if (!confirmRes.ok) {
             const msg = confirmJson.error ?? "Gagal mengonfirmasi pembayaran";
             setPlaceError(msg);
-            notifyCustomerOrderError(msg);
-            return;
+            return { ok: false, error: msg };
           }
           saveTrackSnapshot(orderId);
           router.push(`/customer/orders/${orderId}`);
-          return;
+          return { ok: true, orderId };
         }
 
         const qris = await createQrisPayment({
@@ -816,11 +830,17 @@ export function useNgojekRide() {
           orderId,
         });
         setQrisPayment(qris);
+        return { ok: true, orderId };
       }
+
+      saveTrackSnapshot(orderId);
+      router.push(`/customer/orders/${orderId}`);
+      return { ok: true, orderId };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Koneksi gagal. Coba lagi.";
+      logCustomerOrderDebug("place-ride crash", e);
       setPlaceError(msg);
-      notifyCustomerOrderError("Crash Frontend: gagal submit pesanan.", e);
+      return { ok: false, error: msg };
     } finally {
       setPlacing(false);
     }

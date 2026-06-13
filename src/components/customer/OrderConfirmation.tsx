@@ -25,6 +25,22 @@ type OrderConfirmationProps = {
   ride: ReturnType<typeof useNgojekRide>;
 };
 
+function SearchingDriverOverlay({ open }: { open: boolean }) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-white/95 px-6 backdrop-blur-sm">
+      <Loader2 className="h-12 w-12 animate-spin text-emerald-600" />
+      <p className="mt-4 text-center text-lg font-bold text-slate-900">
+        Sedang mencari Driver terdekat...
+      </p>
+      <p className="mt-2 text-center text-sm text-slate-600">
+        Pesanan Anda sedang dikirim ke driver di sekitar lokasi jemput.
+      </p>
+    </div>
+  );
+}
+
 function collectSubmitBlockers(
   ride: ReturnType<typeof useNgojekRide>,
   uiState: OrderUiState
@@ -41,8 +57,7 @@ function collectSubmitBlockers(
 }
 
 /**
- * Pemesanan customer — cek driver hanya untuk log debug.
- * Selama testing HP fisik: selalu lanjut ke pembuatan order (bypass UI blokir).
+ * Pemesanan customer — setelah tap Pesan langsung POST place-ride (force create).
  */
 export function OrderConfirmation({ ride }: OrderConfirmationProps) {
   const [uiState, setUiState] = useState<OrderUiState>("idle");
@@ -85,6 +100,8 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
       return;
     }
 
+    setUiState("placing");
+
     try {
       if (isTransitRide) {
         const freshGps = await ride.refreshPickupCoordsForSubmit();
@@ -94,6 +111,7 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
 
         if (!pickupCoords.ok) {
           notifyCustomerOrderToast(CUSTOMER_GPS_SYNC_MSG, "warning");
+          setUiState("idle");
           return;
         }
 
@@ -102,7 +120,7 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
             ? packageVolumeCm3(ride.packageDetails)
             : 0;
 
-        const checkPayload = {
+        void fetchCheckDriverAvailability({
           latitude: pickupCoords.lat,
           longitude: pickupCoords.lng,
           lat: pickupCoords.lat,
@@ -110,33 +128,26 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
           serviceType: ride.serviceType,
           packageVolumeCm3: pkgVolume,
           quotedFare: ride.rideFee,
-        };
-
-        void fetchCheckDriverAvailability(checkPayload)
+        })
           .then((result) => {
-            logCustomerOrderDebug("check-driver response", result);
-            const isAvailable = true;
-            logCustomerOrderDebug("forced availability bypass", {
-              isAvailable,
-              serverAvailable:
-                result.success && "available" in result ? result.available : null,
-            });
+            logCustomerOrderDebug("check-driver response (non-blocking)", result);
           })
           .catch((error) => {
-            logCustomerOrderDebug("check-driver error", error);
+            logCustomerOrderDebug("check-driver error (non-blocking)", error);
           });
       }
 
-      setUiState("placing");
-      try {
-        await ride.bookRide();
-      } catch (error) {
-        logCustomerOrderDebug("book-ride error", error);
-        console.error("[book-ride]", error);
+      const result = await ride.bookRide();
+      logCustomerOrderDebug("bookRide result", result);
+
+      if (!result.ok) {
+        window.alert(`Gagal bikin order: ${result.error}`);
+        return;
       }
     } catch (error) {
-      logCustomerOrderDebug("order-submit error", error);
-      console.error("[order-submit]", error);
+      const message = error instanceof Error ? error.message : String(error);
+      logCustomerOrderDebug("order-submit crash", error);
+      window.alert(`Gagal bikin order: ${message}`);
     } finally {
       setUiState("idle");
     }
@@ -144,6 +155,8 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
 
   return (
     <>
+      <SearchingDriverOverlay open={busy} />
+
       <Button
         type="button"
         className={cn(

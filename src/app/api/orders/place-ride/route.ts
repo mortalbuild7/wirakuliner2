@@ -67,6 +67,8 @@ export async function POST(req: Request) {
     destinationLat?: number;
     destinationLng?: number;
     skipPayment?: boolean;
+    forceCreateOrder?: boolean;
+    quotedRideFee?: number;
     paymentMethod?: string;
     serviceType?: string;
     packageDetails?: {
@@ -147,6 +149,9 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient();
 
+  const forceCreateOrder =
+    body.forceCreateOrder === true || body.skipPayment === true;
+
   const isTransit =
     serviceType === "NGOJEK" ||
     serviceType === "NGOMOBIL" ||
@@ -163,7 +168,7 @@ export async function POST(req: Request) {
       )
     : null;
 
-  if (isTransit && matchingCtx && !matchingCtx.available) {
+  if (isTransit && matchingCtx && !matchingCtx.available && !forceCreateOrder) {
     return secureJsonResponse(
       { error: matchingCtx.message ?? "Layanan tidak tersedia di wilayah ini" },
       { status: 403 }
@@ -173,7 +178,7 @@ export async function POST(req: Request) {
   const serviceArea =
     isTransit && matchingCtx
       ? {
-          available: matchingCtx.available,
+          available: forceCreateOrder ? true : matchingCtx.available,
           message: matchingCtx.message,
           cityId: matchingCtx.serviceCityId ?? matchingCtx.operationalClusterId,
           cityName: matchingCtx.serviceCityName ?? matchingCtx.pickupProvinceName,
@@ -187,7 +192,7 @@ export async function POST(req: Request) {
           serviceType
         );
 
-  if (!serviceArea.available) {
+  if (!serviceArea.available && !forceCreateOrder) {
     return secureJsonResponse(
       { error: serviceArea.message ?? "Layanan tidak tersedia di wilayah ini" },
       { status: 403 }
@@ -209,7 +214,9 @@ export async function POST(req: Request) {
 
   const borderSurcharge = matchingCtx?.borderSurcharge ?? 0;
   const isBorderlineCrossing = matchingCtx?.isBorderlineCrossing ?? false;
-  const matchingMode = matchingCtx?.matchingMode ?? null;
+  const matchingMode =
+    matchingCtx?.matchingMode ??
+    (forceCreateOrder ? ("customer_proximity" as const) : null);
 
   const hubMerchantId = await resolveHubMerchantId(admin);
   if (!hubMerchantId) {
@@ -227,8 +234,13 @@ export async function POST(req: Request) {
     provinceId != null
       ? await fetchRegionalTransitTariff(admin, provinceId, cityId, serviceType)
       : null;
-  const rideFee =
+  let rideFee =
     computeTransitFareFromTariff(tariff, distanceKm) + borderSurcharge;
+
+  const quotedClient = parseBoundedNumber(body.quotedRideFee, 0, 50_000_000);
+  if (forceCreateOrder && quotedClient != null && quotedClient > 0 && rideFee <= 0) {
+    rideFee = quotedClient + borderSurcharge;
+  }
 
   const deliveryAddress = formatTransitAddressByService(
     serviceType,

@@ -58,6 +58,10 @@ export type PlaceRidePayload = {
   paymentMethod: "wallet" | "gateway";
   serviceType: ServiceType;
   packageDetails?: PackageDetailsInput;
+  /** Testing HP fisik — lewati gate ketersediaan driver di server. */
+  forceCreateOrder?: boolean;
+  /** Tarif dari kalkulasi client (fallback saat tariff regional kosong). */
+  quotedRideFee?: number;
 };
 
 /** Hitung jarak & tarif dari koordinat GPS (sumber kebenaran di client preview). */
