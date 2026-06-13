@@ -116,9 +116,12 @@ WHERE current_lat IS NOT NULL
 -- Backfill nama cache untuk driver lain yang sudah punya FK wilayah
 UPDATE public.drivers d
 SET
-  province_name = COALESCE(d.province_name, p.name),
-  city_name = COALESCE(d.city_name, c.name)
-FROM public.provinces p
-LEFT JOIN public.cities c ON c.id = d.city_id
-WHERE d.province_id = p.id
-  AND (d.province_name IS NULL OR d.city_name IS NULL);
+  province_name = COALESCE(
+    d.province_name,
+    (SELECT p.name FROM public.provinces p WHERE p.id = d.province_id)
+  ),
+  city_name = COALESCE(
+    d.city_name,
+    (SELECT c.name FROM public.cities c WHERE c.id = d.city_id)
+  )
+WHERE d.province_name IS NULL OR d.city_name IS NULL;
