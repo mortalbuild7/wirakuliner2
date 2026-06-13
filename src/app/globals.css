@@ -59,11 +59,32 @@
 
   /* Label alamat driver — terbaca di bawah sinar */
   .driver-address-label {
-    @apply text-xs font-bold uppercase tracking-wider text-slate-600;
+    @apply text-xs font-bold uppercase tracking-wider text-slate-700;
   }
 
   .driver-address-value {
-    @apply text-lg font-bold leading-snug text-slate-900;
+    @apply text-base font-bold leading-snug text-slate-950 sm:text-lg;
+  }
+
+  /* Kartu order driver di peta — kontras tinggi (terutama NGOMOBIL di APK) */
+  .driver-order-card {
+    @apply bg-white text-slate-950 shadow-xl;
+  }
+
+  html.wira-apk-webview .driver-order-card,
+  html.wira-capacitor-apk .driver-order-card {
+    background-color: #ffffff !important;
+    color: #020617 !important;
+  }
+
+  html.wira-apk-webview .driver-order-card .driver-address-label,
+  html.wira-capacitor-apk .driver-order-card .driver-address-label {
+    color: #334155 !important;
+  }
+
+  html.wira-apk-webview .driver-order-card .driver-address-value,
+  html.wira-capacitor-apk .driver-order-card .driver-address-value {
+    color: #020617 !important;
   }
 
   /* Notifikasi pesanan merchant — amber kontras tinggi + kedip lembut */

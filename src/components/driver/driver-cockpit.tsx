@@ -25,8 +25,15 @@ import {
   DriverChannelBadge,
   DriverOrderRouteLine,
   driverCardBorderClass,
+  driverOrderCardClass,
   transitActiveStatusTextClass,
+  transitCustomerBoxClass,
+  transitCustomerRoleLabel,
+  transitDestBoxClass,
   transitHeaderTextClass,
+  transitNavActionClass,
+  transitPassengerActionClass,
+  transitPickupBoxClass,
   transitStatusBadgeClass,
 } from "@/components/driver/driver-order-chrome";
 import {
@@ -39,6 +46,7 @@ import type { DriverStatus, Order, OrderItem } from "@/types/database";
 import {
   Award,
   Bike,
+  Car,
   ChevronUp,
   Map,
   MapPin,
@@ -808,8 +816,10 @@ export function DriverCockpit() {
 
           {incomingOffer && !hasActive && (
             <div
+              data-driver-order-card
               className={cn(
-                `absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl border bg-white border-slate-200 p-4 shadow-xl`,
+                `absolute inset-x-4 ${orderCardBottom} z-20 rounded-2xl border-2 p-4`,
+                driverOrderCardClass(offerAddr),
                 driverCardBorderClass(offerAddr)
               )}
             >
@@ -843,13 +853,8 @@ export function DriverCockpit() {
                 </span>
               </div>
               {offerCustomer && (
-                <p className="mt-2 text-base font-bold text-slate-900">
-                  {offerTransitKind === "paket"
-                    ? "Customer"
-                    : offerIsTransit
-                      ? "Penumpang"
-                      : "Customer"}
-                  : {offerCustomer.name}
+                <p className="mt-2 text-base font-bold text-slate-950">
+                  {transitCustomerRoleLabel(offerTransitKind, offerIsTransit)}: {offerCustomer.name}
                 </p>
               )}
               <div className="mt-2">
@@ -899,13 +904,15 @@ export function DriverCockpit() {
           {activeOrder && !orderCardExpanded && (
             <button
               type="button"
+              data-driver-order-card
               onClick={() => {
                 handleUserGesture();
                 setOrderCardExpanded(true);
               }}
               className={cn(
-                `absolute inset-x-4 ${orderCardBottom} z-20 flex w-auto items-center justify-between gap-3 rounded-2xl border bg-white border-slate-200 px-4 py-3 shadow-xl`,
-                activeIsTransit ? driverCardBorderClass(activeAddr) : "border-orange-400/50"
+                `absolute inset-x-4 ${orderCardBottom} z-20 flex w-auto items-center justify-between gap-3 rounded-2xl border-2 px-4 py-3`,
+                driverOrderCardClass(activeAddr),
+                activeIsTransit ? driverCardBorderClass(activeAddr) : "border-orange-400"
               )}
             >
               <div className="min-w-0 text-left">
@@ -942,8 +949,10 @@ export function DriverCockpit() {
 
           {activeOrder && orderCardExpanded && (
             <div
+              data-driver-order-card
               className={cn(
-                `absolute inset-x-4 ${orderCardBottom} z-20 max-h-[min(70dvh,520px)] overflow-y-auto rounded-2xl border bg-white border-slate-200 p-4 shadow-xl`,
+                `absolute inset-x-4 ${orderCardBottom} z-20 max-h-[min(70dvh,520px)] overflow-y-auto rounded-2xl border-2 p-4`,
+                driverOrderCardClass(activeAddr),
                 driverCardBorderClass(activeAddr)
               )}
             >
@@ -978,34 +987,32 @@ export function DriverCockpit() {
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {activeIsTransit ? (
                   <>
-                    <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2">
-                      <p className="driver-address-label flex items-center gap-1 text-emerald-800">
+                    <div className={transitPickupBoxClass(activeTransitKind)}>
+                      <p className="driver-address-label flex items-center gap-1 text-emerald-900">
                         {activeIsPaket ? (
-                          <Package className="h-3 w-3" />
+                          <Package className="h-3.5 w-3.5" />
+                        ) : activeTransitKind === "ngomobil" ? (
+                          <Car className="h-3.5 w-3.5" />
                         ) : (
-                          <Bike className="h-3 w-3" />
+                          <Bike className="h-3.5 w-3.5" />
                         )}
                         {activeIsPaket ? "Pengirim" : "Jemput"}
                       </p>
-                      <p className="driver-address-value mt-1 line-clamp-3">
+                      <p className="driver-address-value mt-1 line-clamp-3 text-slate-950">
                         {transitLegs?.pickup ?? (activeIsPaket ? "Lokasi pengirim" : "Titik jemput")}
                       </p>
                     </div>
-                    <div
-                      className={cn(
-                        "rounded-xl border px-3 py-2",
-                        activeTransitKind === "ngomobil"
-                          ? "border-sky-300 bg-sky-50"
-                          : activeTransitKind === "paket"
-                            ? "border-cyan-300 bg-cyan-50"
-                            : "border-cyan-300 bg-cyan-50"
-                      )}
-                    >
-                      <p className="driver-address-label flex items-center gap-1 text-sky-800">
-                        <MapPin className="h-3 w-3" />
+                    <div className={transitDestBoxClass(activeTransitKind)}>
+                      <p
+                        className={cn(
+                          "driver-address-label flex items-center gap-1",
+                          activeTransitKind === "ngomobil" ? "text-sky-900" : "text-sky-900"
+                        )}
+                      >
+                        <MapPin className="h-3.5 w-3.5" />
                         {activeIsPaket ? "Penerima" : "Tujuan"}
                       </p>
-                      <p className="driver-address-value mt-1 line-clamp-3">
+                      <p className="driver-address-value mt-1 line-clamp-3 text-slate-950">
                         {transitLegs?.destination ??
                           (activeIsPaket ? "Lokasi penerima" : "Lokasi tujuan")}
                       </p>
@@ -1024,13 +1031,18 @@ export function DriverCockpit() {
                   </div>
                 )}
                 {activeCustomer && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">
-                      Customer
+                  <div className={transitCustomerBoxClass(activeTransitKind)}>
+                    <p
+                      className={cn(
+                        "text-[10px] font-bold uppercase tracking-wider",
+                        activeTransitKind === "ngomobil" ? "text-sky-800" : "text-slate-700"
+                      )}
+                    >
+                      {transitCustomerRoleLabel(activeTransitKind, activeIsTransit)}
                     </p>
-                    <p className="mt-0.5 font-semibold text-slate-900">{activeCustomer.name}</p>
+                    <p className="mt-0.5 text-base font-bold text-slate-950">{activeCustomer.name}</p>
                     {activeCustomer.phone && (
-                      <p className="mt-1 text-xs text-slate-600">
+                      <p className="mt-1 text-xs font-medium text-slate-700">
                         HP: {activeCustomer.phone} · hubungi via chat in-app
                       </p>
                     )}
@@ -1073,9 +1085,9 @@ export function DriverCockpit() {
                 </ul>
               )}
 
-              <p className="mt-2 text-xl font-bold text-slate-900">
+              <p className="mt-2 text-xl font-bold text-slate-950">
                 {formatIdr(orderTotal(activeOrder))}
-                <span className="ml-2 text-xs font-normal text-slate-600">
+                <span className="ml-2 text-xs font-semibold text-slate-700">
                   {activeIsTransit ? "tarif ride" : "total"}
                 </span>
               </p>
@@ -1106,8 +1118,10 @@ export function DriverCockpit() {
                             ? "border-emerald-400 bg-emerald-50 text-emerald-900"
                             : "border-orange-400 bg-orange-50 text-orange-900"
                           : activeIsTransit
-                            ? "border-emerald-400 text-emerald-800"
-                            : "border-orange-400 text-orange-800"
+                            ? activeTransitKind === "ngomobil"
+                              ? "border-sky-400 bg-sky-50 text-sky-950"
+                              : "border-emerald-400 text-emerald-900"
+                            : "border-orange-400 text-orange-900"
                       )}
                       onClick={() =>
                         navMode === "merchant" ? stopNavMode() : startNavMode("merchant")
@@ -1159,14 +1173,21 @@ export function DriverCockpit() {
                     )}
                   </div>
                   <Button
-                    className="mt-3 h-12 min-h-[3rem] w-full rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 font-semibold text-slate-950"
+                    className={cn(
+                      "mt-3 h-12 min-h-[3rem] w-full rounded-xl",
+                      transitPassengerActionClass(activeTransitKind)
+                    )}
                     disabled={busy}
                     onClick={() => {
                       handleUserGesture();
                       void pickupOrder();
                     }}
                   >
-                    <Bike className="mr-2 h-4 w-4" />
+                    {activeTransitKind === "ngomobil" ? (
+                      <Car className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Bike className="mr-2 h-4 w-4" />
+                    )}
                     Penumpang naik — mulai perjalanan
                   </Button>
                 </>
@@ -1234,10 +1255,10 @@ export function DriverCockpit() {
                   <Button
                     type="button"
                     className={cn(
-                      "mt-3 h-12 min-h-[3rem] w-full rounded-xl font-semibold",
+                      "mt-3 h-12 min-h-[3rem] w-full rounded-xl",
                       navMode === "customer"
-                        ? "border border-sky-400 bg-sky-50 text-sky-900"
-                        : "bg-gradient-to-r from-sky-500 to-cyan-500 text-slate-950"
+                        ? "border border-sky-400 bg-sky-100 text-sky-950"
+                        : transitNavActionClass(activeTransitKind)
                     )}
                     onClick={() =>
                       navMode === "customer" ? stopNavMode() : startNavMode("customer")

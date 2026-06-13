@@ -17,6 +17,7 @@ import {
   DriverOrderRouteLine,
   driverCardBorderClass,
   driverCardGlowClass,
+  transitCustomerRoleLabel,
   transitStatusBadgeClass,
 } from "@/components/driver/driver-order-chrome";
 
@@ -43,8 +44,6 @@ export function DriverJobCard({
   const total = Number(order.total_product_amount) + Number(order.delivery_fee);
 
   const title = isTransit ? channelLabel(addr) : (merchant ?? KULINER_FOOD_LABEL);
-  const customerRole =
-    transitKind === "paket" ? "Customer" : isTransit ? "Penumpang" : "Customer";
 
   return (
     <Link
@@ -59,8 +58,8 @@ export function DriverJobCard({
           <DriverChannelBadge deliveryAddress={addr} />
           <p className="truncate text-base font-bold text-slate-900">{title}</p>
           {customer && (
-            <p className="truncate text-sm font-semibold text-slate-700">
-              {customerRole}: {customer.name}
+            <p className="truncate text-sm font-bold text-slate-800">
+              {transitCustomerRoleLabel(transitKind, isTransit)}: {customer.name}
             </p>
           )}
         </div>

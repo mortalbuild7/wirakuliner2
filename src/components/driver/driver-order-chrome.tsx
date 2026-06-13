@@ -34,6 +34,61 @@ const TRANSIT_BADGE: Record<
   },
 };
 
+export function transitPickupBoxClass(_kind: TransitKind | null) {
+  return "rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2";
+}
+
+export function transitDestBoxClass(kind: TransitKind | null) {
+  if (kind === "ngomobil") {
+    return "rounded-xl border border-sky-300 bg-sky-50 px-3 py-2";
+  }
+  if (kind === "paket") {
+    return "rounded-xl border border-cyan-300 bg-cyan-50 px-3 py-2";
+  }
+  return "rounded-xl border border-cyan-300 bg-cyan-50 px-3 py-2";
+}
+
+export function transitCustomerBoxClass(kind: TransitKind | null) {
+  if (kind === "ngomobil") {
+    return "rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2";
+  }
+  return "rounded-xl border border-slate-200 bg-slate-50 px-3 py-2";
+}
+
+export function transitCustomerRoleLabel(kind: TransitKind | null, isTransit: boolean) {
+  if (!isTransit) return "Customer";
+  if (kind === "paket") return "Customer";
+  return "Penumpang";
+}
+
+export function transitPassengerActionClass(kind: TransitKind | null) {
+  if (kind === "ngomobil") {
+    return "bg-gradient-to-r from-sky-600 to-sky-500 font-semibold text-white shadow-md";
+  }
+  return "bg-gradient-to-r from-cyan-500 to-emerald-500 font-semibold text-slate-950";
+}
+
+export function transitNavActionClass(kind: TransitKind | null) {
+  if (kind === "ngomobil") {
+    return "bg-gradient-to-r from-sky-600 to-sky-500 font-semibold text-white shadow-md";
+  }
+  return "bg-gradient-to-r from-sky-500 to-cyan-500 font-semibold text-slate-950";
+}
+
+export function driverOrderCardClass(deliveryAddress: string) {
+  const kind = getTransitKind(deliveryAddress);
+  if (kind === "ngomobil") {
+    return "driver-order-card border-sky-300 bg-white text-slate-900 shadow-xl";
+  }
+  if (kind === "ngojek") {
+    return "driver-order-card border-cyan-300 bg-white text-slate-900 shadow-xl";
+  }
+  if (kind === "paket") {
+    return "driver-order-card border-amber-300 bg-white text-slate-900 shadow-xl";
+  }
+  return "driver-order-card border-slate-200 bg-white text-slate-900 shadow-xl";
+}
+
 export function DriverChannelBadge({ deliveryAddress }: { deliveryAddress: string }) {
   const kind = getTransitKind(deliveryAddress);
 
@@ -70,30 +125,35 @@ export function DriverOrderRouteLine({
   const legs = parseTransitLegs(deliveryAddress);
 
   if (legs) {
-    const pickupLabel =
-      getTransitKind(deliveryAddress) === "paket" ? "Pengirim" : "Jemput";
-    const destLabel =
-      getTransitKind(deliveryAddress) === "paket" ? "Penerima" : "Tujuan";
+    const kind = getTransitKind(deliveryAddress);
+    const pickupLabel = kind === "paket" ? "Pengirim" : "Jemput";
+    const destLabel = kind === "paket" ? "Penerima" : "Tujuan";
+    const PickupIcon = kind === "ngomobil" ? Car : kind === "paket" ? Package : Bike;
 
     return (
       <div className="space-y-3">
-        <div>
-          <p className="driver-address-label flex items-center gap-1 text-emerald-800">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800">
-              {pickupLabel.slice(0, 1)}
+        <div className={transitPickupBoxClass(kind)}>
+          <p className="driver-address-label flex items-center gap-1 text-emerald-900">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-200 text-[10px] font-bold text-emerald-900">
+              <PickupIcon className="h-3 w-3" />
             </span>
             Alamat {pickupLabel}
           </p>
-          <p className="driver-address-value mt-1 line-clamp-3">
+          <p className="driver-address-value mt-1 line-clamp-3 text-slate-900">
             {legs.pickup || `Titik ${pickupLabel.toLowerCase()}`}
           </p>
         </div>
-        <div>
-          <p className="driver-address-label flex items-center gap-1 text-sky-800">
-            <MapPin className="h-4 w-4 text-sky-700" />
+        <div className={transitDestBoxClass(kind)}>
+          <p
+            className={cn(
+              "driver-address-label flex items-center gap-1",
+              kind === "ngomobil" ? "text-sky-900" : "text-sky-900"
+            )}
+          >
+            <MapPin className={cn("h-4 w-4", kind === "ngomobil" ? "text-sky-700" : "text-sky-700")} />
             Alamat {destLabel}
           </p>
-          <p className="driver-address-value mt-1 line-clamp-3">
+          <p className="driver-address-value mt-1 line-clamp-3 text-slate-900">
             {legs.destination || `Lokasi ${destLabel.toLowerCase()}`}
           </p>
         </div>
@@ -124,25 +184,25 @@ export function DriverOrderRouteLine({
 }
 
 export function transitHeaderTextClass(kind: TransitKind | null) {
-  if (kind === "ngomobil") return "text-sky-700";
-  if (kind === "paket") return "text-amber-800";
-  if (kind === "ngojek") return "text-cyan-700";
-  return "text-orange-700";
-}
-
-export function transitStatusBadgeClass(kind: TransitKind | null, isTransit = true) {
-  if (!isTransit) return "border-orange-300 bg-orange-50 text-orange-900";
-  if (kind === "ngomobil") return "border-sky-300 bg-sky-50 text-sky-900";
-  if (kind === "paket") return "border-amber-300 bg-amber-50 text-amber-950";
-  if (kind === "ngojek") return "border-cyan-300 bg-cyan-50 text-cyan-900";
-  return "border-orange-300 bg-orange-50 text-orange-900";
-}
-
-export function transitActiveStatusTextClass(kind: TransitKind | null) {
   if (kind === "ngomobil") return "text-sky-800";
   if (kind === "paket") return "text-amber-900";
   if (kind === "ngojek") return "text-cyan-800";
-  return "text-emerald-800";
+  return "text-orange-800";
+}
+
+export function transitStatusBadgeClass(kind: TransitKind | null, isTransit = true) {
+  if (!isTransit) return "border-orange-300 bg-orange-50 text-orange-950";
+  if (kind === "ngomobil") return "border-sky-400 bg-sky-100 text-sky-950";
+  if (kind === "paket") return "border-amber-400 bg-amber-100 text-amber-950";
+  if (kind === "ngojek") return "border-cyan-400 bg-cyan-100 text-cyan-950";
+  return "border-orange-300 bg-orange-50 text-orange-950";
+}
+
+export function transitActiveStatusTextClass(kind: TransitKind | null) {
+  if (kind === "ngomobil") return "text-sky-900";
+  if (kind === "paket") return "text-amber-950";
+  if (kind === "ngojek") return "text-cyan-900";
+  return "text-emerald-900";
 }
 
 export function driverCardBorderClass(deliveryAddress: string) {

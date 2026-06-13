@@ -49,7 +49,8 @@ export function DriverOrderChatButton({
         href={`/driver/orders/${orderId}/chat`}
         onClick={handleClick}
         className={cn(
-          "relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/15 text-cyan-100 shadow-lg",
+          "relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-sky-300 bg-white text-sky-800 shadow-lg",
+          unread > 0 && "border-red-400 text-red-700",
           className
         )}
         aria-label={label}
@@ -70,8 +71,8 @@ export function DriverOrderChatButton({
         type="button"
         variant="outline"
         className={cn(
-          "h-11 w-full rounded-xl border-cyan-500/40 bg-cyan-500/10 font-semibold text-cyan-100 hover:bg-cyan-500/20",
-          unread > 0 && "border-red-400/50 bg-red-500/10 text-red-100"
+          "h-11 w-full rounded-xl border-sky-300 bg-sky-50 font-semibold text-sky-900 hover:bg-sky-100",
+          unread > 0 && "border-red-300 bg-red-50 text-red-800 hover:bg-red-100"
         )}
       >
         <MessageCircle className="mr-2 h-4 w-4" />
