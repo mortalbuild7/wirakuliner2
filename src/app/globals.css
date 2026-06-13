@@ -154,6 +154,11 @@
     background-color: #ffffff;
   }
 
+  html.wira-apk-webview .driver-apk-bottom-bar {
+    background-color: #ffffff !important;
+    background-image: none !important;
+  }
+
   .safe-pb-merchant {
     padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
   }

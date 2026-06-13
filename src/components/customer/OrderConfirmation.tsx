@@ -4,18 +4,13 @@ import { useCallback, useState } from "react";
 import { Bike, Car, Loader2, MapPinOff, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  checkDriverAvailability,
-  EMPTY_DRIVER_ZONE_MESSAGE,
-} from "@/app/actions/matchDriver";
+import { EMPTY_DRIVER_ZONE_MESSAGE } from "@/lib/customer-driver-match";
+import { fetchCheckDriverAvailability } from "@/lib/check-driver-client";
 import type { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import {
   assertCustomerGeolocationReady,
-  extractClientErrorMessage,
   notifyCustomerOrderToast,
-  notifyCustomerServerCrash,
   notifyFormValidationErrors,
-  withCustomerOrderTimeout,
 } from "@/lib/customer-order-feedback";
 import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
 import {
@@ -163,22 +158,14 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
         }
 
         setUiState("checking");
-        let result;
-        try {
-          result = await withCustomerOrderTimeout(
-            checkDriverAvailability(
-              pickupCoords.lat,
-              pickupCoords.lng,
-              ride.serviceType
-            ),
-            30_000,
-            "Memeriksa ketersediaan driver"
-          );
-        } catch (error) {
-          notifyCustomerServerCrash(
-            `Server Crash: ${extractClientErrorMessage(error)}`,
-            error
-          );
+        const result = await fetchCheckDriverAvailability(
+          pickupCoords.lat,
+          pickupCoords.lng,
+          ride.serviceType
+        );
+
+        if (!result.success) {
+          window.alert(result.error);
           return;
         }
 
@@ -188,18 +175,6 @@ export function OrderConfirmation({ ride }: OrderConfirmationProps) {
           }
           if (result.error_code === "INVALID_COORDINATES") {
             notifyCustomerOrderToast(CUSTOMER_GPS_SYNC_MSG, "warning");
-            return;
-          }
-          if (
-            result.error_code === "RPC_ERROR" ||
-            result.error_code === "SESSION_EXPIRED"
-          ) {
-            notifyCustomerServerCrash(
-              result.error_message ??
-                result.message ??
-                `Server Crash: ${result.error_code}`,
-              result.debug_info?.server_error_detail ?? result.message
-            );
             return;
           }
           toast.warning(EMPTY_DRIVER_ZONE_MESSAGE);

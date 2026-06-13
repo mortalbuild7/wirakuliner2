@@ -15,32 +15,10 @@ function detectApkWebView(): boolean {
   return Boolean(w.__WIRA_APK_WEBVIEW__ || w.ReactNativeWebView);
 }
 
-function detectNativeToolbar(): boolean {
-  if (typeof window === "undefined") return false;
-  return Boolean((window as Window & { __WIRA_NATIVE_TOOLBAR__?: boolean }).__WIRA_NATIVE_TOOLBAR__);
-}
-
 function postNativeMessage(payload: Record<string, unknown>) {
   const rn = (window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } })
     .ReactNativeWebView;
   rn?.postMessage(JSON.stringify(payload));
-}
-
-export function useNativeDriverToolbar(): boolean {
-  const [native, setNative] = useState(detectNativeToolbar);
-
-  useEffect(() => {
-    setNative(detectNativeToolbar());
-    const timer = window.setInterval(() => {
-      if (detectNativeToolbar()) {
-        setNative(true);
-        window.clearInterval(timer);
-      }
-    }, 120);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  return native;
 }
 
 export function useDriverApkWebView(): boolean {
@@ -69,11 +47,8 @@ function ApkToolbarShell({
 }) {
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-[80] border-t border-slate-200 bg-white shadow-[0_-4px_24px_rgb(0,0,0,0.06)]"
-      style={{
-        backgroundColor: "#ffffff",
-        paddingBottom: "max(env(safe-area-inset-bottom, 0px), 8px)",
-      }}
+      className="driver-apk-bottom-bar fixed bottom-0 left-0 right-0 z-[80] border-t border-slate-100/80 bg-white/95 pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_24px_rgb(0,0,0,0.04)] backdrop-blur-xl"
+      style={{ backgroundColor: "#ffffff" }}
     >
       <div
         className={cn(
@@ -87,15 +62,11 @@ function ApkToolbarShell({
   );
 }
 
-/** Toolbar bawah putih di WebView APK — fallback jika shell native belum menyediakan bar. */
+/** Bar bawah APK: indikator status (bukan toggle) + tombol Keluar — latar putih seperti customer. */
 export function DriverApkBottomBar() {
   const isApk = useDriverApkWebView();
-  const isNativeToolbar = useNativeDriverToolbar();
   const { driver, loading: profileLoading, refresh } = useDriverProfile();
-  const { loading, isOnline, isDelivering, setOnline, logout } = useDriverStatusActions(
-    driver,
-    refresh
-  );
+  const { loading, isOnline, isDelivering, logout } = useDriverStatusActions(driver, refresh);
 
   useEffect(() => {
     if (!isApk) return;
@@ -107,7 +78,7 @@ export function DriverApkBottomBar() {
     });
   }, [isApk, isOnline, isDelivering, driver]);
 
-  if (!isApk || isNativeToolbar) return null;
+  if (!isApk) return null;
 
   if (profileLoading) {
     return (
@@ -118,17 +89,6 @@ export function DriverApkBottomBar() {
     );
   }
 
-  async function toggleOnline() {
-    if (isDelivering && isOnline) {
-      alert("Sedang mengantar — tidak bisa dimatikan.");
-      return;
-    }
-    const ok = await setOnline(!isOnline);
-    if (ok) {
-      postNativeMessage({ type: "WIRA_DRIVER_TOGGLED", online: !isOnline });
-    }
-  }
-
   const statusHint = isDelivering
     ? "Mengantar"
     : isOnline
@@ -137,18 +97,12 @@ export function DriverApkBottomBar() {
 
   return (
     <ApkToolbarShell>
-      <button
-        type="button"
-        disabled={loading || (isDelivering && isOnline)}
-        onClick={() => void toggleOnline()}
+      <div
         className={cn(
-          "min-h-[3.25rem] flex-1 rounded-2xl border px-3 py-2 text-left transition active:scale-[0.98]",
-          isOnline
-            ? "border-emerald-300 bg-emerald-50"
-            : "border-slate-200 bg-slate-50",
-          (loading || (isDelivering && isOnline)) && "opacity-70"
+          "min-h-[3.25rem] flex-1 rounded-2xl border px-3 py-2",
+          isOnline ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"
         )}
-        aria-pressed={isOnline}
+        aria-live="polite"
       >
         <span
           className={cn(
@@ -166,7 +120,7 @@ export function DriverApkBottomBar() {
         >
           {statusHint}
         </span>
-      </button>
+      </div>
       <button
         type="button"
         disabled={loading}
