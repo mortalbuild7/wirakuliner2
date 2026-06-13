@@ -1,6 +1,6 @@
 import { getAuthDriverFromRequest } from "@/lib/driver-server";
 import { redactCustomerProfileForDriver } from "@/lib/privacy/phone-mask";
-import { isOfferExpired, offerSecondsLeft } from "@/lib/driver-order-offer";
+import { isOfferExpired, offerSecondsLeft } from "@/lib/driver-order-offer-utils";
 import { processExpiredOffersAndDispatch } from "@/lib/driver-dispatch";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isOnsiteOrder } from "@/lib/order-channel";

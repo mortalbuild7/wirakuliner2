@@ -13,6 +13,9 @@ import {
   type ServiceAvailability,
 } from "@/lib/service-area";
 import { resolveClusterIdForCoords } from "@/lib/operational-cluster";
+import type { PriorityDriverMatchRow, RideMatchingMode } from "@/lib/ride-matching-types";
+
+export type { PriorityDriverMatchRow, RideMatchingMode } from "@/lib/ride-matching-types";
 
 /** Radius standar per mode matching. */
 export const INTRA_CLUSTER_RADIUS_KM = 5;
@@ -23,12 +26,6 @@ export const BORDERLINE_BUFFER_KM_DEFAULT = 40;
 
 export const BORDER_SURCHARGE_LOW = 5_000;
 export const BORDER_SURCHARGE_HIGH = 10_000;
-
-export type RideMatchingMode =
-  | "intra_cluster"
-  | "intra_province"
-  | "borderline"
-  | "customer_proximity";
 
 export type RideMatchingContext = {
   pickupLat: number;
@@ -46,19 +43,6 @@ export type RideMatchingContext = {
   borderSurcharge: number;
   available: boolean;
   message?: string;
-};
-
-export type PriorityDriverMatchRow = {
-  driver_id: string;
-  distance_km: number;
-  priority_score: number;
-  completion_rate: number;
-  acceptance_rate: number;
-  average_rating: number;
-  service_category?: string;
-  match_mode?: RideMatchingMode;
-  driver_province_id?: number | null;
-  is_borderline?: boolean;
 };
 
 /** Normalisasi nama provinsi untuk lookup tabel `provinces`. */

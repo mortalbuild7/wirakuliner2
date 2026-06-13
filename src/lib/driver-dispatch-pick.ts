@@ -1,10 +1,8 @@
+import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isTransitOrder } from "@/lib/order-channel";
-import {
-  findTransitPriorityDrivers,
-  type PriorityDriverMatchRow,
-  type RideMatchingMode,
-} from "@/lib/ride-matching";
+import { findTransitPriorityDrivers } from "@/lib/ride-matching";
+import type { PriorityDriverMatchRow, RideMatchingMode } from "@/lib/ride-matching-types";
 import type { ServiceType } from "@/lib/service-types";
 
 /** Radius pencarian driver kuliner / legacy (km). */

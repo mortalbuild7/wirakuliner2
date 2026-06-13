@@ -52,7 +52,7 @@ import {
   hasReachedNavDestination,
   type DriverNavTarget,
 } from "@/lib/driver-map-nav";
-import { offerSecondsLeft } from "@/lib/driver-order-offer";
+import { offerSecondsLeft } from "@/lib/driver-order-offer-utils";
 import { WalletWithdrawPanel } from "@/components/wallet/wallet-withdraw-panel";
 import { ReceivedReviewsPanel } from "@/components/ratings/received-reviews-panel";
 import { DriverOrderChatButton } from "@/components/driver/driver-order-chat-button";
