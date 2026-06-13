@@ -1,4 +1,5 @@
-import { dispatchOrderOffer } from "@/lib/driver-dispatch";
+import { dispatchOrderOffer, pushOfferToDriver } from "@/lib/driver-dispatch";
+import { forceAssignNgomobilOrder } from "@/lib/driver-offer-rescue";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isOnsiteOrder } from "@/lib/order-channel";
 
@@ -41,10 +42,18 @@ export async function notifyDriversNewOrder(orderId: string) {
 
   const result = await dispatchOrderOffer(orderId);
 
+  let offeredDriverId = result?.driverId ?? null;
+  if (!offeredDriverId) {
+    offeredDriverId = await forceAssignNgomobilOrder(admin, orderId);
+    if (offeredDriverId) {
+      await pushOfferToDriver(orderId, offeredDriverId);
+    }
+  }
+
   return {
-    offeredDriverId: result?.driverId ?? null,
+    offeredDriverId,
     priorityScore: result?.priorityScore,
-    pushed: Boolean(result?.driverId),
+    pushed: Boolean(offeredDriverId),
   };
 }
 

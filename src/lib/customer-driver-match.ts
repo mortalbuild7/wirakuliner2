@@ -170,7 +170,8 @@ async function countIdleDriversViaHaversineFallback(
     const dLat = parseDriverCoord(row.current_lat);
     const dLng = parseDriverCoord(row.current_lng);
     if (dLat == null || dLng == null) continue;
-    if (row.gps_trust === "SUSPICIOUS") continue;
+    const isNgomobil = normalizeTransitService(opts?.serviceType) === "NGOMOBIL";
+    if (!isNgomobil && !opts?.broad && row.gps_trust === "SUSPICIOUS") continue;
 
     const distKm = haversineKm(lat, lng, dLat, dLng);
     if (distKm <= radiusKm) count += 1;
@@ -511,7 +512,7 @@ async function findCustomerNearbyDriversViaHaversine(
   const rows: CustomerDriverMatchRow[] = [];
   for (const row of data ?? []) {
     if (skipSet.has(row.id as string)) continue;
-    if (row.gps_trust === "SUSPICIOUS") continue;
+    if (!isNgomobilBypass && row.gps_trust === "SUSPICIOUS") continue;
 
     const dLat = parseDriverCoord(row.current_lat);
     const dLng = parseDriverCoord(row.current_lng);

@@ -96,6 +96,8 @@ export async function POST(req: Request) {
     console.warn(
       `[gps-velocity] driver=${auth.driver.id} ${velocity.reason}`
     );
+  } else if (forcePersist) {
+    patch.gps_trust = "OK";
   }
 
   const { error } = await admin

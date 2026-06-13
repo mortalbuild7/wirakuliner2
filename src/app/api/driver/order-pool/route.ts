@@ -24,8 +24,15 @@ export async function GET(req: Request) {
     return secureJsonResponse({ error: auth.error }, { status: auth.status });
   }
 
-  const { driver } = auth;
+  const { driver: authDriver } = auth;
   const admin = createAdminClient();
+
+  const { data: freshDriver } = await admin
+    .from("drivers")
+    .select("*")
+    .eq("id", authDriver.id)
+    .maybeSingle();
+  const driver = (freshDriver ?? authDriver) as typeof authDriver;
 
   await processExpiredOffersAndDispatch();
 

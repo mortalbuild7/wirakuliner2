@@ -192,7 +192,10 @@ export function DriverCockpit() {
   const loadPool = useCallback(async () => {
     if (!driver?.id) return;
     const res = await fetchWithDriverAuth("/api/driver/order-pool");
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.warn("[driver-order-pool]", res.status, await res.text().catch(() => ""));
+      return;
+    }
     const json = (await res.json().catch(() => ({}))) as {
       activeOrder?: OrderRow | null;
       incoming?: OrderRow[];
