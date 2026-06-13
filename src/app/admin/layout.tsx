@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { headers } from "next/headers";
 import { Sidebar } from "@/components/admin/Sidebar";
+import { AdminToaster } from "@/components/admin/admin-toaster";
 import { assertAdminPage } from "@/lib/admin-auth";
 
 /**
@@ -32,6 +33,7 @@ export default async function AdminLayout({
     <div className="min-h-screen wira-mesh md:flex">
       <Sidebar />
       <div className="flex-1 bg-slate-50/30 text-slate-800">{children}</div>
+      <AdminToaster />
     </div>
   );
 }

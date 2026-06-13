@@ -25,5 +25,7 @@ export async function getDriverNewPageProps() {
     adminTier: session.adminRole,
     scopeHint: regionalScopeHint(session),
     regionLocked: session.adminRole !== "SUPER_ADMIN",
+    lockedCityName:
+      session.adminRole === "CITY_ADMIN" ? session.cityName : null,
   };
 }

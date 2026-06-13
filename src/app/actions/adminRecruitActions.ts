@@ -11,7 +11,10 @@ import {
 } from "@/app/utils/indonesiaProvinces";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncAdminJwtMetadata } from "@/lib/sync-admin-jwt-metadata";
-import { isRecruitCityInProvince } from "@/app/actions/locationActions";
+import {
+  resolveCityIdForAdminProfile,
+  validateCityInLocalMaster,
+} from "@/lib/regional-city-resolve";
 
 const TIER_LABEL: Record<AdminTier, string> = {
   SUPER_ADMIN: "Super Admin",
@@ -26,8 +29,7 @@ const RecruitAdminSchema = z.object({
     message: "Tier admin tidak valid",
   }),
   provinceId: z.coerce.number().int().positive().optional(),
-  cityId: z.coerce.number().int().positive().optional(),
-  cityName: z.string().trim().min(1).max(120).optional(),
+  cityName: z.string().trim().min(2).max(120).optional(),
 });
 
 export type RecruitAdminInput = z.infer<typeof RecruitAdminSchema>;
@@ -66,30 +68,32 @@ export async function recruitNewAdmin(
   const email = data.email.trim().toLowerCase();
 
   let provinceId = data.provinceId ?? null;
-  let cityId = data.cityId ?? null;
+  let cityId: number | null = null;
+  let canonicalCityName: string | null = null;
 
   if (data.adminRole === "PROVINCE_ADMIN") {
     if (!provinceId || !INDONESIA_PROVINCE_IDS.has(provinceId)) {
       return { ok: false, error: "Provinsi wajib dipilih untuk Province Admin" };
     }
-    cityId = null;
   }
 
   if (data.adminRole === "CITY_ADMIN") {
-    if (!provinceId || !cityId) {
+    if (!provinceId || !data.cityName?.trim()) {
       return { ok: false, error: "Provinsi dan kota wajib dipilih untuk City Admin" };
     }
 
-    const cityMatchesProvince = await isRecruitCityInProvince(
+    const localCity = validateCityInLocalMaster(provinceId, data.cityName);
+    if (!localCity.ok) {
+      return { ok: false, error: localCity.error };
+    }
+    canonicalCityName = localCity.canonicalName;
+
+    cityId = await resolveCityIdForAdminProfile(
       provinceId,
-      cityId,
-      data.cityName
+      canonicalCityName
     );
-    if (!cityMatchesProvince) {
-      return {
-        ok: false,
-        error: "Kota yang dipilih tidak sesuai dengan provinsi induk",
-      };
+    if (cityId == null) {
+      return { ok: false, error: "Gagal menetapkan ID kota untuk profil admin" };
     }
   }
 
@@ -126,16 +130,8 @@ export async function recruitNewAdmin(
     }
   }
 
-  if (data.adminRole === "CITY_ADMIN" && cityId) {
-    const cityLabel =
-      data.cityName?.trim() ||
-      (await admin
-        .from("cities")
-        .select("name")
-        .eq("id", cityId)
-        .maybeSingle()
-        .then((r) => r.data?.name)) ||
-      `Kota ${cityId}`;
+  if (data.adminRole === "CITY_ADMIN" && cityId && canonicalCityName) {
+    const cityLabel = canonicalCityName;
 
     if (provinceId) {
       const { error: cityErr } = await admin.from("cities").upsert(
@@ -213,7 +209,7 @@ export async function recruitNewAdmin(
 
   const scopeLabel =
     data.adminRole === "CITY_ADMIN" && cityId
-      ? `${data.cityName?.trim() || `Kota ID ${cityId}`}, ${provinceMeta?.name ?? `Provinsi ${provinceId}`}`
+      ? `${canonicalCityName ?? data.cityName?.trim()}, ${provinceMeta?.name ?? `Provinsi ${provinceId}`}`
       : provinceMeta?.name ?? `Provinsi ${provinceId}`;
 
   const mail = await sendAdminActivationEmail({

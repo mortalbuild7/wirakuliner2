@@ -3,6 +3,10 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/app/utils/adminAuth";
+import {
+  findActiveServiceCityByName,
+  validateCityInLocalMaster,
+} from "@/lib/regional-city-resolve";
 import { serviceCityWithinAdminScope } from "@/lib/admin/regional-scope";
 import { resolveClusterForServiceCity } from "@/lib/operational-cluster";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -56,15 +60,16 @@ const DriverRegSchema = z.object({
   serviceCategory: z.enum(SERVICE_CATEGORIES, {
     message: "Kategori armada tidak valid",
   }),
-  // Wilayah operasional — provinceId + cityId (integer) dari dropdown form.
+  // Wilayah operasional — provinceId + cityName dari dropdown master lokal.
   provinceId: z
     .number({ message: "Provinsi wajib dipilih" })
     .int("ID provinsi harus bilangan bulat")
     .positive("Provinsi tidak valid"),
-  cityId: z
-    .number({ message: "Kota cabang wajib dipilih" })
-    .int("ID kota harus bilangan bulat")
-    .positive("Kota cabang tidak valid"),
+  cityName: z
+    .string({ message: "Kota cabang wajib dipilih" })
+    .trim()
+    .min(2, "Kota cabang wajib dipilih")
+    .max(120, "Nama kota terlalu panjang"),
 
   // ── LEGALITAS SIM (WAJIB) ───────────────────────────────────────────────
   // Nomor SIM: hanya digit (format nasional 8–16 digit) — non-digit ditolak.
@@ -99,12 +104,11 @@ export type DriverRegResult =
   | { ok: true; driverId: string; userId: string; message: string }
   | { ok: false; error: string };
 
-/** Normalisasi ID wilayah dari `<select>` (string) → integer sebelum zod. */
+/** Normalisasi ID provinsi dari form sebelum zod. */
 function coerceRegionalIds(raw: DriverRegInput | Record<string, unknown>) {
   return {
     ...raw,
     provinceId: Number((raw as { provinceId?: unknown }).provinceId),
-    cityId: Number((raw as { cityId?: unknown }).cityId),
   };
 }
 
@@ -125,36 +129,40 @@ export async function registerDriverNational(
   const data = parsed.data;
   const phone = data.phone.replace(/\s/g, "");
 
+  const localCity = validateCityInLocalMaster(data.provinceId, data.cityName);
+  if (!localCity.ok) {
+    return { ok: false, error: localCity.error };
+  }
+
   const admin = createAdminClient();
 
-  // ── 3. GEOFENCING: kota layanan harus aktif DAN dalam yurisdiksi admin. ──
-  // Lookup dari DB (bukan dari input client) → client tidak bisa memalsukan
-  // province_id/city_id untuk menembus pagar wilayah.
-  const { data: refCity } = await admin
-    .from("cities")
-    .select("id, name, province_id, is_active")
-    .eq("id", data.cityId)
-    .eq("province_id", data.provinceId)
-    .eq("is_active", true)
-    .maybeSingle();
+  // ── 3. GEOFENCING: zona layanan aktif dari `service_cities` (sumber kebenaran). ─
+  const city = await findActiveServiceCityByName(
+    data.provinceId,
+    localCity.canonicalName
+  );
 
-  if (!refCity) {
+  if (!city || city.city_id == null) {
     return {
       ok: false,
-      error: "Kota cabang tidak ditemukan atau tidak aktif di provinsi ini",
+      error:
+        "Zona layanan GPS belum aktif untuk kota ini. Tambahkan di Manajemen Kota Layanan.",
     };
   }
 
-  const { data: city } = await admin
-    .from("service_cities")
-    .select("id, name, province_id, city_id, operational_cluster_id")
-    .eq("province_id", data.provinceId)
-    .eq("city_id", data.cityId)
-    .eq("is_active", true)
-    .maybeSingle();
+  const cityLabel = (city.name.split(",")[0] ?? city.name).trim();
+  const { error: citySyncErr } = await admin.from("cities").upsert(
+    {
+      id: city.city_id,
+      province_id: data.provinceId,
+      name: cityLabel,
+      is_active: true,
+    },
+    { onConflict: "id" }
+  );
 
-  if (!city) {
-    return { ok: false, error: "Zona layanan GPS belum aktif untuk kota ini" };
+  if (citySyncErr) {
+    return { ok: false, error: citySyncErr.message };
   }
 
   // CITY_ADMIN → city.city_id wajib sama dengan session.cityId;

@@ -9,8 +9,13 @@ import {
 } from "@/app/utils/indonesiaProvinces";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { JALAN_WIRA } from "@/lib/geo-config";
-import { fetchRegenciesByProvinceName } from "@/lib/indonesia-wilayah-api";
-import { formatWilayahCityName } from "@/lib/wilayah-city-format";
+import { getCitiesByProvinceId } from "@/lib/indonesia-regions";
+import { validateCityInLocalMaster } from "@/lib/regional-city-resolve";
+import {
+  formatWilayahCityName,
+  normalizeCityNameForDedup,
+  SERVICE_CITY_DUPLICATE_ERROR,
+} from "@/lib/wilayah-city-format";
 
 export type WilayahRegencyOption = {
   kemendagriId: string;
@@ -55,6 +60,14 @@ export type CreateCityResult =
   | { ok: true; cityId: number; serviceCityId: string; message: string }
   | { ok: false; error: string };
 
+export type DeleteServiceCityResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+const DeleteServiceCitySchema = z.object({
+  serviceCityId: z.string().uuid("ID kota layanan tidak valid"),
+});
+
 /** Slug URL aman dari nama kota — dipakai kolom service_cities.slug (UNIQUE). */
 function slugifyCity(name: string): string {
   return name
@@ -65,7 +78,41 @@ function slugifyCity(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** Dropdown dinamis — kabupaten/kota per provinsi via API EMSIFA (Super Admin). */
+/** Cek duplikat zona layanan berdasarkan nama provinsi + nama kota (abaikan city_id). */
+async function findDuplicateServiceCity(
+  admin: ReturnType<typeof createAdminClient>,
+  provinceId: number,
+  provinceName: string,
+  cityName: string
+): Promise<{ id: string; name: string } | null> {
+  const targetCityKey = normalizeCityNameForDedup(cityName);
+  const targetProvinceKey = provinceName.trim().toLowerCase();
+
+  const { data: rows, error } = await admin
+    .from("service_cities")
+    .select("id, name, provinces(name)")
+    .eq("province_id", provinceId);
+
+  if (error) throw new Error(error.message);
+
+  for (const row of rows ?? []) {
+    const prov = row.provinces as
+      | { name: string }
+      | { name: string }[]
+      | null;
+    const provName = (Array.isArray(prov) ? prov[0]?.name : prov?.name) ?? "";
+    if (provName.trim().toLowerCase() !== targetProvinceKey) continue;
+
+    const cityPart = (row.name.split(",")[0] ?? row.name).trim();
+    if (normalizeCityNameForDedup(cityPart) === targetCityKey) {
+      return { id: row.id, name: row.name };
+    }
+  }
+
+  return null;
+}
+
+/** Dropdown dinamis — kabupaten/kota per provinsi dari master lokal (tanpa API eksternal). */
 export async function getRegenciesForServiceCityForm(
   provinceId: number
 ): Promise<
@@ -84,29 +131,20 @@ export async function getRegenciesForServiceCityForm(
     return { ok: false, error: "Provinsi tidak ditemukan" };
   }
 
-  try {
-    const rows = await fetchRegenciesByProvinceName(provinceMeta.name);
-    if (!rows.length) {
-      return {
-        ok: false,
-        error: `Tidak ada kota/kabupaten untuk ${provinceMeta.name}`,
-      };
-    }
-
-    const regencies = rows
-      .map((r) => ({
-        kemendagriId: r.id,
-        name: formatWilayahCityName(r.name),
-      }))
-      .filter((r) => r.name.length >= 2)
-      .sort((a, b) => a.name.localeCompare(b.name, "id"));
-
-    return { ok: true, regencies };
-  } catch (e) {
-    const msg =
-      e instanceof Error ? e.message : "Gagal memuat data wilayah dari API";
-    return { ok: false, error: msg };
+  const cities = getCitiesByProvinceId(pid);
+  if (!cities.length) {
+    return {
+      ok: false,
+      error: `Tidak ada kota/kabupaten untuk ${provinceMeta.name}`,
+    };
   }
+
+  const regencies = cities.map((name, index) => ({
+    kemendagriId: `${pid}-${index}`,
+    name,
+  }));
+
+  return { ok: true, regencies };
 }
 
 export async function createServiceCity(
@@ -124,7 +162,12 @@ export async function createServiceCity(
     };
   }
   const { provinceId, cityName } = parsed.data;
-  const normalizedName = cityName.trim();
+
+  const localCity = validateCityInLocalMaster(provinceId, cityName);
+  if (!localCity.ok) {
+    return { ok: false, error: localCity.error };
+  }
+  const normalizedName = localCity.canonicalName;
 
   const admin = createAdminClient();
 
@@ -154,6 +197,24 @@ export async function createServiceCity(
 
   // ID efektif dari DB setelah upsert — dipakai semua FK berikutnya.
   const resolvedProvinceId = province.id;
+
+  // ── 4b. ANTI-DUPLIKAT nama provinsi + nama kota (sebelum INSERT apa pun). ───
+  try {
+    const duplicate = await findDuplicateServiceCity(
+      admin,
+      resolvedProvinceId,
+      province.name,
+      normalizedName
+    );
+    if (duplicate) {
+      return { ok: false, error: SERVICE_CITY_DUPLICATE_ERROR };
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Gagal memeriksa duplikat kota",
+    };
+  }
 
   // ── 5. REFERENSI `cities`: pakai baris existing atau buat baru. ───────────
   const { data: existingCity } = await admin
@@ -197,10 +258,7 @@ export async function createServiceCity(
     .maybeSingle();
 
   if (existingService) {
-    return {
-      ok: false,
-      error: `Kota layanan "${existingService.name}" sudah aktif di ${province.name}`,
-    };
+    return { ok: false, error: SERVICE_CITY_DUPLICATE_ERROR };
   }
 
   // ── 7. ZONA OPERASIONAL: baris service_cities agar driver bisa didaftarkan. ─
@@ -244,6 +302,89 @@ export async function createServiceCity(
     cityId,
     serviceCityId: serviceCity.id,
     message: `Kota layanan "${displayName}" berhasil ditambahkan.`,
+  };
+}
+
+/** Hapus zona layanan — hanya SUPER_ADMIN; blokir jika masih ada driver/merchant terikat. */
+export async function deleteServiceCity(
+  serviceCityId: string
+): Promise<DeleteServiceCityResult> {
+  await verifyAdminSession({ requireSuperAdmin: true });
+
+  const parsed = DeleteServiceCitySchema.safeParse({ serviceCityId });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "ID kota layanan tidak valid",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: zone, error: zoneErr } = await admin
+    .from("service_cities")
+    .select("id, name, city_id")
+    .eq("id", parsed.data.serviceCityId)
+    .maybeSingle();
+
+  if (zoneErr) {
+    return { ok: false, error: zoneErr.message };
+  }
+  if (!zone) {
+    return { ok: false, error: "Kota layanan tidak ditemukan" };
+  }
+
+  const { data: boundDriverRows, error: driverErr } = await admin
+    .from("drivers")
+    .select("id")
+    .or(
+      `service_city_id.eq.${zone.id},registration_service_city_id.eq.${zone.id}`
+    );
+
+  if (driverErr) {
+    return { ok: false, error: driverErr.message };
+  }
+
+  const { count: merchantCount, error: merchantErr } = await admin
+    .from("merchants")
+    .select("id", { count: "exact", head: true })
+    .eq("service_city_id", zone.id);
+
+  if (merchantErr) {
+    return { ok: false, error: merchantErr.message };
+  }
+
+  const boundDrivers = boundDriverRows?.length ?? 0;
+  const boundMerchants = merchantCount ?? 0;
+
+  if (boundDrivers > 0 || boundMerchants > 0) {
+    const parts: string[] = [];
+    if (boundDrivers > 0) parts.push(`${boundDrivers} driver`);
+    if (boundMerchants > 0) parts.push(`${boundMerchants} merchant`);
+    return {
+      ok: false,
+      error: `Tidak dapat menghapus: masih ada ${parts.join(" dan ")} yang terikat dengan kota layanan ini.`,
+    };
+  }
+
+  const { error: delErr } = await admin
+    .from("service_cities")
+    .delete()
+    .eq("id", zone.id);
+
+  if (delErr) {
+    return { ok: false, error: delErr.message };
+  }
+
+  revalidatePath("/admin/dashboard/cities");
+  revalidatePath("/admin/drivers");
+  revalidatePath("/admin/drivers/new");
+  revalidatePath("/dashboard/drivers/new");
+  revalidatePath("/admin/recruit");
+
+  return {
+    ok: true,
+    message: `Kota layanan "${zone.name}" berhasil dihapus.`,
   };
 }
 

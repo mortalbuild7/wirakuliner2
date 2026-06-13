@@ -16,6 +16,10 @@ import {
 import { OrderRatingPanel } from "@/components/ratings/order-rating-panel";
 import type { RatingTargetType } from "@/lib/ratings";
 import { CustomerOrderTrackMap } from "@/components/customer/customer-order-track-map";
+import {
+  OrderTrackDeliveryLottie,
+  OrderTrackThankYouOverlay,
+} from "@/components/customer/order-track-lottie";
 import Image from "next/image";
 import {
   Bike,
@@ -368,7 +372,7 @@ export function OrderTracker({ orderId }: { orderId: string }) {
       </div>
 
       {showTrackingMap && (
-        <div className="overflow-hidden rounded-lg border border-white/10">
+        <div className="relative overflow-hidden rounded-lg border border-white/10">
           <p className="border-b border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white">
             {hasDriverOnMap
               ? isPaket && order.order_status === "ready_for_pickup"
@@ -396,6 +400,10 @@ export function OrderTracker({ orderId }: { orderId: string }) {
             isRide={isTransit}
             orderStatus={order.order_status}
           />
+          <OrderTrackDeliveryLottie
+            orderStatus={order.order_status}
+            isDelivery={isDelivery}
+          />
           {!hasDriverOnMap && order.driver_id && (
             <p className="px-3 py-2 text-xs text-muted-foreground">
               Menunggu lokasi GPS driver...
@@ -412,6 +420,11 @@ export function OrderTracker({ orderId }: { orderId: string }) {
           )}
         </div>
       )}
+
+      <OrderTrackThankYouOverlay
+        orderStatus={order.order_status}
+        isDelivery={isDelivery}
+      />
 
       <div className="flex flex-col gap-3">
         {steps.map((step, i) => (

@@ -29,3 +29,17 @@ function titleCaseWilayah(text: string): string {
     )
     .join(" ");
 }
+
+/** Kunci perbandingan anti-duplikat — abaikan prefiks Kota/Kabupaten & kapitalisasi. */
+export function normalizeCityNameForDedup(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/^kota\s+/, "")
+    .replace(/^kabupaten\s+/, "")
+    .replace(/^kab\.\s+/, "");
+}
+
+export const SERVICE_CITY_DUPLICATE_ERROR =
+  "Maaf, Kota/Kabupaten ini sudah terdaftar sebagai kota layanan aktif!";

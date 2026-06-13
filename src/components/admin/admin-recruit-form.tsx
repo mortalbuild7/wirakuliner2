@@ -1,21 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SearchableCitySelect } from "@/components/ui/searchable-city-select";
 import {
   recruitNewAdmin,
   type RecruitAdminInput,
 } from "@/app/actions/adminRecruitActions";
-import {
-  getCitiesByProvinceForRecruit,
-  type RecruitCityOption,
-} from "@/app/actions/locationActions";
 import type { IndonesiaProvince } from "@/app/utils/indonesiaProvinces";
 import type { AdminTier } from "@/app/utils/adminAuth";
+import { getCitiesByProvinceId } from "@/lib/indonesia-regions";
 import { Loader2, Mail, UserPlus } from "lucide-react";
 
 const SELECT_CLASS =
@@ -43,12 +41,7 @@ export function AdminRecruitForm({
     provinceId: String(defaultProvinceId),
   });
 
-  const [selectedCity, setSelectedCity] = useState("");
-  const [cities, setCities] = useState<RecruitCityOption[]>([]);
-  const [citiesLoading, setCitiesLoading] = useState(false);
-  const [citiesError, setCitiesError] = useState<string | null>(null);
-
-  const fetchGenRef = useRef(0);
+  const [selectedCityName, setSelectedCityName] = useState("");
   const activeProvinceId = form.provinceId;
 
   const showCityField = useMemo(
@@ -56,79 +49,41 @@ export function AdminRecruitForm({
     [form.adminRole]
   );
 
-  const selectedCityMeta = useMemo(() => {
+  const cities = useMemo(() => {
     const pid = Number(activeProvinceId);
-    return (
-      cities.find(
-        (c) => String(c.cityId) === selectedCity && c.provinceId === pid
-      ) ?? null
-    );
-  }, [cities, selectedCity, activeProvinceId]);
+    if (!Number.isInteger(pid) || pid <= 0) return [];
+    return getCitiesByProvinceId(pid);
+  }, [activeProvinceId]);
 
-  const loadCitiesForProvince = useCallback(async (provinceId: string) => {
-    const pid = Number(provinceId);
-    if (!Number.isInteger(pid) || pid <= 0) {
-      setCities([]);
-      setCitiesError(null);
-      setCitiesLoading(false);
-      return;
-    }
-
-    const gen = ++fetchGenRef.current;
-    setCities([]);
-    setCitiesLoading(true);
-    setCitiesError(null);
-
-    const res = await getCitiesByProvinceForRecruit(pid);
-
-    if (gen !== fetchGenRef.current) return;
-
-    setCitiesLoading(false);
-
-    if (!res.ok) {
-      setCities([]);
-      setCitiesError(res.error);
-      return;
-    }
-
-    setCities(res.cities);
-    if (res.cities.length === 1) {
-      setSelectedCity(String(res.cities[0].cityId));
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!showCityField) {
-      setCities([]);
-      setSelectedCity("");
-      setCitiesError(null);
-      setCitiesLoading(false);
-      return;
-    }
-
-    setSelectedCity("");
-    void loadCitiesForProvince(activeProvinceId);
-  }, [activeProvinceId, showCityField, loadCitiesForProvince]);
+  const cityValidForProvince = useMemo(() => {
+    if (!selectedCityName) return false;
+    return cities.includes(selectedCityName);
+  }, [cities, selectedCityName]);
 
   const handleProvinceChange = useCallback((provinceId: string) => {
-    fetchGenRef.current += 1;
     setForm((f) => ({ ...f, provinceId }));
-    setSelectedCity("");
-    setCities([]);
-    setCitiesError(null);
-    setCitiesLoading(true);
+    setSelectedCityName("");
     setError(null);
   }, []);
 
   const handleAdminRoleChange = useCallback((adminRole: string) => {
-    fetchGenRef.current += 1;
     setForm((f) => ({ ...f, adminRole }));
-    setSelectedCity("");
-    setCities([]);
-    setCitiesError(null);
-    setCitiesLoading(adminRole === "CITY_ADMIN");
+    setSelectedCityName("");
     setError(null);
   }, []);
+
+  useEffect(() => {
+    if (!showCityField) {
+      setSelectedCityName("");
+      return;
+    }
+    if (
+      selectedCityName &&
+      !cities.includes(selectedCityName)
+    ) {
+      setSelectedCityName("");
+    }
+  }, [showCityField, cities, selectedCityName]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -138,13 +93,12 @@ export function AdminRecruitForm({
     const provinceId = Number(form.provinceId);
 
     if (showCityField) {
-      if (!selectedCity || citiesLoading) {
-        setError("Tunggu hingga daftar kota selesai dimuat.");
+      if (!selectedCityName) {
+        setError("Kota cabang wajib dipilih");
         return;
       }
-
-      if (!selectedCityMeta) {
-        setError("Kota yang dipilih tidak sesuai dengan provinsi induk.");
+      if (!cityValidForProvince) {
+        setError("Kota yang dipilih tidak sesuai dengan provinsi induk");
         return;
       }
     }
@@ -154,8 +108,7 @@ export function AdminRecruitForm({
       email: form.email.trim(),
       adminRole: form.adminRole as "PROVINCE_ADMIN" | "CITY_ADMIN",
       provinceId,
-      cityId: showCityField ? Number(selectedCity) : undefined,
-      cityName: showCityField ? selectedCityMeta?.name : undefined,
+      cityName: showCityField ? selectedCityName : undefined,
     };
 
     startTransition(async () => {
@@ -170,21 +123,12 @@ export function AdminRecruitForm({
         name: "",
         email: "",
       }));
-      setSelectedCity("");
+      setSelectedCityName("");
     });
   }
 
-  const cityPlaceholder = citiesLoading
-    ? "Memuat kota..."
-    : citiesError
-      ? "Gagal memuat kota"
-      : cities.length === 0
-        ? "Tidak ada kota tersedia"
-        : "— Pilih kota —";
-
   const canSubmitCity =
-    !showCityField ||
-    (selectedCityMeta != null && !citiesLoading && cities.length > 0);
+    !showCityField || (cityValidForProvince && cities.length > 0);
 
   return (
     <Card className="mt-6 max-w-2xl rounded-2xl border-emerald-500/30">
@@ -270,31 +214,19 @@ export function AdminRecruitForm({
           {showCityField && (
             <div>
               <Label className="text-slate-900">Kota cabang</Label>
-              <select
-                key={`city-select-${activeProvinceId}`}
-                className={SELECT_CLASS}
-                value={selectedCity}
-                onChange={(e) => setSelectedCity(e.target.value)}
-                disabled={pending || citiesLoading || cities.length === 0}
+              <SearchableCitySelect
+                key={`recruit-city-${activeProvinceId}`}
+                cities={cities}
+                value={selectedCityName}
+                onChange={setSelectedCityName}
+                disabled={pending}
+                placeholder="— Ketik atau pilih kota —"
+                emptyMessage="Tidak ada kota untuk provinsi ini"
                 required
-              >
-                <option value="">{cityPlaceholder}</option>
-                {!citiesLoading &&
-                  cities.map((c) => (
-                    <option key={`${activeProvinceId}-${c.cityId}`} value={c.cityId}>
-                      {c.name}
-                    </option>
-                  ))}
-              </select>
-              {citiesLoading && (
-                <p className="mt-1 flex items-center gap-1 text-xs text-slate-600">
-                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                  Memuat kota...
-                </p>
-              )}
-              {citiesError && !citiesLoading && (
-                <p className="mt-1 text-xs text-amber-800">{citiesError}</p>
-              )}
+              />
+              <p className="mt-1 text-xs text-slate-600">
+                {cities.length} kota/kabupaten tersedia (data master lokal).
+              </p>
             </div>
           )}
 

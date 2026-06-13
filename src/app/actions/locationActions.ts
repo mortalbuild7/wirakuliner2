@@ -5,11 +5,8 @@ import {
   getIndonesiaProvinceById,
   INDONESIA_PROVINCE_IDS,
 } from "@/app/utils/indonesiaProvinces";
+import { isCityInProvince } from "@/lib/indonesia-regions";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  fetchRegenciesByProvinceName,
-} from "@/lib/indonesia-wilayah-api";
-import { formatWilayahCityName } from "@/lib/wilayah-city-format";
 
 /** Opsi kota cabang aktif — terhubung ke zona layanan GPS (service_cities). */
 export type ActiveCityOption = {
@@ -19,11 +16,12 @@ export type ActiveCityOption = {
   serviceCityId: string;
 };
 
-/** Opsi kota untuk rekrutmen admin — tidak wajib punya zona layanan aktif. */
+/** Opsi kota untuk rekrutmen admin — sumber sama: service_cities aktif. */
 export type RecruitCityOption = {
   cityId: number;
   name: string;
   provinceId: number;
+  serviceCityId: string;
 };
 
 export type ActiveCitiesResult =
@@ -31,18 +29,75 @@ export type ActiveCitiesResult =
   | { ok: false; error: string };
 
 export type RecruitCitiesResult =
-  | { ok: true; cities: RecruitCityOption[]; source: "database" | "api" }
+  | { ok: true; cities: RecruitCityOption[]; source: "database" }
   | { ok: false; error: string };
 
+type ServiceCityRow = {
+  id: string;
+  name: string;
+  province_id: number | null;
+  city_id: number | null;
+  provinces?: { name: string } | { name: string }[] | null;
+};
+
 /**
- * Memuat kota referensi aktif per provinsi — sumber dropdown "Kota Cabang" form driver.
- *
- * Filter ketat:
- * - `cities.province_id` = provinceId yang dipilih admin
- * - `cities.is_active` = true
- * - Hanya kota yang punya `service_cities` aktif (zona operasional siap rekrutmen)
- *
- * Memakai service role agar tidak terblokir RLS — konsisten dengan Manajemen Kota.
+ * Muat zona layanan aktif per provinsi — sumber tunggal dropdown pendaftaran.
+ * Query langsung ke `service_cities` (tanpa API eksternal).
+ */
+async function loadServiceCitiesForProvince(
+  provinceId: number
+): Promise<{ rows: ServiceCityRow[]; error?: string }> {
+  const admin = createAdminClient();
+  const provinceMeta = getIndonesiaProvinceById(provinceId);
+  const provinceIds = new Set<number>([provinceId]);
+
+  if (provinceMeta) {
+    const { data: matchedProvinces } = await admin
+      .from("provinces")
+      .select("id, name")
+      .ilike("name", provinceMeta.name);
+
+    for (const row of matchedProvinces ?? []) {
+      if (row.id != null) provinceIds.add(row.id);
+    }
+  }
+
+  const { data, error } = await admin
+    .from("service_cities")
+    .select("id, name, province_id, city_id, is_active, provinces(name)")
+    .eq("is_active", true)
+    .in("province_id", [...provinceIds])
+    .order("name");
+
+  if (error) {
+    return { rows: [], error: error.message };
+  }
+
+  return { rows: (data ?? []) as ServiceCityRow[] };
+}
+
+function mapToActiveOptions(
+  rows: ServiceCityRow[],
+  selectedProvinceId: number
+): ActiveCityOption[] {
+  const options: ActiveCityOption[] = [];
+
+  for (const row of rows) {
+    if (row.city_id == null) continue;
+    options.push({
+      cityId: row.city_id,
+      name: row.name,
+      provinceId: selectedProvinceId,
+      serviceCityId: row.id,
+    });
+  }
+
+  return options;
+}
+
+/**
+ * Dropdown "Kota Cabang" — form driver & merchant admin.
+ * Hanya kota yang ada di `service_cities` aktif untuk provinsi terpilih.
  */
 export async function getActiveCitiesByProvince(
   provinceId: number
@@ -62,68 +117,23 @@ export async function getActiveCitiesByProvince(
     return { ok: false, error: "Provinsi di luar yurisdiksi Anda" };
   }
 
-  const admin = createAdminClient();
+  const { rows, error } = await loadServiceCitiesForProvince(pid);
+  if (error) {
+    return { ok: false, error };
+  }
 
-  let citiesQuery = admin
-    .from("cities")
-    .select("id, name, province_id")
-    .eq("province_id", pid)
-    .eq("is_active", true)
-    .order("name");
+  let cities = mapToActiveOptions(rows, pid);
 
   if (session.adminRole === "CITY_ADMIN" && session.cityId != null) {
-    citiesQuery = citiesQuery.eq("id", session.cityId);
+    cities = cities.filter((c) => c.cityId === session.cityId);
   }
 
-  const { data: cities, error: citiesErr } = await citiesQuery;
-
-  if (citiesErr) {
-    return { ok: false, error: citiesErr.message };
-  }
-
-  if (!cities?.length) {
-    return { ok: true, cities: [] };
-  }
-
-  const cityIds = cities.map((c) => c.id);
-
-  const { data: serviceCities, error: scErr } = await admin
-    .from("service_cities")
-    .select("id, city_id, province_id")
-    .eq("province_id", pid)
-    .eq("is_active", true)
-    .in("city_id", cityIds);
-
-  if (scErr) {
-    return { ok: false, error: scErr.message };
-  }
-
-  const scByCityId = new Map(
-    (serviceCities ?? []).map((sc) => [sc.city_id, sc] as const)
-  );
-
-  const result: ActiveCityOption[] = [];
-  for (const city of cities) {
-    const zone = scByCityId.get(city.id);
-    if (zone) {
-      result.push({
-        cityId: city.id,
-        name: city.name,
-        provinceId: city.province_id,
-        serviceCityId: zone.id,
-      });
-    }
-  }
-
-  return { ok: true, cities: result };
+  return { ok: true, cities };
 }
 
 /**
- * Memuat kota/kabupaten untuk dropdown rekrutmen City Admin.
- *
- * Sumber utama: API EMSIFA per nama provinsi (filter geografis akurat).
- * Pelengkap: baris `cities` di DB dengan `province_id` = ID aplikasi (1–38) saja —
- * tidak mencampur ID Kemendagri agar kota provinsi lain tidak ikut terbawa.
+ * Dropdown kota — form rekrutmen City Admin.
+ * Sumber identik: `service_cities` aktif per provinsi.
  */
 export async function getCitiesByProvinceForRecruit(
   provinceId: number
@@ -144,80 +154,40 @@ export async function getCitiesByProvinceForRecruit(
   }
 
   const provinceMeta = getIndonesiaProvinceById(pid);
-  if (!provinceMeta) {
-    return { ok: false, error: "Provinsi tidak ditemukan" };
+  const { rows, error } = await loadServiceCitiesForProvince(pid);
+  if (error) {
+    return { ok: false, error };
   }
 
-  let cities: RecruitCityOption[] = [];
-
-  try {
-    const regencies = await fetchRegenciesByProvinceName(provinceMeta.name);
-    cities = regencies.map((r) => ({
-      cityId: Number(r.id),
-      name: formatWilayahCityName(r.name),
-      provinceId: pid,
-    }));
-  } catch (e) {
-    const msg =
-      e instanceof Error ? e.message : "Gagal memuat data wilayah dari API";
-    return { ok: false, error: msg };
-  }
+  let cities: RecruitCityOption[] = mapToActiveOptions(rows, pid).map((c) => ({
+    cityId: c.cityId,
+    name: c.name,
+    provinceId: c.provinceId,
+    serviceCityId: c.serviceCityId,
+  }));
 
   if (!cities.length) {
     return {
       ok: false,
-      error: `Tidak ada kota/kabupaten untuk ${provinceMeta.name}`,
+      error: provinceMeta
+        ? `Belum ada kota layanan aktif di ${provinceMeta.name}. Tambahkan di Manajemen Kota Layanan.`
+        : "Belum ada kota layanan aktif untuk provinsi ini.",
     };
   }
 
-  const admin = createAdminClient();
-  const { data: dbCities, error: dbErr } = await admin
-    .from("cities")
-    .select("id, name, province_id")
-    .eq("province_id", pid)
-    .order("name");
-
-  if (dbErr) {
-    return { ok: false, error: dbErr.message };
-  }
-
-  const seenNames = new Set(cities.map((c) => c.name.toLowerCase()));
-  for (const row of dbCities ?? []) {
-    const key = row.name.toLowerCase();
-    if (!seenNames.has(key)) {
-      cities.push({
-        cityId: row.id,
-        name: row.name,
-        provinceId: pid,
-      });
-      seenNames.add(key);
-    }
-  }
-
-  cities.sort((a, b) => a.name.localeCompare(b.name, "id"));
-
   if (session.adminRole === "CITY_ADMIN" && session.cityId != null) {
-    const scoped = cities.filter((c) => c.cityId === session.cityId);
-    return { ok: true, cities: scoped, source: "api" };
+    cities = cities.filter((c) => c.cityId === session.cityId);
   }
 
-  return { ok: true, cities, source: "api" };
+  return { ok: true, cities, source: "database" };
 }
 
-/** Pastikan kota yang dipilih benar-benar milik provinsi yang dipilih. */
+/** Pastikan kota yang dipilih benar-benar milik provinsi yang dipilih (master lokal). */
 export async function isRecruitCityInProvince(
   provinceId: number,
-  cityId: number,
+  _cityId: number | null,
   cityName?: string
 ): Promise<boolean> {
-  const res = await getCitiesByProvinceForRecruit(provinceId);
-  if (!res.ok) return false;
-
-  const normalizedName = cityName?.trim().toLowerCase();
-  return res.cities.some(
-    (c) =>
-      c.cityId === cityId &&
-      c.provinceId === provinceId &&
-      (!normalizedName || c.name.toLowerCase() === normalizedName)
-  );
+  if (!cityName?.trim()) return false;
+  return isCityInProvince(provinceId, cityName);
 }
