@@ -1,42 +1,46 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { DriverStatus } from "@/types/database";
 import { isCapacitorNative } from "@/lib/capacitor";
 import { fetchWithDriverAuth } from "@/lib/driver-native-session";
+import { useDriverGpsBroadcast } from "@/hooks/use-driver-gps-broadcast";
 
-const INTERVAL_MS = 15_000;
-
-async function sendLocation(lat: number, lng: number) {
+async function persistLocationToDb(lat: number, lng: number) {
   await fetchWithDriverAuth("/api/driver/location", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lat, lng }),
+    body: JSON.stringify({ lat, lng, persist: true }),
   });
 }
 
-/** Kirim GPS ke server — native Capacitor atau browser geolocation */
+/**
+ * GPS driver:
+ * - Realtime Broadcast (WebSocket) setiap ~2 detik — pelacakan live tanpa spam UPDATE DB.
+ * - Persist ke Postgres ~60 detik — untuk matching radius 3 km & dispatch.
+ */
 export function useDriverLocation(
   driverId: string | undefined,
   status: DriverStatus | undefined,
   enabled: boolean
 ) {
   const lastSent = useRef(0);
+  const onPersist = useCallback(async (lat: number, lng: number) => {
+    await persistLocationToDb(lat, lng);
+  }, []);
+
+  const publishGps = useDriverGpsBroadcast(driverId, status, enabled, onPersist);
 
   useEffect(() => {
     if (!enabled || !driverId || !status || status === "offline") return;
 
     let watchId: string | number | null = null;
-    let cancelled = false;
 
-    let firstSend = true;
-
-    async function send(lat: number, lng: number) {
+    async function handlePosition(lat: number, lng: number) {
       const now = Date.now();
-      if (!firstSend && now - lastSent.current < INTERVAL_MS) return;
-      firstSend = false;
+      if (now - lastSent.current < 2_000) return;
       lastSent.current = now;
-      await sendLocation(lat, lng);
+      await publishGps(lat, lng);
     }
 
     async function startNative() {
@@ -48,7 +52,7 @@ export function useDriverLocation(
         { enableHighAccuracy: true, timeout: 12_000 },
         (pos, err) => {
           if (err || !pos) return;
-          send(pos.coords.latitude, pos.coords.longitude);
+          void handlePosition(pos.coords.latitude, pos.coords.longitude);
         }
       );
     }
@@ -56,20 +60,19 @@ export function useDriverLocation(
     function startBrowser() {
       if (!navigator.geolocation) return;
       watchId = navigator.geolocation.watchPosition(
-        (pos) => send(pos.coords.latitude, pos.coords.longitude),
+        (pos) => void handlePosition(pos.coords.latitude, pos.coords.longitude),
         () => {},
         { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
       );
     }
 
     if (isCapacitorNative()) {
-      startNative();
+      void startNative();
     } else {
       startBrowser();
     }
 
     return () => {
-      cancelled = true;
       if (watchId == null) return;
       if (isCapacitorNative()) {
         import("@capacitor/geolocation").then(({ Geolocation }) => {
@@ -78,7 +81,6 @@ export function useDriverLocation(
       } else if (typeof watchId === "number") {
         navigator.geolocation.clearWatch(watchId);
       }
-      void cancelled;
     };
-  }, [driverId, status, enabled]);
+  }, [driverId, status, enabled, publishGps]);
 }

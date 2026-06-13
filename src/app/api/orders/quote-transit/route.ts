@@ -5,12 +5,13 @@ import {
   resolveRegionalIdsFromServiceCity,
 } from "@/lib/regional-transit-pricing";
 import { NGOJEK_MAX_DISTANCE_KM, NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
+import { evaluateRideMatchingContext, matchingContextToServiceArea } from "@/lib/ride-matching";
 import { checkRideServiceAvailability } from "@/lib/service-area";
 import { isServiceType, type ServiceType } from "@/lib/service-types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  enforceDistributedRateLimit,
   enforceMethod,
-  enforceRateLimit,
   readJsonBody,
   secureJsonResponse,
 } from "@/lib/security/enforce";
@@ -21,7 +22,11 @@ import { parseBoundedNumber } from "@/lib/security/validate";
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
   if (methodBlock) return methodBlock;
-  const rl = enforceRateLimit(req, "orders-quote-transit", RATE_LIMITS.api);
+  const rl = await enforceDistributedRateLimit(
+    req,
+    "orders-quote-transit",
+    RATE_LIMITS.orderQuote
+  );
   if (rl) return rl;
 
   const parsed = await readJsonBody<{
@@ -79,13 +84,39 @@ export async function POST(req: Request) {
 
   try {
     const admin = createAdminClient();
-    const serviceArea = await checkRideServiceAvailability(
-      admin,
-      pickupLat,
-      pickupLng,
-      destinationLat,
-      destinationLng
-    );
+    const isTransit = serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
+
+    const matchingCtx = isTransit
+      ? await evaluateRideMatchingContext(
+          admin,
+          pickupLat,
+          pickupLng,
+          destinationLat,
+          destinationLng,
+          serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK"
+        )
+      : null;
+
+    if (isTransit && matchingCtx && !matchingCtx.available) {
+      return secureJsonResponse({
+        distanceKm,
+        rideFee: 0,
+        areaAvailable: false,
+        areaMessage: matchingCtx.message ?? "Layanan tidak tersedia di wilayah ini",
+      });
+    }
+
+    const serviceArea =
+      isTransit && matchingCtx
+        ? matchingContextToServiceArea(matchingCtx)
+        : await checkRideServiceAvailability(
+            admin,
+            pickupLat,
+            pickupLng,
+            destinationLat,
+            destinationLng,
+            serviceType
+          );
 
     if (!serviceArea.available) {
       return secureJsonResponse({
@@ -96,14 +127,22 @@ export async function POST(req: Request) {
       });
     }
 
+    const serviceCityId =
+      serviceArea.cityId ??
+      matchingCtx?.serviceCityId ??
+      matchingCtx?.operationalClusterId ??
+      null;
+
     const { provinceId, cityId } = await resolveRegionalIdsFromServiceCity(
       admin,
-      serviceArea.cityId
+      serviceCityId
     );
 
+    const tariffProvinceId = provinceId ?? matchingCtx?.pickupProvinceId ?? null;
+
     const tariff =
-      provinceId != null
-        ? await fetchRegionalTransitTariff(admin, provinceId, cityId, serviceType)
+      tariffProvinceId != null
+        ? await fetchRegionalTransitTariff(admin, tariffProvinceId, cityId, serviceType)
         : null;
 
     const fallbackBase =
@@ -111,21 +150,31 @@ export async function POST(req: Request) {
     const fallbackPerKm =
       serviceType === "NGOMOBIL" ? 2_700 : serviceType === "PAKET" ? 2_300 : 2_000;
 
-    const rideFee = computeTransitFareFromTariff(
+    const borderSurcharge = matchingCtx?.borderSurcharge ?? 0;
+    const baseFee = computeTransitFareFromTariff(
       tariff,
       distanceKm,
       fallbackBase,
       fallbackPerKm
     );
+    const rideFee = baseFee + borderSurcharge;
     const base = tariff ? Number(tariff.base_fare) : fallbackBase;
     const perKm = tariff ? Number(tariff.price_per_km) : fallbackPerKm;
+
+    const surchargeNote =
+      borderSurcharge > 0
+        ? ` + Rp ${borderSurcharge.toLocaleString("id-ID")} lintas wilayah`
+        : "";
 
     return secureJsonResponse({
       distanceKm,
       rideFee,
       serviceType,
       areaAvailable: true,
-      feeDescription: `Rp ${base.toLocaleString("id-ID")} + Rp ${perKm.toLocaleString("id-ID")}/km × ${distanceKm.toFixed(2)} km`,
+      borderSurcharge,
+      isBorderlineCrossing: matchingCtx?.isBorderlineCrossing ?? false,
+      matchingMode: matchingCtx?.matchingMode ?? null,
+      feeDescription: `Rp ${base.toLocaleString("id-ID")} + Rp ${perKm.toLocaleString("id-ID")}/km × ${distanceKm.toFixed(2)} km${surchargeNote}`,
     });
   } catch (err) {
     const fallbackBase =

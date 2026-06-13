@@ -48,12 +48,17 @@ const config: Config = {
       },
       animation: {
         "pulse-glow": "pulse-glow 2.5s ease-in-out infinite",
+        "pulse-soft": "pulse-soft 2s ease-in-out infinite",
         float: "float 6s ease-in-out infinite",
       },
       keyframes: {
         "pulse-glow": {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.65" },
+        },
+        "pulse-soft": {
+          "0%, 100%": { opacity: "1", transform: "scale(1)" },
+          "50%": { opacity: "0.92", transform: "scale(1.01)" },
         },
         float: {
           "0%, 100%": { transform: "translateY(0)" },

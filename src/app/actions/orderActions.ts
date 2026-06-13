@@ -34,7 +34,8 @@ import {
   fetchRegionalTransitTariff,
   resolveRegionalIdsFromServiceCity,
 } from "@/lib/regional-transit-pricing";
-import { checkRideServiceAvailability } from "@/lib/service-area";
+import { evaluateRideMatchingContext } from "@/lib/ride-matching";
+import { checkRideServiceAvailability, checkServiceAvailability } from "@/lib/service-area";
 import { computePackageVolumeCm3 } from "@/lib/service-types";
 import { detectTrustedOwnerIdsInBody } from "@/lib/security/auth-owner";
 import { sanitizePublicText } from "@/lib/security/sanitize";
@@ -247,19 +248,67 @@ export async function createTransitOrder(
 
   const admin = createAdminClient();
 
-  const serviceArea = await checkRideServiceAvailability(
-    admin,
-    input.pickupLat,
-    input.pickupLng,
-    input.destinationLat,
-    input.destinationLng
-  );
+  const isTransit =
+    input.serviceType === "NGOJEK" || input.serviceType === "NGOMOBIL";
+
+  const matchingCtx = isTransit
+    ? await evaluateRideMatchingContext(
+        admin,
+        input.pickupLat,
+        input.pickupLng,
+        input.destinationLat,
+        input.destinationLng,
+        input.serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK"
+      )
+    : null;
+
+  if (isTransit && matchingCtx && !matchingCtx.available) {
+    return {
+      ok: false,
+      error: matchingCtx.message ?? "Layanan tidak tersedia di wilayah ini",
+    };
+  }
+
+  const serviceArea =
+    isTransit && matchingCtx
+      ? {
+          available: matchingCtx.available,
+          message: matchingCtx.message,
+          cityId: matchingCtx.serviceCityId ?? matchingCtx.operationalClusterId,
+          cityName: matchingCtx.serviceCityName ?? matchingCtx.pickupProvinceName,
+        }
+      : await checkRideServiceAvailability(
+          admin,
+          input.pickupLat,
+          input.pickupLng,
+          input.destinationLat,
+          input.destinationLng,
+          input.serviceType
+        );
+
   if (!serviceArea.available) {
     return {
       ok: false,
       error: serviceArea.message ?? "Layanan tidak tersedia di wilayah ini",
     };
   }
+
+  const operationalClusterId = matchingCtx?.operationalClusterId ?? null;
+
+  const nearestServiceCity = isTransit
+    ? await checkServiceAvailability(admin, input.pickupLat, input.pickupLng)
+    : serviceArea;
+
+  const serviceCityIdForOrder =
+    nearestServiceCity.cityId ?? matchingCtx?.serviceCityId ?? serviceArea.cityId;
+
+  const pickupProvinceId =
+    matchingCtx?.pickupProvinceId ??
+    (await resolveRegionalIdsFromServiceCity(admin, serviceCityIdForOrder)).provinceId;
+
+  const borderSurcharge = matchingCtx?.borderSurcharge ?? 0;
+  const isBorderlineCrossing = matchingCtx?.isBorderlineCrossing ?? false;
+  const matchingMode = matchingCtx?.matchingMode ?? null;
 
   const hubMerchantId = await resolveTransitHubMerchantId(admin);
   if (!hubMerchantId) {
@@ -268,19 +317,21 @@ export async function createTransitOrder(
 
   const { provinceId, cityId } = await resolveRegionalIdsFromServiceCity(
     admin,
-    serviceArea.cityId
+    serviceCityIdForOrder
   );
-  if (provinceId == null) {
-    return { ok: false, error: "Wilayah belum terdaftar di sistem tarif regional" };
-  }
 
-  const tariff = await fetchRegionalTransitTariff(
-    admin,
-    provinceId,
-    cityId,
-    input.serviceType
-  );
-  const deliveryFee = computeTransitFareFromTariff(tariff, distanceKm);
+  const tariffProvinceId = provinceId ?? pickupProvinceId;
+  const tariff =
+    tariffProvinceId != null
+      ? await fetchRegionalTransitTariff(
+          admin,
+          tariffProvinceId,
+          cityId,
+          input.serviceType
+        )
+      : null;
+  const deliveryFee =
+    computeTransitFareFromTariff(tariff, distanceKm) + borderSurcharge;
 
   const totalVolumeCm3 =
     input.serviceType === "PAKET" && input.packageDetails
@@ -311,8 +362,13 @@ export async function createTransitOrder(
     pickup_lat: input.pickupLat,
     pickup_lng: input.pickupLng,
     distance_km: distanceKm,
-    service_city_id: serviceArea.cityId,
-    province_id: provinceId,
+    service_city_id: serviceCityIdForOrder,
+    operational_cluster_id: operationalClusterId,
+    pickup_province_id: pickupProvinceId,
+    is_borderline_crossing: isBorderlineCrossing,
+    border_surcharge: borderSurcharge,
+    matching_mode: matchingMode,
+    province_id: tariffProvinceId,
     city_id: cityId,
     service_type: input.serviceType,
     total_volume_cm3: totalVolumeCm3,

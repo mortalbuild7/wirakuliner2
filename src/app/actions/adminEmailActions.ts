@@ -2,23 +2,26 @@
 
 import { render } from "@react-email/render";
 import { AdminWelcomeEmail } from "@/components/emails/AdminWelcomeEmail";
-import {
-  generateAdminActivationToken,
-} from "@/lib/email/admin-activation-token";
+import { generateAdminActivationToken } from "@/lib/email/admin-activation-token";
 import { getZohoSmtpPool, WIRA_SECURITY_FROM } from "@/lib/email/zoho-smtp-pool";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+/** Hasil sukses / gagal pengiriman email aktivasi — tidak bocorkan detail SMTP ke klien. */
 export type SendAdminActivationResult =
   | { ok: true; expiresAt: string }
   | { ok: false; error: string };
 
+/** URL dasar aplikasi — dipakai membangun tautan /admin/activate?token=… */
 function appBaseUrl(): string {
   const url = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (!url) throw new Error("NEXT_PUBLIC_APP_URL belum dikonfigurasi");
   return url.replace(/\/$/, "");
 }
 
-/** Simpan hash token — invalidasi token aktif lama per user (anti-reuse). */
+/**
+ * Simpan hash token aktivasi di DB (bukan raw token).
+ * Invalidasi token aktif lama per user — mitigasi reuse token.
+ */
 async function persistAdminActivationToken(
   userId: string,
   tokenHash: string,
@@ -26,6 +29,7 @@ async function persistAdminActivationToken(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = createAdminClient();
 
+  // Tandai token lama sebagai used — satu token aktif per user
   await admin
     .from("admin_activation_tokens")
     .update({ used_at: new Date().toISOString() })
@@ -42,6 +46,7 @@ async function persistAdminActivationToken(
   return { ok: true };
 }
 
+/** Input untuk mengirim email aktivasi setelah akun admin dibuat di Supabase Auth. */
 export type SendAdminActivationInput = {
   userId: string;
   recipientEmail: string;
@@ -51,8 +56,9 @@ export type SendAdminActivationInput = {
 };
 
 /**
- * Kirim email aktivasi admin via Zoho SMTP port 465 (SSL/TLS, connection pooling).
- * Pengirim resmi: admin@wirakuliner.web.id — selaras SPF/DKIM/DMARC domain.
+ * Server Action utama — kirim email aktivasi admin via Zoho SMTP port 465 (SSL/TLS).
+ * Pengirim resmi: "Wira Kuliner Keamanan" <admin@wirakuliner.web.id>
+ * Dipanggil dari recruitNewAdmin; gagal kirim → caller melakukan rollback akun.
  */
 export async function sendAdminActivationEmail(
   input: SendAdminActivationInput
@@ -62,6 +68,7 @@ export async function sendAdminActivationEmail(
     return { ok: false, error: "Alamat email penerima tidak valid" };
   }
 
+  // Hasilkan token sekali pakai + hash untuk disimpan di DB
   const { rawToken, tokenHash, expiresAt } = generateAdminActivationToken();
 
   const stored = await persistAdminActivationToken(
@@ -71,8 +78,10 @@ export async function sendAdminActivationEmail(
   );
   if (!stored.ok) return { ok: false, error: stored.error };
 
+  // Tautan aktivasi — raw token hanya ada di email, tidak di DB
   const activationUrl = `${appBaseUrl()}/admin/activate?token=${encodeURIComponent(rawToken)}`;
 
+  // Render template React Email ke HTML
   const html = await render(
     AdminWelcomeEmail({
       adminName: input.adminName,

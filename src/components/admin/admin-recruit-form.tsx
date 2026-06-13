@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +11,8 @@ import {
   type RecruitAdminInput,
 } from "@/app/actions/adminRecruitActions";
 import {
-  getActiveCitiesByProvince,
-  type ActiveCityOption,
+  getCitiesByProvinceForRecruit,
+  type RecruitCityOption,
 } from "@/app/actions/locationActions";
 import type { IndonesiaProvince } from "@/app/utils/indonesiaProvinces";
 import type { AdminTier } from "@/app/utils/adminAuth";
@@ -41,45 +41,82 @@ export function AdminRecruitForm({
     email: "",
     adminRole: recruiterTier === "SUPER_ADMIN" ? "PROVINCE_ADMIN" : "CITY_ADMIN",
     provinceId: String(defaultProvinceId),
-    cityId: "",
   });
 
-  const [cities, setCities] = useState<ActiveCityOption[]>([]);
+  const [selectedCity, setSelectedCity] = useState("");
+  const [cities, setCities] = useState<RecruitCityOption[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
+  const [citiesError, setCitiesError] = useState<string | null>(null);
 
-  const showCityField = form.adminRole === "CITY_ADMIN";
+  const fetchGenRef = useRef(0);
+
+  const showCityField = useMemo(
+    () => form.adminRole === "CITY_ADMIN",
+    [form.adminRole]
+  );
+
+  const selectedCityMeta = useMemo(
+    () => cities.find((c) => String(c.cityId) === selectedCity) ?? null,
+    [cities, selectedCity]
+  );
+
+  const loadCitiesForProvince = useCallback(async (provinceId: string) => {
+    const pid = Number(provinceId);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      setCities([]);
+      setCitiesError(null);
+      return;
+    }
+
+    const gen = ++fetchGenRef.current;
+    setCitiesLoading(true);
+    setCitiesError(null);
+
+    const res = await getCitiesByProvinceForRecruit(pid);
+
+    if (gen !== fetchGenRef.current) return;
+
+    setCitiesLoading(false);
+
+    if (!res.ok) {
+      setCities([]);
+      setCitiesError(res.error);
+      return;
+    }
+
+    setCities(res.cities);
+    if (res.cities.length === 1) {
+      setSelectedCity(String(res.cities[0].cityId));
+    }
+  }, []);
 
   useEffect(() => {
     if (!showCityField) {
       setCities([]);
-      setForm((f) => ({ ...f, cityId: "" }));
+      setSelectedCity("");
+      setCitiesError(null);
+      setCitiesLoading(false);
       return;
     }
 
-    const pid = Number(form.provinceId);
-    if (!Number.isInteger(pid) || pid <= 0) return;
+    setSelectedCity("");
+    void loadCitiesForProvince(form.provinceId);
+  }, [form.provinceId, showCityField, loadCitiesForProvince]);
 
-    let cancelled = false;
-    setCitiesLoading(true);
+  const handleProvinceChange = useCallback(
+    (provinceId: string) => {
+      setForm((f) => ({ ...f, provinceId }));
+      setSelectedCity("");
+      setCitiesError(null);
+    },
+    []
+  );
 
-    void getActiveCitiesByProvince(pid).then((res) => {
-      if (cancelled) return;
-      setCitiesLoading(false);
-      if (!res.ok) {
-        setCities([]);
-        return;
-      }
-      setCities(res.cities);
-      setForm((f) => ({
-        ...f,
-        cityId: res.cities.length === 1 ? String(res.cities[0].cityId) : "",
-      }));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [form.provinceId, showCityField]);
+  const handleAdminRoleChange = useCallback((adminRole: string) => {
+    setForm((f) => ({ ...f, adminRole }));
+    setSelectedCity("");
+    setCitiesError(null);
+  }, []);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -91,7 +128,8 @@ export function AdminRecruitForm({
       email: form.email.trim(),
       adminRole: form.adminRole as "PROVINCE_ADMIN" | "CITY_ADMIN",
       provinceId: Number(form.provinceId),
-      cityId: showCityField ? Number(form.cityId) : undefined,
+      cityId: showCityField ? Number(selectedCity) : undefined,
+      cityName: showCityField ? selectedCityMeta?.name : undefined,
     };
 
     startTransition(async () => {
@@ -105,10 +143,18 @@ export function AdminRecruitForm({
         ...f,
         name: "",
         email: "",
-        cityId: "",
       }));
+      setSelectedCity("");
     });
   }
+
+  const cityPlaceholder = citiesLoading
+    ? "Memuat kota... (Loading)"
+    : citiesError
+      ? "Gagal memuat kota"
+      : cities.length === 0
+        ? "Tidak ada kota tersedia"
+        : "— Pilih kota —";
 
   return (
     <Card className="mt-6 max-w-2xl border-emerald-500/30">
@@ -164,9 +210,7 @@ export function AdminRecruitForm({
               <select
                 className={SELECT_CLASS}
                 value={form.adminRole}
-                onChange={(e) =>
-                  setForm({ ...form, adminRole: e.target.value, cityId: "" })
-                }
+                onChange={(e) => handleAdminRoleChange(e.target.value)}
                 disabled={pending}
               >
                 <option value="PROVINCE_ADMIN">Province Admin</option>
@@ -180,9 +224,7 @@ export function AdminRecruitForm({
             <select
               className={SELECT_CLASS}
               value={form.provinceId}
-              onChange={(e) =>
-                setForm({ ...form, provinceId: e.target.value, cityId: "" })
-              }
+              onChange={(e) => handleProvinceChange(e.target.value)}
               disabled={provinceLocked || pending}
               required
             >
@@ -199,20 +241,27 @@ export function AdminRecruitForm({
               <Label>Kota cabang</Label>
               <select
                 className={SELECT_CLASS}
-                value={form.cityId}
-                onChange={(e) => setForm({ ...form, cityId: e.target.value })}
+                value={selectedCity}
+                onChange={(e) => setSelectedCity(e.target.value)}
                 disabled={pending || citiesLoading || cities.length === 0}
                 required
               >
-                <option value="">
-                  {citiesLoading ? "Memuat…" : "— Pilih kota —"}
-                </option>
+                <option value="">{cityPlaceholder}</option>
                 {cities.map((c) => (
                   <option key={c.cityId} value={c.cityId}>
                     {c.name}
                   </option>
                 ))}
               </select>
+              {citiesLoading && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Memuat daftar kota/kabupaten…
+                </p>
+              )}
+              {citiesError && !citiesLoading && (
+                <p className="mt-1 text-xs text-amber-700">{citiesError}</p>
+              )}
             </div>
           )}
 
@@ -221,7 +270,8 @@ export function AdminRecruitForm({
               type="submit"
               disabled={
                 pending ||
-                (showCityField && (!form.cityId || cities.length === 0))
+                (showCityField &&
+                  (!selectedCity || citiesLoading || cities.length === 0))
               }
               className="gap-2"
             >

@@ -140,15 +140,34 @@ export async function checkFoodServiceAvailability(
 }
 
 /**
- * NGOJEK: jemput & tujuan harus dalam wilayah aktif + kota layanan yang sama.
+ * NGOJEK / NGOMOBIL: intra-provinsi + borderline buffer (30–50 km).
+ * Kuliner & PAKET: service_cities per kota (legacy).
  */
 export async function checkRideServiceAvailability(
   admin: SupabaseClient,
   pickupLat: number,
   pickupLng: number,
   destLat: number,
-  destLng: number
+  destLng: number,
+  serviceType?: "NGOJEK" | "NGOMOBIL" | "PAKET"
 ): Promise<ServiceAvailability> {
+  const useTransitMatching =
+    serviceType === "NGOJEK" || serviceType === "NGOMOBIL" || serviceType == null;
+
+  if (useTransitMatching) {
+    const { evaluateRideMatchingContext, matchingContextToServiceArea } =
+      await import("@/lib/ride-matching");
+    const ctx = await evaluateRideMatchingContext(
+      admin,
+      pickupLat,
+      pickupLng,
+      destLat,
+      destLng,
+      serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK"
+    );
+    return matchingContextToServiceArea(ctx);
+  }
+
   const pickup = await checkServiceAvailability(admin, pickupLat, pickupLng);
   if (!pickup.available) {
     return {

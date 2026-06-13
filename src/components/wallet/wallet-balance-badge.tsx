@@ -33,12 +33,12 @@ export function WalletBalanceBadge({ href, className, refreshKey = 0 }: Props) {
   const inner = (
     <span
       className={cn(
-        "flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-200",
+        "flex items-center gap-1.5 rounded-full border border-emerald-700/30 bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm",
         className
       )}
       title="Saldo WIRA"
     >
-      <Wallet className="h-3 w-3 shrink-0" />
+      <Wallet className="h-3.5 w-3.5 shrink-0 text-white" aria-hidden />
       <span>{balance == null ? "Saldo" : formatIdr(balance)}</span>
     </span>
   );

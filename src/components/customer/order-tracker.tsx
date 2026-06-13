@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useSubscribeDriverGps } from "@/hooks/use-subscribe-driver-gps";
 import { Badge } from "@/components/ui/badge";
 import {
   channelLabelFromRecord,
@@ -238,8 +239,10 @@ export function OrderTracker({ orderId }: { orderId: string }) {
       if (pos) applyDriverPos(pos.lat, pos.lng);
     };
 
+    void pollDriver();
+
     const driverChannel = supabase
-      .channel(`track-driver-${driverId}`)
+      .channel(`track-driver-fallback-${driverId}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "drivers", filter: `id=eq.${driverId}` },
@@ -250,17 +253,17 @@ export function OrderTracker({ orderId }: { orderId: string }) {
       )
       .subscribe();
 
-    void pollDriver();
-    const timer = setInterval(() => {
-      void pollDriver();
-    }, 3000);
-
     return () => {
       cancelled = true;
-      clearInterval(timer);
       supabase.removeChannel(driverChannel);
     };
   }, [driverId, orderId, resolveDriverPos, supabase, trackDriverLive]);
+
+  const onBroadcastPosition = useCallback((lat: number, lng: number) => {
+    setDriverPos({ lat, lng });
+  }, []);
+
+  useSubscribeDriverGps(driverId, trackDriverLive, onBroadcastPosition);
 
   if (loading) {
     return <p className="text-muted-foreground">Memuat pelacakan...</p>;

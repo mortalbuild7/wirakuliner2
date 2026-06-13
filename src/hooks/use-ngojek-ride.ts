@@ -825,6 +825,7 @@ export function useNgojekRide() {
     destLng,
     placing,
     placeError,
+    setPlaceError,
     paymentMethod,
     setPaymentMethod,
     walletBalance,

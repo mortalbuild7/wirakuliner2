@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { verifyAdminSession } from "@/app/utils/adminAuth";
 import { serviceCityWithinAdminScope } from "@/lib/admin/regional-scope";
+import { resolveClusterForServiceCity } from "@/lib/operational-cluster";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -146,7 +147,7 @@ export async function registerDriverNational(
 
   const { data: city } = await admin
     .from("service_cities")
-    .select("id, name, province_id, city_id")
+    .select("id, name, province_id, city_id, operational_cluster_id")
     .eq("province_id", data.provinceId)
     .eq("city_id", data.cityId)
     .eq("is_active", true)
@@ -217,9 +218,11 @@ export async function registerDriverNational(
     return { ok: false, error: profileErr.message };
   }
 
-  // ── 7. ARMADA: baris drivers + kategori fisik + zona operasi regional. ───
-  // province_id/city_id diturunkan dari service_cities (server-side), bukan
-  // dari input client — konsisten dengan filter RLS regional.
+  // ── 7. ARMADA: baris drivers + cluster operasional + kota pendaftaran. ───
+  const operationalClusterId =
+    (city as { operational_cluster_id?: string | null }).operational_cluster_id ??
+    (await resolveClusterForServiceCity(admin, city.id));
+
   const { data: driver, error: driverErr } = await admin
     .from("drivers")
     .insert({
@@ -227,16 +230,17 @@ export async function registerDriverNational(
       name: data.name,
       phone,
       vehicle_plate: data.vehiclePlate?.trim() || null,
-      // Legalitas SIM — dasar perhitungan sim_status (ACTIVE / EXPIRING_SOON /
-      // EXPIRED) dan sapuan notifikasi otomatis sweep_driver_sim_notices().
       sim_number: data.simNumber,
       sim_expiry_date: data.simExpiryDate,
       sim_document_url: data.simDocumentUrl,
       service_category: data.serviceCategory,
       service_city_id: city.id,
+      registration_service_city_id: city.id,
+      registration_province_id: city.province_id,
+      operational_cluster_id: operationalClusterId,
       province_id: city.province_id,
       city_id: city.city_id,
-      status: "offline", // baru terdaftar = belum siap menerima order
+      status: "offline",
     })
     .select("id")
     .single();

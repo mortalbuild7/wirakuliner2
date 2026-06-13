@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { applySecurityHeaders } from "@/lib/security/headers";
 import { checkRateLimit, RATE_LIMITS, type RateLimitConfig } from "@/lib/security/rate-limit";
+import { checkDistributedRateLimit } from "@/lib/security/upstash-rate-limit";
 
 const MAX_JSON_BYTES = 256 * 1024;
 
@@ -27,6 +28,20 @@ export function enforceRateLimit(
   const ip = getClientIp(req);
   const key = `${scope}:${ip}`;
   const result = checkRateLimit(key, config);
+  if (!result.allowed) {
+    return rateLimitResponse(result.retryAfterSec);
+  }
+  return null;
+}
+
+/** Rate limit terdistribusi Upstash + fallback in-memory — untuk endpoint kritikal. */
+export async function enforceDistributedRateLimit(
+  req: Request,
+  scope: string,
+  config: RateLimitConfig
+): Promise<NextResponse | null> {
+  const ip = getClientIp(req);
+  const result = await checkDistributedRateLimit(scope, ip, config);
   if (!result.allowed) {
     return rateLimitResponse(result.retryAfterSec);
   }

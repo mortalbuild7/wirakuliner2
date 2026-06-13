@@ -57,6 +57,17 @@ export function serviceCityWithinAdminScope(
   return entityWithinAdminScope(session, city);
 }
 
+/** Filter driver untuk laporan/komisi/pendaftaran — City Admin by kota pendaftaran. */
+export function applyRegionalDriverRegistrationScope<T extends ScopedQuery<T>>(
+  query: T,
+  session: RegionalAdminSession
+): T {
+  if (session.adminRole === "CITY_ADMIN" && session.cityId != null) {
+    return query.eq("city_id", session.cityId);
+  }
+  return applyRegionalEntityScope(query, session);
+}
+
 /** Label lingkup untuk header halaman manajemen. */
 export function regionalScopeHint(session: RegionalAdminSession): string {
   if (session.adminRole === "SUPER_ADMIN") return "Seluruh wilayah Indonesia";

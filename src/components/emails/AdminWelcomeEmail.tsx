@@ -12,6 +12,7 @@ import {
 } from "@react-email/components";
 import * as React from "react";
 
+/** Props template email aktivasi admin — di-render server-side via @react-email/render. */
 export type AdminWelcomeEmailProps = {
   adminName: string;
   activationUrl: string;
@@ -21,8 +22,10 @@ export type AdminWelcomeEmailProps = {
 };
 
 /**
- * Template email selamat datang admin — desain selaras UI WIRA (rounded, kontras tinggi).
- * Inline style wajib untuk kompatibilitas klien email (Gmail, Outlook, Zoho Mail).
+ * Template email selamat datang admin WIRA Kuliner.
+ * Desain selaras UI aplikasi: rounded-2xl, latar teduh, kontras tinggi,
+ * tombol kapsul emerald-500 dengan shadow lembut.
+ * Inline style wajib — klien email (Gmail, Outlook, Zoho) tidak memuat Tailwind.
  */
 export function AdminWelcomeEmail({
   adminName,
@@ -34,10 +37,13 @@ export function AdminWelcomeEmail({
   return (
     <Html lang="id">
       <Head />
+      {/* Teks pratinjau di inbox — tidak menampilkan URL mentah */}
       <Preview>
         {`Aktivasi akun admin WIRA Kuliner — tautan berlaku ${expiresHours} jam`}
       </Preview>
+      {/* Latar belakang teduh di luar kartu */}
       <Body style={bodyStyle}>
+        {/* Kartu utama — rounded-2xl, bayangan lembut */}
         <Container style={cardStyle}>
           <Section style={headerBadgeStyle}>
             <Text style={badgeTextStyle}>WIRA Kuliner · Panel Admin</Text>
@@ -51,6 +57,7 @@ export function AdminWelcomeEmail({
             tombol di bawah sebelum masa berlaku tautan habis.
           </Text>
 
+          {/* Tombol aktivasi kapsul emerald-500 */}
           <Section style={ctaWrapStyle}>
             <Button href={activationUrl} style={buttonStyle}>
               Aktifkan Akun Admin
@@ -64,6 +71,7 @@ export function AdminWelcomeEmail({
 
           <Hr style={hrStyle} />
 
+          {/* Kotak peringatan MFA — rounded-2xl amber */}
           <Section style={alertBoxStyle}>
             <Text style={alertTitleStyle}>Wajib: Aktifkan MFA saat login pertama</Text>
             <Text style={alertBodyStyle}>
@@ -79,6 +87,7 @@ export function AdminWelcomeEmail({
             kedaluwarsa otomatis. Hubungi SUPER_ADMIN jika ada aktivitas mencurigakan.
           </Text>
 
+          {/* Fallback plain link jika tombol diblokir klien email */}
           <Text style={linkFallbackStyle}>
             Tombol tidak berfungsi? Salin tautan ini ke browser:
             <br />
@@ -92,23 +101,25 @@ export function AdminWelcomeEmail({
 
 export default AdminWelcomeEmail;
 
+/** Latar belakang teduh — slate-50 */
 const bodyStyle: React.CSSProperties = {
-  backgroundColor: "#f8fafc",
+  backgroundColor: "#f1f5f9",
   fontFamily:
     '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   margin: 0,
   padding: "32px 16px",
 };
 
+/** Kartu putih rounded-2xl (16px) — kontras tinggi dengan teks slate-900 */
 const cardStyle: React.CSSProperties = {
   backgroundColor: "#ffffff",
   borderRadius: "16px",
   border: "1px solid #e2e8f0",
-  boxShadow: "0 8px 30px rgba(0, 0, 0, 0.04)",
+  boxShadow: "0 8px 30px rgba(0, 0, 0, 0.06)",
   margin: "0 auto",
   maxWidth: "560px",
   padding: "32px 28px",
-  color: "#1e293b",
+  color: "#0f172a",
 };
 
 const headerBadgeStyle: React.CSSProperties = {
@@ -144,6 +155,7 @@ const ctaWrapStyle: React.CSSProperties = {
   margin: "28px 0",
 };
 
+/** Tombol kapsul emerald-500 (#10b981) + shadow lembut */
 const buttonStyle: React.CSSProperties = {
   backgroundColor: "#10b981",
   borderRadius: "9999px",

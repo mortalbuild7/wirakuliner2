@@ -3,8 +3,8 @@ import { checkGpsVelocity } from "@/lib/driver-gps-velocity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rejectTrustedOwnerIdsInBody } from "@/lib/security/auth-owner";
 import {
+  enforceDistributedRateLimit,
   enforceMethod,
-  enforceRateLimit,
   readJsonBody,
   secureJsonResponse,
 } from "@/lib/security/enforce";
@@ -19,7 +19,11 @@ import { parseBoundedNumber } from "@/lib/security/validate";
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
   if (methodBlock) return methodBlock;
-  const rl = enforceRateLimit(req, "driver-location", { limit: 40, windowMs: 60_000 });
+  const rl = await enforceDistributedRateLimit(
+    req,
+    "driver-gps-persist",
+    RATE_LIMITS.driverGpsPersist
+  );
   if (rl) return rl;
 
   const auth = await getAuthDriver();
@@ -35,6 +39,7 @@ export async function POST(req: Request) {
     lat?: number;
     lng?: number;
     driver_id?: string;
+    persist?: boolean;
   }>(req);
   if ("error" in parsed) return parsed.error;
 
@@ -54,6 +59,20 @@ export async function POST(req: Request) {
     .select("current_lat, current_lng, last_gps_lat, last_gps_lng, last_gps_ping_at, updated_at")
     .eq("id", auth.driver.id)
     .maybeSingle();
+
+  const forcePersist = parsed.data.persist === true;
+  const lastPing = driverRow?.last_gps_ping_at ?? driverRow?.updated_at ?? null;
+  const lastPingMs = lastPing ? new Date(lastPing).getTime() : 0;
+  const persistDue = Date.now() - lastPingMs >= 55_000;
+
+  if (!forcePersist && !persistDue) {
+    return secureJsonResponse({
+      ok: true,
+      skipped: true,
+      message: "Posisi live via broadcast; persist DB dijadwalkan",
+      gpsTrust: "OK",
+    });
+  }
 
   const velocity = checkGpsVelocity(
     { lat, lng, driverId: auth.driver.id },

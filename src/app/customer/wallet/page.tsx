@@ -105,31 +105,33 @@ export default function CustomerWalletPage() {
       <div className="flex items-center gap-3">
         <Link
           href="/customer"
-          className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5"
+          className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm"
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-white">Saldo WIRA</h1>
-          <p className="text-xs text-muted-foreground">Top up, tarik & bayar pesanan</p>
+          <h1 className="text-xl font-bold text-slate-900">Saldo WIRA</h1>
+          <p className="text-xs font-medium text-slate-600">Top up, tarik & bayar pesanan</p>
         </div>
       </div>
 
-      <section className="glass-card overflow-hidden p-5">
-        <div className="flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600">
-            <Wallet className="h-6 w-6 text-white" />
+      <section className="wira-wallet-card">
+        <div className="flex items-center gap-4">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15">
+            <Wallet className="h-7 w-7 text-white" />
           </span>
           <div>
-            <p className="text-xs text-muted-foreground">Saldo tersedia</p>
-            <p className="text-2xl font-bold text-white">
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-100">
+              Saldo tersedia
+            </p>
+            <p className="wira-wallet-balance">
               {balance == null ? "—" : formatIdr(balance)}
             </p>
           </div>
         </div>
       </section>
 
-      <div className="flex gap-2 rounded-2xl border border-white/10 p-1">
+      <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
         {(["topup", "withdraw"] as const).map((t) => (
           <button
             key={t}
@@ -141,10 +143,10 @@ export default function CustomerWalletPage() {
               setPayment(null);
             }}
             className={cn(
-              "flex-1 rounded-xl py-2.5 text-sm font-medium transition",
+              "flex-1 rounded-xl py-2.5 text-sm font-bold transition",
               tab === t
-                ? "bg-amber-500/25 text-amber-200"
-                : "text-muted-foreground hover:text-white"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
             )}
           >
             {t === "topup" ? "Top up" : "Tarik saldo"}
@@ -158,13 +160,13 @@ export default function CustomerWalletPage() {
         <>
           {error && <Alert variant="destructive">{error}</Alert>}
           {success && (
-            <Alert className="border-emerald-500/40 bg-emerald-500/10 text-emerald-100">
+            <Alert className="border-emerald-600 bg-emerald-50 text-emerald-950">
               {success}
             </Alert>
           )}
 
           <form onSubmit={topup} className="glass-card space-y-4 p-4">
-            <p className="text-sm font-medium text-white">Top up saldo</p>
+            <p className="text-sm font-bold text-slate-900">Top up saldo</p>
 
             <div className="flex flex-wrap gap-2">
               {PRESETS.map((p) => (
@@ -172,7 +174,7 @@ export default function CustomerWalletPage() {
                   key={p}
                   type="button"
                   onClick={() => setAmount(String(p))}
-                  className="rounded-full border border-white/15 px-3 py-1 text-xs text-white transition hover:border-amber-500/40"
+                  className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:border-emerald-600 hover:bg-emerald-50"
                 >
                   {formatIdr(p)}
                 </button>
@@ -196,10 +198,10 @@ export default function CustomerWalletPage() {
                 <button
                   type="button"
                   onClick={() => setStubMethod("ewallet")}
-                  className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs ${
+                  className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs font-semibold ${
                     stubMethod === "ewallet"
-                      ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200"
-                      : "border-white/10 text-muted-foreground"
+                      ? "border-cyan-700 bg-cyan-50 text-cyan-900"
+                      : "border-slate-200 text-slate-600"
                   }`}
                 >
                   <Smartphone className="h-5 w-5" />
@@ -208,10 +210,10 @@ export default function CustomerWalletPage() {
                 <button
                   type="button"
                   onClick={() => setStubMethod("va_bank")}
-                  className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs ${
+                  className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-xs font-semibold ${
                     stubMethod === "va_bank"
-                      ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-200"
-                      : "border-white/10 text-muted-foreground"
+                      ? "border-cyan-700 bg-cyan-50 text-cyan-900"
+                      : "border-slate-200 text-slate-600"
                   }`}
                 >
                   <Building2 className="h-5 w-5" />
@@ -219,7 +221,7 @@ export default function CustomerWalletPage() {
                 </button>
               </div>
             ) : (
-              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-xs text-cyan-100">
+              <div className="rounded-2xl border border-sky-300 bg-sky-50 p-3 text-xs font-medium text-sky-950">
                 Pembayaran via <strong>Midtrans</strong> — QRIS, GoPay, transfer
                 bank, dan metode lain sesuai kanal yang aktif di akun merchant Anda.
                 Saldo dikredit otomatis setelah pembayaran berhasil.

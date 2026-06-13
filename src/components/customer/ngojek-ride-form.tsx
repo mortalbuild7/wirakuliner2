@@ -11,8 +11,8 @@ import { formatIdr } from "@/lib/utils";
 import { SERVICE_TYPE_LABEL, type ServiceType } from "@/lib/service-types";
 import { QrisPaymentPanel } from "@/components/payment/qris-payment-panel";
 import { PaymentMethodPicker } from "@/components/wallet/payment-method-picker";
+import { OrderConfirmation } from "@/components/customer/OrderConfirmation";
 import { useNgojekRide } from "@/hooks/use-ngojek-ride";
-import { NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
 import { cn } from "@/lib/utils";
 import { LocationSearchBar } from "@/components/maps/LocationSearchBar";
 import { PickupMapContainer } from "@/components/maps/PickupMapContainer";
@@ -45,29 +45,33 @@ const DestinationMap = dynamic(
 const SERVICE_OPTIONS: {
   type: ServiceType;
   icon: typeof Bike;
-  color: string;
-  activeBg: string;
+  iconActive: string;
+  iconIdle: string;
+  activeRing: string;
   desc: string;
 }[] = [
   {
     type: "NGOJEK",
     icon: Bike,
-    color: "text-emerald-300",
-    activeBg: "from-emerald-500/30 to-emerald-950/40 border-emerald-500/50",
+    iconActive: "text-emerald-700",
+    iconIdle: "text-slate-700",
+    activeRing: "ring-2 ring-emerald-600 bg-emerald-50",
     desc: "Motor — cepat & hemat",
   },
   {
     type: "NGOMOBIL",
     icon: Car,
-    color: "text-sky-300",
-    activeBg: "from-sky-500/30 to-sky-950/40 border-sky-500/50",
+    iconActive: "text-sky-700",
+    iconIdle: "text-slate-700",
+    activeRing: "ring-2 ring-sky-600 bg-sky-50",
     desc: "Mobil penumpang",
   },
   {
     type: "PAKET",
     icon: Package,
-    color: "text-amber-300",
-    activeBg: "from-amber-500/30 to-amber-950/40 border-amber-500/50",
+    iconActive: "text-amber-800",
+    iconIdle: "text-slate-700",
+    activeRing: "ring-2 ring-amber-600 bg-amber-50",
     desc: "Kirim barang",
   },
 ];
@@ -83,7 +87,7 @@ function ServicePicker({
 }) {
   return (
     <section className="glass-card p-3">
-      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-600">
         Pilih layanan
       </p>
       <div className="grid grid-cols-3 gap-2">
@@ -96,17 +100,19 @@ function ServicePicker({
               type="button"
               onClick={() => onChange(opt.type)}
               className={cn(
-                "flex flex-col items-center gap-1 rounded-xl border p-3 text-center transition",
+                "flex flex-col items-center gap-1 rounded-2xl border border-slate-200 bg-white p-3 text-center shadow-sm transition",
                 active
-                  ? `bg-gradient-to-b ${opt.activeBg} shadow-md`
-                  : "border-white/10 bg-white/5 hover:bg-white/10"
+                  ? opt.activeRing
+                  : "hover:border-slate-300 hover:bg-slate-50"
               )}
             >
-              <Icon className={cn("h-6 w-6", active ? opt.color : "text-muted-foreground")} />
-              <span className={cn("text-xs font-bold", active ? "text-white" : "text-muted-foreground")}>
-                {opt.type}
+              <Icon
+                className={cn("h-6 w-6", active ? opt.iconActive : opt.iconIdle)}
+              />
+              <span className="text-xs font-bold text-slate-800">{opt.type}</span>
+              <span className="text-[9px] font-semibold leading-tight text-slate-600">
+                {opt.desc}
               </span>
-              <span className="text-[9px] leading-tight text-muted-foreground">{opt.desc}</span>
             </button>
           );
         })}
@@ -310,19 +316,6 @@ function PaketDetailsForm({
 
 export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
   const ride = useNgojekRide();
-  const bookLabel =
-    ride.serviceType === "PAKET"
-      ? "Kirim PAKET"
-      : ride.serviceType === "NGOMOBIL"
-        ? "Pesan NGOMOBIL"
-        : "Pesan NGOJEK";
-
-  const BookIcon =
-    ride.serviceType === "PAKET"
-      ? Package
-      : ride.serviceType === "NGOMOBIL"
-        ? Car
-        : Bike;
 
   if (!ride.authReady) {
     return (
@@ -342,13 +335,13 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
               <Bike className="h-6 w-6 text-slate-950" />
             </span>
             <div>
-              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">
+              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700">
                 <Sparkles className="h-3 w-3" /> WIRA Ride
               </p>
-              <h1 className="text-2xl font-black tracking-tight text-white">
+              <h1 className="text-2xl font-black tracking-tight text-slate-900">
                 Transportasi & Kirim
               </h1>
-              <p className="mt-1 text-xs text-emerald-100/80">
+              <p className="mt-1 text-xs font-medium text-slate-600">
                 NGOJEK · NGOMOBIL · PAKET — dalam satu aplikasi
               </p>
             </div>
@@ -357,11 +350,11 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
       )}
 
       {embedded && (
-        <section className="glass-card border-emerald-500/20 p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-emerald-300">
+        <section className="glass-card border-emerald-200 p-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">
             WIRA Ride
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-sm font-medium text-slate-600">
             NGOJEK, NGOMOBIL, dan kirim paket
           </p>
         </section>
@@ -387,12 +380,12 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
       {ride.showFlexiblePickup ? (
         <section className="glass-card space-y-3 p-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
               <MapPinned className="h-4 w-4" />
             </span>
             <div>
-              <p className="text-xs font-medium text-emerald-300">Titik jemput</p>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs font-bold text-emerald-800">Titik jemput</p>
+              <p className="text-[10px] font-medium text-slate-600">
                 Pesan untuk orang lain? Geser peta atau cari alamat manual.
               </p>
             </div>
@@ -406,7 +399,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
             placeholder="Contoh: Bandara Soekarno-Hatta, Mall Parung…"
             nearLat={ride.pickupLat}
             nearLng={ride.pickupLng}
-            accentClass="text-emerald-300"
+            accentClass="text-emerald-800"
           />
 
           <PickupMapContainer
@@ -452,7 +445,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
             </Button>
           </div>
           {ride.currentDeviceLocation && ride.pickupAccuracyM != null && (
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[10px] font-medium text-slate-600">
               GPS perangkat: {ride.currentDeviceLocation.address} (±
               {Math.round(ride.pickupAccuracyM)} m)
             </p>
@@ -461,11 +454,11 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
       ) : (
         <section className="glass-card space-y-4 p-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
               <Crosshair className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <Label className="text-xs text-emerald-300">Titik jemput paket</Label>
+              <Label className="text-xs font-bold text-emerald-800">Titik jemput paket</Label>
               <Input
                 value={ride.pickupAddress}
                 onChange={(e) => ride.onPickupAddressChange(e.target.value)}
@@ -479,7 +472,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
 
       <section className="glass-card space-y-3 p-4">
         <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-300">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-sky-800">
             <MapPin className="h-4 w-4" />
           </span>
           <div className="relative flex-1">
@@ -492,7 +485,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
                 placeholder="Ketik alamat tujuan..."
                 nearLat={ride.pickupLat}
                 nearLng={ride.pickupLng}
-                accentClass="text-cyan-300"
+                accentClass="text-sky-800"
               />
             ) : (
               <>
@@ -553,17 +546,17 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
       <section className="glass-card p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs text-muted-foreground">Estimasi jarak</p>
-            <p className="text-lg font-semibold text-white">
+            <p className="text-xs font-semibold text-slate-600">Estimasi jarak</p>
+            <p className="text-lg font-bold text-slate-900">
               {ride.distanceKm.toFixed(2)} km
             </p>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[10px] font-medium text-slate-600">
               {ride.quoting ? "Memperbarui tarif wilayah…" : ride.feeDescription}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-muted-foreground">Tarif {ride.serviceType}</p>
-            <p className="flex items-center justify-end gap-2 text-2xl font-bold text-emerald-300">
+            <p className="text-xs font-semibold text-slate-600">Tarif {ride.serviceType}</p>
+            <p className="flex items-center justify-end gap-2 text-2xl font-bold text-emerald-700">
               {formatIdr(ride.rideFee)}
               {ride.quoting && (
                 <Loader2 className="h-5 w-5 shrink-0 animate-spin opacity-70" />
@@ -589,29 +582,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
         />
       )}
 
-      <Button
-        className="h-12 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-400 text-base font-bold text-slate-950 shadow-lg shadow-emerald-500/25 hover:from-emerald-400 hover:to-green-300"
-        disabled={
-          ride.placing ||
-          !ride.destAddress.trim() ||
-          !ride.areaAvailable ||
-          ride.rideFee <= 0 ||
-          ride.distanceKm < NGOJEK_MIN_DISTANCE_KM
-        }
-        onClick={() => void ride.bookRide()}
-      >
-        {ride.placing ? (
-          <>
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Memesan...
-          </>
-        ) : (
-          <>
-            <BookIcon className="mr-2 h-5 w-5" />
-            {bookLabel}
-          </>
-        )}
-      </Button>
+      <OrderConfirmation ride={ride} />
 
       {ride.qrisPayment && (
         <QrisPaymentPanel
@@ -623,7 +594,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
       )}
 
       {ride.paymentBypass && (
-        <p className="text-center text-[10px] text-amber-300/80">
+        <p className="text-center text-[10px] font-medium text-amber-800">
           Mode uji: pembayaran dilewati otomatis
         </p>
       )}

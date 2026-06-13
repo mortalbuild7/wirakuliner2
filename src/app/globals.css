@@ -6,26 +6,26 @@
 
 @layer base {
   :root {
-    /* Cerah & teduh — palet slate + aksen emerald/amber */
+    /* Kontras tinggi WCAG AA — teks slate-900 pada latar slate-50 */
     --background: 210 40% 98%;
-    --foreground: 215 28% 17%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 215 28% 17%;
-    --primary: 160 84% 39%;
+    --card-foreground: 222 47% 11%;
+    --primary: 160 84% 30%;
     --primary-foreground: 0 0% 100%;
     --secondary: 43 96% 56%;
     --secondary-foreground: 26 83% 14%;
     --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 152 76% 95%;
-    --accent-foreground: 160 84% 30%;
-    --destructive: 0 72% 55%;
+    --muted-foreground: 215 20% 35%;
+    --accent: 152 45% 94%;
+    --accent-foreground: 160 84% 22%;
+    --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 160 84% 39%;
+    --border: 214 32% 88%;
+    --input: 214 32% 88%;
+    --ring: 160 84% 30%;
     --radius: 1.25rem;
-    --wira-glow: 160 84% 39%;
+    --wira-glow: 160 84% 30%;
     --wira-orange: 43 96% 56%;
   }
 }
@@ -38,19 +38,46 @@
     -webkit-tap-highlight-color: transparent;
   }
   body {
-    @apply bg-slate-50/50 text-slate-800 antialiased;
+    @apply bg-slate-50 text-slate-900 antialiased;
   }
 }
 
 @layer components {
+  /* Kartu dompet / saldo — hijau gelap premium, teks putih */
+  .wira-wallet-card {
+    @apply rounded-3xl bg-gradient-to-br from-emerald-600 to-emerald-800 p-5 text-white shadow-md;
+  }
+
+  .wira-wallet-balance {
+    @apply text-2xl font-bold tracking-tight text-white;
+  }
+
+  /* Tombol terima order driver — kapsul besar kontras tinggi */
+  .driver-accept-order-btn {
+    @apply min-h-[3.5rem] flex-1 rounded-full bg-emerald-500 px-6 text-lg font-bold text-white shadow-md transition active:scale-[0.98] hover:bg-emerald-600;
+  }
+
+  /* Label alamat driver — terbaca di bawah sinar */
+  .driver-address-label {
+    @apply text-xs font-bold uppercase tracking-wider text-slate-600;
+  }
+
+  .driver-address-value {
+    @apply text-lg font-bold leading-snug text-slate-900;
+  }
+
+  /* Notifikasi pesanan merchant — amber kontras tinggi + kedip lembut */
+  .merchant-new-order-alert {
+    @apply animate-pulse-soft rounded-2xl border border-amber-300 bg-amber-100 px-4 py-4 text-amber-950 shadow-md;
+  }
   /* Kartu utama — emboss lembut, sudut ramah */
   .wira-card {
-    @apply rounded-3xl border border-slate-100/80 bg-white text-slate-800 shadow-[0_8px_30px_rgb(0,0,0,0.04)];
+    @apply rounded-3xl border border-slate-200/80 bg-white text-slate-900 shadow-md;
   }
 
   /* Tabel data admin — kontainer berdimensi */
   .wira-table-wrap {
-    @apply overflow-x-auto rounded-3xl border border-slate-100/80 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)];
+    @apply overflow-x-auto rounded-3xl border border-slate-200/80 bg-white text-slate-900 shadow-md;
   }
 
   .wira-table-wrap table {
@@ -73,13 +100,13 @@
     @apply px-4 py-3 text-slate-800;
   }
 
-  /* Panel driver — kontras tinggi, touch target lebar, tidak menyilaukan */
+  /* Panel driver — kontras tinggi outdoor */
   .driver-panel {
-    @apply bg-slate-100 text-base text-slate-800;
+    @apply bg-slate-50 text-base text-slate-900;
   }
 
   .driver-touch-btn {
-    @apply min-h-[3rem] rounded-2xl px-6 py-3.5 text-base font-semibold transition-all active:scale-95;
+    @apply min-h-[3rem] rounded-2xl px-6 py-3.5 text-base font-bold text-slate-900 transition-all active:scale-95;
   }
 }
 
@@ -98,7 +125,7 @@
   }
 
   .glass-card {
-    @apply rounded-3xl border border-slate-100/80 bg-white text-slate-800 shadow-[0_8px_30px_rgb(0,0,0,0.04)];
+    @apply rounded-3xl border border-slate-200/80 bg-white text-slate-900 shadow-md;
   }
 
   .glow-ring {

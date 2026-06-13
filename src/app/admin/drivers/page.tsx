@@ -1,7 +1,7 @@
 import { verifyAdminSession } from "@/app/utils/adminAuth";
 import { DashboardDriversTable } from "@/components/admin/dashboard-drivers-table";
 import {
-  applyRegionalEntityScope,
+  applyRegionalDriverRegistrationScope,
   applyRegionalServiceCityScope,
   regionalScopeHint,
 } from "@/lib/admin/regional-scope";
@@ -19,7 +19,7 @@ export default async function AdminDriversPage() {
     .select("*, profiles(email, account_status), service_cities(name)")
     .order("created_at", { ascending: false });
 
-  driversQuery = applyRegionalEntityScope(driversQuery, session);
+  driversQuery = applyRegionalDriverRegistrationScope(driversQuery, session);
 
   let citiesQuery = supabase
     .from("service_cities")

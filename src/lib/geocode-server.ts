@@ -1,15 +1,21 @@
 import "server-only";
 import { formatGeocodeLabel, type GeocodeHit } from "@/lib/geocode";
 
+/** Endpoint Nominatim OSM — gratis, tidak butuh API key Google. */
 const NOMINATIM = "https://nominatim.openstreetmap.org";
+/** User-Agent wajib per kebijakan Nominatim — identifikasi aplikasi. */
 const USER_AGENT = "WIRAKuliner/1.0 (https://wirakuliner.web.id; contact@mortalbuild7)";
 
+/** Google Geocoding opsional — dipakai hanya jika env key diisi. */
 function googleKey(): string | null {
   const k = process.env.GOOGLE_GEOCODING_API_KEY?.trim();
   return k || null;
 }
 
-/** Reverse geocode via Google (jika API key ada) atau Nominatim OSM. */
+/**
+ * Reverse geocode koordinat → label alamat.
+ * Urutan: Google (jika key ada) → Nominatim OSM (default gratis).
+ */
 export async function reverseGeocodeCoords(
   lat: number,
   lng: number
@@ -43,6 +49,7 @@ export async function reverseGeocodeCoords(
     }
   }
 
+  // Fallback Nominatim — instan tanpa API key
   const url = new URL(`${NOMINATIM}/reverse`);
   url.searchParams.set("lat", String(lat));
   url.searchParams.set("lon", String(lng));
@@ -71,7 +78,10 @@ export async function reverseGeocodeCoords(
   };
 }
 
-/** Forward geocode / autocomplete via Google atau Nominatim. */
+/**
+ * Forward geocode / autocomplete — Google (opsional) atau Nominatim.
+ * Dipakai LocationSearchBar untuk pesan jemput orang lain.
+ */
 export async function searchGeocodeQuery(
   query: string,
   nearLat?: number,
@@ -116,6 +126,7 @@ export async function searchGeocodeQuery(
     }
   }
 
+  // Nominatim search — gratis, countrycodes=id
   const url = new URL(`${NOMINATIM}/search`);
   url.searchParams.set("q", q);
   url.searchParams.set("format", "json");
@@ -150,6 +161,7 @@ export async function searchGeocodeQuery(
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
 }
 
+/** Bounding box kasar sekitar titik referensi — prioritas hasil dekat pengguna. */
 function buildBounds(lat: number, lng: number): string {
   const d = 0.15;
   return `${lat - d},${lng - d}|${lat + d},${lng + d}`;

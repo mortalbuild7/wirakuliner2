@@ -86,7 +86,7 @@ export async function rotateAndDispatchOrder(
   const { data: order } = await admin
     .from("orders")
     .select(
-      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id"
+      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id, operational_cluster_id"
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -114,7 +114,7 @@ export async function processExpiredOffersAndDispatch(): Promise<void> {
   const { data: orders } = await admin
     .from("orders")
     .select(
-      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id"
+      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id, operational_cluster_id"
     )
     .is("driver_id", null)
     .in("order_status", ["paid", "preparing", "ready_for_pickup"]);

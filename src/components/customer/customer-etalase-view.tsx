@@ -74,9 +74,9 @@ export function CustomerEtalaseView() {
   return (
     <div className="space-y-4">
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-400/70" />
+        <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
         <Input
-          className="h-12 rounded-2xl border-white/10 bg-white/5 pl-11 text-base placeholder:text-muted-foreground focus-visible:ring-cyan-500/50"
+          className="h-12 rounded-2xl border-slate-200 bg-white pl-11 text-base text-slate-900 shadow-sm placeholder:text-slate-500 focus-visible:ring-emerald-600/40"
           placeholder="Cari restoran..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -89,10 +89,10 @@ export function CustomerEtalaseView() {
             key={c}
             type="button"
             onClick={() => setCategory(c)}
-            className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium capitalize transition ${
+            className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold capitalize transition ${
               category === c
-                ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-slate-950 shadow-lg shadow-cyan-500/30"
-                : "border border-white/10 bg-white/5 text-muted-foreground"
+                ? "bg-emerald-600 text-white shadow-md"
+                : "border border-slate-200 bg-white text-slate-700 hover:border-slate-300"
             }`}
           >
             {c}
@@ -125,12 +125,12 @@ export function CustomerEtalaseView() {
                 )}
               </div>
               <div className="p-3">
-                <p className="line-clamp-1 text-sm font-semibold text-white">{m.name}</p>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                <p className="line-clamp-1 text-sm font-bold text-slate-900">{m.name}</p>
+                <p className="mt-0.5 text-[10px] font-semibold text-slate-600">
                   {open ? `${m.name} sedang buka` : `${m.name} tutup`}
                 </p>
                 {!open && (
-                  <span className="mt-2 inline-flex items-center gap-1 text-[10px] text-cyan-400/90">
+                  <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700">
                     <Eye className="h-3 w-3" />
                     Ketuk &quot;Lihat menu&quot; di bawah
                   </span>
@@ -152,7 +152,7 @@ export function CustomerEtalaseView() {
               {cardInner}
               <Link
                 href={`/customer/merchant/${m.id}?view=1`}
-                className="rounded-xl border border-white/10 bg-white/5 py-2 text-center text-xs font-medium text-cyan-300 hover:bg-white/10"
+                className="rounded-2xl border border-slate-200 bg-white py-2 text-center text-xs font-bold text-emerald-800 shadow-sm hover:bg-emerald-50"
               >
                 Lihat menu
               </Link>
@@ -162,7 +162,7 @@ export function CustomerEtalaseView() {
       </div>
 
       {filtered.length === 0 && (
-        <p className="py-12 text-center text-sm text-muted-foreground">Belum ada toko aktif</p>
+        <p className="py-12 text-center text-sm font-semibold text-slate-600">Belum ada toko aktif</p>
       )}
     </div>
   );

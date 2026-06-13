@@ -41,6 +41,9 @@ export function AdminLiveMapInner({ drivers }: { drivers: LiveDriverPin[] }) {
               <p className="text-xs text-stone-600">
                 {d.status} · {d.serviceCategory ?? "MOTOR_HYBRID"}
               </p>
+              {d.clusterName && (
+                <p className="text-xs text-emerald-700">Cluster: {d.clusterName}</p>
+              )}
               {d.vehiclePlate && (
                 <p className="text-xs">{d.vehiclePlate}</p>
               )}

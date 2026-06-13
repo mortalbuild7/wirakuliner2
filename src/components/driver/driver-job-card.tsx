@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { cn, formatIdr } from "@/lib/utils";
 import {
   channelLabel,
@@ -12,6 +11,7 @@ import {
 import type { Order } from "@/types/database";
 import { pickOrderCustomer } from "@/lib/order-customer";
 import { ChevronRight } from "lucide-react";
+import Link from "next/link";
 import {
   DriverChannelBadge,
   DriverOrderRouteLine,
@@ -50,27 +50,27 @@ export function DriverJobCard({
       href={`/driver/orders/${order.id}`}
       className={cn(
         "glass-card block p-4 transition active:scale-[0.99]",
-        `border ${driverCardBorderClass(addr)} shadow-lg ${driverCardGlowClass(addr)}`
+        `border-2 ${driverCardBorderClass(addr)} shadow-md ${driverCardGlowClass(addr)}`
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1 space-y-1">
           <DriverChannelBadge deliveryAddress={addr} />
-          <p className="truncate font-semibold text-white">{title}</p>
+          <p className="truncate text-base font-bold text-slate-900">{title}</p>
           {customer && (
-            <p className="truncate text-xs font-medium text-cyan-200">
+            <p className="truncate text-sm font-semibold text-slate-700">
               {customerRole}: {customer.name}
             </p>
           )}
         </div>
         <span
           className={cn(
-            "shrink-0 rounded-full border px-2 py-0.5 text-[10px]",
+            "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold",
             isTransit
               ? transitKind === "paket"
-                ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
-                : "border-cyan-500/30 bg-cyan-500/10 text-cyan-200"
-              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                ? "border-amber-700 bg-amber-50 text-amber-950"
+                : "border-cyan-700 bg-cyan-50 text-cyan-900"
+              : "border-emerald-700 bg-emerald-50 text-emerald-900"
           )}
         >
           {statusLabel}
@@ -86,12 +86,12 @@ export function DriverJobCard({
 
       <div className="mt-3 flex items-center justify-between text-sm">
         <div>
-          <span className="font-medium text-cyan-300">{formatIdr(total)}</span>
-          <span className="ml-2 text-[10px] text-muted-foreground">
-            {isTransit ? "tarif layanan" : "total + ongkir"}
+          <span className="text-xl font-bold text-slate-900">{formatIdr(total)}</span>
+          <span className="ml-2 text-xs font-semibold text-slate-600">
+            {isTransit ? "tarif pendapatan" : "total + ongkir"}
           </span>
         </div>
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        <ChevronRight className="h-5 w-5 text-slate-500" />
       </div>
     </Link>
   );

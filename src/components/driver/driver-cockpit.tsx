@@ -769,7 +769,7 @@ export function DriverCockpit() {
                 </span>
               </div>
               {offerCustomer && (
-                <p className="mt-2 text-sm font-medium text-cyan-200">
+                <p className="mt-2 text-base font-bold text-slate-900">
                   {offerTransitKind === "paket"
                     ? "Customer"
                     : offerIsTransit
@@ -784,17 +784,17 @@ export function DriverCockpit() {
                   merchantName={offerIsTransit ? undefined : offerShop?.name}
                 />
               </div>
-              <p className="mt-3 text-sm font-semibold text-cyan-300">
-                {formatIdr(orderTotal(incomingOffer))}
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {offerIsTransit ? "tarif ride" : "ongkir"}{" "}
+              <p className="mt-3 text-xl font-bold text-slate-900">
+                Tarif pendapatan {formatIdr(orderTotal(incomingOffer))}
+                <span className="mt-1 block text-sm font-semibold text-slate-600">
+                  {offerIsTransit ? "Tarif ride" : "Ongkir"}{" "}
                   {formatIdr(Number(incomingOffer.delivery_fee))}
                 </span>
               </p>
               {offerCountdown > 0 && (
-                <p className="mt-2 rounded-2xl bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-100">
+                <p className="mt-2 rounded-2xl bg-amber-100 px-3 py-2 text-center text-sm font-semibold text-amber-950">
                   Waktu terima:{" "}
-                  <span className="font-mono font-bold text-amber-300">{offerCountdown} detik</span>
+                  <span className="font-mono font-bold">{offerCountdown} detik</span>
                   {" — "}
                   bila habis, order ke driver lain
                 </p>
@@ -802,7 +802,7 @@ export function DriverCockpit() {
               <div className="mt-4 flex gap-2">
                 <Button
                   variant="outline"
-                  className="h-12 min-h-[3rem] flex-1 rounded-xl border-red-500/40 text-red-300"
+                  className="h-14 min-h-[3.5rem] flex-1 rounded-full border-2 border-red-600 text-base font-bold text-red-700 hover:bg-red-50"
                   disabled={busy}
                   onClick={() => {
                     handleUserGesture();
@@ -812,11 +812,11 @@ export function DriverCockpit() {
                   Tolak
                 </Button>
                 <Button
-                  className="h-12 min-h-[3rem] flex-1 rounded-xl bg-emerald-600 font-semibold"
+                  className="driver-accept-order-btn"
                   disabled={busy}
                   onClick={acceptOffer}
                 >
-                  Terima
+                  TERIMA ORDERAN
                 </Button>
               </div>
             </div>
@@ -901,7 +901,7 @@ export function DriverCockpit() {
                 {activeIsTransit ? (
                   <>
                     <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2">
-                      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                      <p className="driver-address-label flex items-center gap-1 text-emerald-800">
                         {activeIsPaket ? (
                           <Package className="h-3 w-3" />
                         ) : (
@@ -909,16 +909,16 @@ export function DriverCockpit() {
                         )}
                         {activeIsPaket ? "Pengirim" : "Jemput"}
                       </p>
-                      <p className="mt-0.5 line-clamp-2 text-sm font-medium text-slate-800">
+                      <p className="driver-address-value mt-1 line-clamp-3">
                         {transitLegs?.pickup ?? (activeIsPaket ? "Lokasi pengirim" : "Titik jemput")}
                       </p>
                     </div>
                     <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-3 py-2">
-                      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
+                      <p className="driver-address-label flex items-center gap-1 text-sky-800">
                         <MapPin className="h-3 w-3" />
                         {activeIsPaket ? "Penerima" : "Tujuan"}
                       </p>
-                      <p className="mt-0.5 line-clamp-2 text-sm font-medium text-slate-800">
+                      <p className="driver-address-value mt-1 line-clamp-3">
                         {transitLegs?.destination ??
                           (activeIsPaket ? "Lokasi penerima" : "Lokasi tujuan")}
                       </p>
@@ -926,7 +926,7 @@ export function DriverCockpit() {
                   </>
                 ) : (
                   <div className="rounded-xl border border-orange-500/25 bg-orange-500/5 px-3 py-2">
-                    <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-orange-300">
+                    <p className="driver-address-label flex items-center gap-1 text-orange-800">
                       <Store className="h-3 w-3" />
                       Restoran
                     </p>
@@ -984,7 +984,7 @@ export function DriverCockpit() {
                 </ul>
               )}
 
-              <p className="mt-2 font-semibold text-cyan-300">
+              <p className="mt-2 text-xl font-bold text-slate-900">
                 {formatIdr(orderTotal(activeOrder))}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
                   {activeIsTransit ? "tarif ride" : "total"}
@@ -1215,12 +1215,12 @@ export function DriverCockpit() {
             )}
           </section>
 
-          <section className="glass-card flex min-w-0 items-center justify-between gap-3 p-4">
+          <section className="wira-wallet-card flex min-w-0 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
-              <Wallet className="h-5 w-5 shrink-0 text-amber-400" />
-              <p className="text-xs text-muted-foreground">Saldo</p>
+              <Wallet className="h-6 w-6 shrink-0 text-white" />
+              <p className="text-xs font-bold uppercase tracking-wider text-emerald-100">Saldo</p>
             </div>
-            <p className="shrink-0 text-sm font-bold tabular-nums text-slate-800">
+            <p className="wira-wallet-balance shrink-0 tabular-nums">
               {walletBalance == null ? "—" : formatIdr(walletBalance)}
             </p>
           </section>

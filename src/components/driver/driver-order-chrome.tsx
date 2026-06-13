@@ -19,17 +19,17 @@ const TRANSIT_BADGE: Record<
 > = {
   ngojek: {
     label: NGOJEK_LABEL,
-    className: "border-cyan-400/40 bg-cyan-500/15 text-cyan-200",
+    className: "border-cyan-700 bg-cyan-50 text-cyan-900",
     icon: Bike,
   },
   ngomobil: {
     label: NGOMOBIL_LABEL,
-    className: "border-sky-400/40 bg-sky-500/15 text-sky-200",
+    className: "border-sky-700 bg-sky-50 text-sky-900",
     icon: Car,
   },
   paket: {
     label: PAKET_LABEL,
-    className: "border-amber-400/40 bg-amber-500/15 text-amber-200",
+    className: "border-amber-700 bg-amber-50 text-amber-950",
     icon: Package,
   },
 };
@@ -42,7 +42,7 @@ export function DriverChannelBadge({ deliveryAddress }: { deliveryAddress: strin
     return (
       <span
         className={cn(
-          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
           className
         )}
       >
@@ -53,7 +53,7 @@ export function DriverChannelBadge({ deliveryAddress }: { deliveryAddress: strin
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-orange-400/40 bg-orange-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-200">
+    <span className="inline-flex items-center gap-1 rounded-full border border-orange-700 bg-orange-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-950">
       <Utensils className="h-3 w-3" />
       {KULINER_FOOD_LABEL}
     </span>
@@ -76,53 +76,67 @@ export function DriverOrderRouteLine({
       getTransitKind(deliveryAddress) === "paket" ? "Penerima" : "Tujuan";
 
     return (
-      <div className="space-y-1.5 text-xs">
-        <p className="flex items-start gap-1.5 text-emerald-200/90">
-          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/25 text-[9px] font-bold text-emerald-100">
-            {pickupLabel.slice(0, 1)}
-          </span>
-          <span className="line-clamp-2">{legs.pickup || `Titik ${pickupLabel.toLowerCase()}`}</span>
-        </p>
-        <p className="flex items-start gap-1.5 text-cyan-200/90">
-          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />
-          <span className="line-clamp-2">
+      <div className="space-y-3">
+        <div>
+          <p className="driver-address-label flex items-center gap-1 text-emerald-800">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800">
+              {pickupLabel.slice(0, 1)}
+            </span>
+            Alamat {pickupLabel}
+          </p>
+          <p className="driver-address-value mt-1 line-clamp-3">
+            {legs.pickup || `Titik ${pickupLabel.toLowerCase()}`}
+          </p>
+        </div>
+        <div>
+          <p className="driver-address-label flex items-center gap-1 text-sky-800">
+            <MapPin className="h-4 w-4 text-sky-700" />
+            Alamat {destLabel}
+          </p>
+          <p className="driver-address-value mt-1 line-clamp-3">
             {legs.destination || `Lokasi ${destLabel.toLowerCase()}`}
-          </span>
-        </p>
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-1 text-xs text-muted-foreground">
+    <div className="space-y-3">
       {merchantName && (
-        <p className="flex items-center gap-1.5 text-orange-200/90">
-          <Store className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-          <span className="truncate">{merchantName}</span>
-        </p>
+        <div>
+          <p className="driver-address-label flex items-center gap-1 text-orange-800">
+            <Store className="h-4 w-4 text-orange-700" />
+            Restoran
+          </p>
+          <p className="driver-address-value mt-1 truncate">{merchantName}</p>
+        </div>
       )}
-      <p className="flex items-start gap-1.5">
-        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />
-        <span className="line-clamp-2">{deliveryAddress}</span>
-      </p>
+      <div>
+        <p className="driver-address-label flex items-center gap-1 text-sky-800">
+          <MapPin className="h-4 w-4 text-sky-700" />
+          Alamat Antar
+        </p>
+        <p className="driver-address-value mt-1 line-clamp-3">{deliveryAddress}</p>
+      </div>
     </div>
   );
 }
 
 export function driverCardBorderClass(deliveryAddress: string) {
   const kind = getTransitKind(deliveryAddress);
-  if (kind === "paket") return "border-amber-500/40";
-  if (kind === "ngomobil") return "border-sky-500/40";
-  if (kind === "ngojek") return "border-cyan-500/40";
-  return "border-orange-500/40";
+  if (kind === "paket") return "border-amber-400";
+  if (kind === "ngomobil") return "border-sky-400";
+  if (kind === "ngojek") return "border-cyan-400";
+  return "border-orange-400";
 }
 
 export function driverCardGlowClass(deliveryAddress: string) {
   const kind = getTransitKind(deliveryAddress);
-  if (kind === "paket") return "shadow-amber-500/10";
-  if (kind === "ngomobil") return "shadow-sky-500/10";
-  if (kind === "ngojek") return "shadow-cyan-500/10";
-  return "shadow-orange-500/10";
+  if (kind === "paket") return "shadow-amber-200/50";
+  if (kind === "ngomobil") return "shadow-sky-200/50";
+  if (kind === "ngojek") return "shadow-cyan-200/50";
+  return "shadow-orange-200/50";
 }
 
 export function isFoodDeliveryOrder(deliveryAddress: string) {

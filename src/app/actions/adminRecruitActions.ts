@@ -11,6 +11,7 @@ import {
 } from "@/app/utils/indonesiaProvinces";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncAdminJwtMetadata } from "@/lib/sync-admin-jwt-metadata";
+import { resolveKemendagriProvinceId } from "@/lib/indonesia-wilayah-api";
 
 const TIER_LABEL: Record<AdminTier, string> = {
   SUPER_ADMIN: "Super Admin",
@@ -26,6 +27,7 @@ const RecruitAdminSchema = z.object({
   }),
   provinceId: z.coerce.number().int().positive().optional(),
   cityId: z.coerce.number().int().positive().optional(),
+  cityName: z.string().trim().min(1).max(120).optional(),
 });
 
 export type RecruitAdminInput = z.infer<typeof RecruitAdminSchema>;
@@ -110,6 +112,45 @@ export async function recruitNewAdmin(
     if (provErr) {
       return { ok: false, error: provErr.message };
     }
+
+    const kemProvId = await resolveKemendagriProvinceId(provinceMeta.name);
+    if (kemProvId && Number(kemProvId) !== provinceMeta.id) {
+      await admin.from("provinces").upsert(
+        { id: Number(kemProvId), name: provinceMeta.name },
+        { onConflict: "id" }
+      );
+    }
+  }
+
+  if (data.adminRole === "CITY_ADMIN" && cityId) {
+    const kemProvId = provinceMeta
+      ? await resolveKemendagriProvinceId(provinceMeta.name)
+      : null;
+    const cityProvinceId = kemProvId ? Number(kemProvId) : provinceId;
+    const cityLabel =
+      data.cityName?.trim() ||
+      (await admin
+        .from("cities")
+        .select("name")
+        .eq("id", cityId)
+        .maybeSingle()
+        .then((r) => r.data?.name)) ||
+      `Kota ${cityId}`;
+
+    if (cityProvinceId) {
+      const { error: cityErr } = await admin.from("cities").upsert(
+        {
+          id: cityId,
+          province_id: cityProvinceId,
+          name: cityLabel,
+          is_active: true,
+        },
+        { onConflict: "id" }
+      );
+      if (cityErr) {
+        return { ok: false, error: cityErr.message };
+      }
+    }
   }
 
   const { data: emailUsed } = await admin
@@ -172,7 +213,7 @@ export async function recruitNewAdmin(
 
   const scopeLabel =
     data.adminRole === "CITY_ADMIN" && cityId
-      ? `Kota ID ${cityId}, ${provinceMeta?.name ?? `Provinsi ${provinceId}`}`
+      ? `${data.cityName?.trim() || `Kota ID ${cityId}`}, ${provinceMeta?.name ?? `Provinsi ${provinceId}`}`
       : provinceMeta?.name ?? `Provinsi ${provinceId}`;
 
   const mail = await sendAdminActivationEmail({

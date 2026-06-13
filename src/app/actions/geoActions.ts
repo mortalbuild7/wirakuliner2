@@ -6,14 +6,17 @@ import {
 } from "@/lib/geocode-server";
 import type { GeoLocationPoint } from "@/types/geo-location";
 
+/** Hasil reverse geocode — koordinat → alamat terbaca manusia. */
 export type GeoAddressResult =
   | { ok: true; location: GeoLocationPoint }
   | { ok: false; error: string };
 
+/** Hasil pencarian alamat — daftar kandidat untuk autocomplete. */
 export type GeoSearchResult =
   | { ok: true; results: GeoLocationPoint[] }
   | { ok: false; error: string };
 
+/** Batasi koordinat ke rentang valid WGS84 — cegah injeksi nilai absurd. */
 function clampCoord(value: number, min: number, max: number): number | null {
   if (!Number.isFinite(value)) return null;
   if (value < min || value > max) return null;
@@ -21,8 +24,9 @@ function clampCoord(value: number, min: number, max: number): number | null {
 }
 
 /**
- * Reverse geocoding server-side — API key tidak pernah dikirim ke browser.
- * Mengubah koordinat hasil geser peta menjadi alamat terbaca manusia.
+ * Reverse geocoding server-side — API key / Nominatim tidak pernah ke browser.
+ * Dipanggil saat peta jemput berhenti digeser (onMoveEnd / onCameraIdle).
+ * Fallback Nominatim OSM gratis jika GOOGLE_GEOCODING_API_KEY kosong.
  */
 export async function getAddressFromCoordinates(
   lat: number,
@@ -37,6 +41,7 @@ export async function getAddressFromCoordinates(
   try {
     const hit = await reverseGeocodeCoords(latitude, longitude);
     if (!hit) {
+      // Fallback koordinat mentah jika geocoder tidak mengembalikan label
       return {
         ok: true,
         location: {
@@ -60,7 +65,10 @@ export async function getAddressFromCoordinates(
   }
 }
 
-/** Pencarian alamat manual — autocomplete dropdown (forward geocode). */
+/**
+ * Pencarian alamat manual (forward geocode) — autocomplete LocationSearchBar.
+ * Hasil klik memicu panTo di PickupMapContainer via store bumpPickupMapFly.
+ */
 export async function searchAddresses(
   query: string,
   nearLat?: number,

@@ -7,12 +7,15 @@ import { searchAddresses } from "@/app/actions/geoActions";
 import type { GeoLocationPoint } from "@/types/geo-location";
 import { Loader2, Search } from "lucide-react";
 
+/** Props komponen pencarian alamat dengan autocomplete dropdown. */
 export type LocationSearchBarProps = {
   label: string;
   value: string;
   onChange: (text: string) => void;
+  /** Dipanggil saat pengguna memilih saran — parent update store + fly peta. */
   onSelect: (location: GeoLocationPoint) => void;
   placeholder?: string;
+  /** Prioritaskan hasil dekat koordinat ini (bias Nominatim viewbox). */
   nearLat?: number;
   nearLng?: number;
   accentClass?: string;
@@ -20,7 +23,9 @@ export type LocationSearchBarProps = {
 };
 
 /**
- * Pencarian alamat manual dengan autocomplete — hasil klik memicu panTo di peta induk.
+ * Input pencarian alamat manual — pesan untuk orang lain.
+ * Debounce 450ms → searchAddresses (server) → dropdown rounded-2xl.
+ * Klik hasil → onSelect → kamera peta melompat via bumpPickupMapFly di parent.
  */
 export function LocationSearchBar({
   label,
@@ -40,6 +45,7 @@ export function LocationSearchBar({
   const skipSearchRef = useRef(false);
 
   useEffect(() => {
+    // Lewati pencarian setelah user memilih dari dropdown (hindari loop)
     if (skipSearchRef.current) {
       skipSearchRef.current = false;
       return;

@@ -8,14 +8,15 @@ import {
 import { createTransitOrderSchema } from "@/lib/admin/order-transit-schemas";
 import { computePackageVolumeCm3, isServiceType, type ServiceType } from "@/lib/service-types";
 import { notifyDriversNewOrder } from "@/lib/notify-drivers";
-import { checkRideServiceAvailability } from "@/lib/service-area";
+import { evaluateRideMatchingContext } from "@/lib/ride-matching";
+import { checkRideServiceAvailability, checkServiceAvailability } from "@/lib/service-area";
 import { NGOJEK_MAX_DISTANCE_KM, NGOJEK_MIN_DISTANCE_KM } from "@/lib/ngojek-ride-logic";
 import { debitCustomerForOrder } from "@/lib/wallet";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
+  enforceDistributedRateLimit,
   enforceMethod,
-  enforceRateLimit,
   readJsonBody,
   secureJsonResponse,
 } from "@/lib/security/enforce";
@@ -50,7 +51,11 @@ async function resolveHubMerchantId(admin: ReturnType<typeof createAdminClient>)
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
   if (methodBlock) return methodBlock;
-  const rl = enforceRateLimit(req, "orders-place-ride", RATE_LIMITS.apiWrite);
+  const rl = await enforceDistributedRateLimit(
+    req,
+    "orders-place-ride",
+    RATE_LIMITS.orderPlace
+  );
   if (rl) return rl;
 
   const parsed = await readJsonBody<{
@@ -129,19 +134,65 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient();
 
-  const serviceArea = await checkRideServiceAvailability(
-    admin,
-    pickupLat,
-    pickupLng,
-    destinationLat,
-    destinationLng
-  );
+  const isTransit = serviceType === "NGOJEK" || serviceType === "NGOMOBIL";
+  const matchingCtx = isTransit
+    ? await evaluateRideMatchingContext(
+        admin,
+        pickupLat,
+        pickupLng,
+        destinationLat,
+        destinationLng,
+        serviceType === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK"
+      )
+    : null;
+
+  if (isTransit && matchingCtx && !matchingCtx.available) {
+    return secureJsonResponse(
+      { error: matchingCtx.message ?? "Layanan tidak tersedia di wilayah ini" },
+      { status: 403 }
+    );
+  }
+
+  const serviceArea =
+    isTransit && matchingCtx
+      ? {
+          available: matchingCtx.available,
+          message: matchingCtx.message,
+          cityId: matchingCtx.serviceCityId ?? matchingCtx.operationalClusterId,
+          cityName: matchingCtx.serviceCityName ?? matchingCtx.pickupProvinceName,
+        }
+      : await checkRideServiceAvailability(
+          admin,
+          pickupLat,
+          pickupLng,
+          destinationLat,
+          destinationLng,
+          serviceType
+        );
+
   if (!serviceArea.available) {
     return secureJsonResponse(
       { error: serviceArea.message ?? "Layanan tidak tersedia di wilayah ini" },
       { status: 403 }
     );
   }
+
+  const operationalClusterId = matchingCtx?.operationalClusterId ?? null;
+
+  const nearestServiceCity = isTransit
+    ? await checkServiceAvailability(admin, pickupLat, pickupLng)
+    : serviceArea;
+
+  const serviceCityIdForOrder =
+    nearestServiceCity.cityId ?? matchingCtx?.serviceCityId ?? serviceArea.cityId;
+
+  const pickupProvinceId =
+    matchingCtx?.pickupProvinceId ??
+    (await resolveRegionalIdsFromServiceCity(admin, serviceCityIdForOrder)).provinceId;
+
+  const borderSurcharge = matchingCtx?.borderSurcharge ?? 0;
+  const isBorderlineCrossing = matchingCtx?.isBorderlineCrossing ?? false;
+  const matchingMode = matchingCtx?.matchingMode ?? null;
 
   const hubMerchantId = await resolveHubMerchantId(admin);
   if (!hubMerchantId) {
@@ -153,13 +204,14 @@ export async function POST(req: Request) {
 
   const { provinceId, cityId } = await resolveRegionalIdsFromServiceCity(
     admin,
-    serviceArea.cityId
+    serviceCityIdForOrder
   );
   const tariff =
     provinceId != null
       ? await fetchRegionalTransitTariff(admin, provinceId, cityId, serviceType)
       : null;
-  const rideFee = computeTransitFareFromTariff(tariff, distanceKm);
+  const rideFee =
+    computeTransitFareFromTariff(tariff, distanceKm) + borderSurcharge;
 
   const deliveryAddress = formatTransitAddressByService(
     serviceType,
@@ -238,7 +290,12 @@ export async function POST(req: Request) {
           pickup_lat: pickupLat,
           pickup_lng: pickupLng,
           distance_km: distanceKm,
-          service_city_id: serviceArea.cityId,
+          service_city_id: serviceCityIdForOrder,
+          operational_cluster_id: operationalClusterId,
+          pickup_province_id: pickupProvinceId,
+          is_borderline_crossing: isBorderlineCrossing,
+          border_surcharge: borderSurcharge,
+          matching_mode: matchingMode,
           province_id: provinceId,
           city_id: cityId,
           service_type: serviceType,
@@ -274,7 +331,12 @@ export async function POST(req: Request) {
         pickup_lat: pickupLat,
         pickup_lng: pickupLng,
         distance_km: distanceKm,
-        service_city_id: serviceArea.cityId,
+        service_city_id: serviceCityIdForOrder,
+        operational_cluster_id: operationalClusterId,
+        pickup_province_id: pickupProvinceId,
+        is_borderline_crossing: isBorderlineCrossing,
+        border_surcharge: borderSurcharge,
+        matching_mode: matchingMode,
         province_id: provinceId,
         city_id: cityId,
         service_type: serviceType,

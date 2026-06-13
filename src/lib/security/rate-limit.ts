@@ -63,4 +63,12 @@ export const RATE_LIMITS = {
   geocode: { limit: 100, windowMs: 60_000 },
   /** Polling status pembayaran QRIS — longgar agar tidak 429 saat menunggu bayar */
   paymentStatus: { limit: 120, windowMs: 60_000 },
+  /** Pemesanan ride — ketat (anti bot / order fiktif) */
+  orderPlace: { limit: 8, windowMs: 60_000 },
+  /** Quote tarif transit — lebih longgar dari place */
+  orderQuote: { limit: 25, windowMs: 60_000 },
+  /** Pre-check driver 3 km (server action / API) */
+  driverMatchCheck: { limit: 30, windowMs: 60_000 },
+  /** Persist GPS ke DB (bukan broadcast) — hemat koneksi DB */
+  driverGpsPersist: { limit: 6, windowMs: 60_000 },
 } as const;

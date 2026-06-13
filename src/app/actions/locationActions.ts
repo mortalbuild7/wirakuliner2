@@ -1,8 +1,15 @@
 "use server";
 
 import { verifyAdminSession } from "@/app/utils/adminAuth";
-import { INDONESIA_PROVINCE_IDS } from "@/app/utils/indonesiaProvinces";
+import {
+  getIndonesiaProvinceById,
+  INDONESIA_PROVINCE_IDS,
+} from "@/app/utils/indonesiaProvinces";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  fetchRegenciesByProvinceName,
+  resolveKemendagriProvinceId,
+} from "@/lib/indonesia-wilayah-api";
 
 /** Opsi kota cabang aktif — terhubung ke zona layanan GPS (service_cities). */
 export type ActiveCityOption = {
@@ -12,8 +19,19 @@ export type ActiveCityOption = {
   serviceCityId: string;
 };
 
+/** Opsi kota untuk rekrutmen admin — tidak wajib punya zona layanan aktif. */
+export type RecruitCityOption = {
+  cityId: number;
+  name: string;
+  provinceId: number;
+};
+
 export type ActiveCitiesResult =
   | { ok: true; cities: ActiveCityOption[] }
+  | { ok: false; error: string };
+
+export type RecruitCitiesResult =
+  | { ok: true; cities: RecruitCityOption[]; source: "database" | "api" }
   | { ok: false; error: string };
 
 /**
@@ -98,4 +116,93 @@ export async function getActiveCitiesByProvince(
   }
 
   return { ok: true, cities: result };
+}
+
+/**
+ * Memuat kota/kabupaten untuk dropdown rekrutmen City Admin.
+ *
+ * Urutan sumber:
+ * 1. Tabel `cities` di Supabase (by nama provinsi atau ID Kemendagri)
+ * 2. Fallback API EMSIFA (gratis, realtime) jika DB kosong / tidak cocok ID
+ *
+ * Tidak memfilter `service_cities` — admin boleh direkrut sebelum zona operasional aktif.
+ */
+export async function getCitiesByProvinceForRecruit(
+  provinceId: number
+): Promise<RecruitCitiesResult> {
+  const session = await verifyAdminSession();
+
+  const pid = Number(provinceId);
+  if (!Number.isInteger(pid) || pid <= 0 || !INDONESIA_PROVINCE_IDS.has(pid)) {
+    return { ok: false, error: "Provinsi tidak valid" };
+  }
+
+  if (
+    session.adminRole === "PROVINCE_ADMIN" &&
+    session.provinceId != null &&
+    session.provinceId !== pid
+  ) {
+    return { ok: false, error: "Provinsi di luar yurisdiksi Anda" };
+  }
+
+  const provinceMeta = getIndonesiaProvinceById(pid);
+  if (!provinceMeta) {
+    return { ok: false, error: "Provinsi tidak ditemukan" };
+  }
+
+  const admin = createAdminClient();
+  const kemendagriId = await resolveKemendagriProvinceId(provinceMeta.name);
+  const dbProvinceIds = new Set<number>([pid]);
+  if (kemendagriId) dbProvinceIds.add(Number(kemendagriId));
+
+  const { data: dbCities, error: dbErr } = await admin
+    .from("cities")
+    .select("id, name, province_id")
+    .in("province_id", [...dbProvinceIds])
+    .order("name");
+
+  if (dbErr) {
+    return { ok: false, error: dbErr.message };
+  }
+
+  if (dbCities?.length) {
+    const cities: RecruitCityOption[] = dbCities.map((c) => ({
+      cityId: c.id,
+      name: c.name,
+      provinceId: pid,
+    }));
+
+    if (session.adminRole === "CITY_ADMIN" && session.cityId != null) {
+      const scoped = cities.filter((c) => c.cityId === session.cityId);
+      return { ok: true, cities: scoped, source: "database" };
+    }
+
+    return { ok: true, cities, source: "database" };
+  }
+
+  try {
+    const regencies = await fetchRegenciesByProvinceName(provinceMeta.name);
+    if (!regencies.length) {
+      return {
+        ok: false,
+        error: `Tidak ada kota/kabupaten untuk ${provinceMeta.name}`,
+      };
+    }
+
+    let cities: RecruitCityOption[] = regencies.map((r) => ({
+      cityId: Number(r.id),
+      name: r.name,
+      provinceId: pid,
+    }));
+
+    if (session.adminRole === "CITY_ADMIN" && session.cityId != null) {
+      cities = cities.filter((c) => c.cityId === session.cityId);
+    }
+
+    return { ok: true, cities, source: "api" };
+  } catch (e) {
+    const msg =
+      e instanceof Error ? e.message : "Gagal memuat data wilayah dari API";
+    return { ok: false, error: msg };
+  }
 }

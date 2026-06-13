@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { Circle, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
-import L from "leaflet";
 import { DELIVERY_RADIUS_KM } from "@/lib/geo-config";
-/** Pan peta ke koordinat baru tanpa re-mount (60fps-friendly). */
+
+/**
+ * Pan peta ke koordinat baru tanpa re-mount (60fps-friendly).
+ * Dipicu oleh panTrigger dari Zustand saat user memilih alamat di search bar.
+ */
 function MapPanTo({
   lat,
   lng,
@@ -26,7 +29,7 @@ function MapPanTo({
 
 /**
  * Tangkap koordinat pusat peta saat geser selesai — setara onCameraIdle / onMoveEnd.
- * Debounce ringan di parent; di sini hanya emit sekali per moveend.
+ * Pin visual tetap di tengah; yang berubah adalah center peta Leaflet.
  */
 function MapCenterIdle({
   onCenterIdle,
@@ -46,6 +49,7 @@ function MapCenterIdle({
   return null;
 }
 
+/** Set view awal peta sekali saat mount — emit koordinat awal ke parent. */
 function MapInitView({
   lat,
   lng,
@@ -73,6 +77,10 @@ function MapInitView({
   return null;
 }
 
+/**
+ * Implementasi Leaflet peta jemput — center-pinned marker emerald.
+ * Parent (useNgojekRide) menerima onMapIdle → getAddressFromCoordinates.
+ */
 export function PickupMapInner({
   centerLat,
   centerLng,

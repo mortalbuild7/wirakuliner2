@@ -86,11 +86,19 @@ export interface Driver {
   status: DriverStatus;
   current_lat: number | null;
   current_lng: number | null;
+  /** PostGIS geography point — sinkron dari lat/lng; query ST_DWithin. */
+  current_location?: unknown;
   fcm_token: string | null;
   reward_points?: number;
   service_city_id?: string | null;
+  /** Kota pendaftaran — dasar laporan City Admin (mis. Bogor Parung). */
+  registration_service_city_id?: string | null;
+  /** Cluster bebas narik — NGOJEK/NGOMOBIL lintas kota. */
+  operational_cluster_id?: string | null;
   service_category?: DriverServiceCategory;
   province_id?: number | null;
+  /** Provinsi pendaftaran — intra-provinsi & komisi City Admin lintas batas. */
+  registration_province_id?: number | null;
   city_id?: number | null;
   created_at?: string;
   rating_avg?: number;
@@ -152,6 +160,16 @@ export interface Order {
   pickup_lng?: number | null;
   distance_km: number | null;
   service_city_id?: string | null;
+  /** Cluster operasional — dispatch NGOJEK/NGOMOBIL lintas kota. */
+  operational_cluster_id?: string | null;
+  /** Provinsi titik jemput customer (geocode / service city). */
+  pickup_province_id?: number | null;
+  /** Order lintas provinsi atau di luar cabang resmi (buffer 30–50 km). */
+  is_borderline_crossing?: boolean;
+  /** Biaya tambahan lintas wilayah Rp 5.000–10.000. */
+  border_surcharge?: number;
+  /** Mode matching: intra_cluster | intra_province | borderline | customer_proximity. */
+  matching_mode?: "intra_cluster" | "intra_province" | "borderline" | "customer_proximity" | null;
   province_id?: number | null;
   city_id?: number | null;
   snap_token: string | null;

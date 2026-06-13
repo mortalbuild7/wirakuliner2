@@ -21,6 +21,7 @@ export type OfferableOrder = {
   delivery_address: string;
   negotiation_status: string;
   service_city_id?: string | null;
+  operational_cluster_id?: string | null;
 };
 
 export type RotateOfferResult = {
@@ -56,7 +57,8 @@ async function pickNextDriver(
   admin: SupabaseClient,
   orderId: string,
   skipIds: string[],
-  serviceCityId?: string | null
+  serviceCityId?: string | null,
+  _operationalClusterId?: string | null
 ): Promise<RotateOfferResult> {
   const origin = await resolveDispatchOrigin(admin, orderId);
   if (!origin) {
@@ -64,14 +66,19 @@ async function pickNextDriver(
   }
 
   const dispatchCtx = await resolveOrderDispatchContext(admin, orderId);
+  const service = dispatchCtx?.requestedService ?? ("NGOJEK" as const);
+  const isTransit = service === "NGOJEK" || service === "NGOMOBIL";
 
   const driverOpts = {
     lat: origin.lat,
     lng: origin.lng,
-    maxRadiusKm: DISPATCH_SEARCH_RADIUS_KM,
-    serviceCityId: serviceCityId ?? origin.serviceCityId,
+    maxRadiusKm: isTransit ? undefined : DISPATCH_SEARCH_RADIUS_KM,
+    serviceCityId: isTransit ? null : serviceCityId ?? origin.serviceCityId,
+    operationalClusterId: origin.operationalClusterId,
+    pickupProvinceId: origin.pickupProvinceId,
+    hasOfficialBranch: origin.hasOfficialBranch,
     limit: 1,
-    requestedService: dispatchCtx?.requestedService ?? ("NGOJEK" as const),
+    requestedService: service,
     packageVolumeCm3: dispatchCtx?.packageVolumeCm3 ?? 0,
   };
 
@@ -132,7 +139,8 @@ export async function rotateOfferForOrder(
     admin,
     order.id,
     skipIds,
-    order.service_city_id
+    order.service_city_id,
+    order.operational_cluster_id
   );
 
   await admin
@@ -156,7 +164,7 @@ export async function processAllPendingOffers(admin: SupabaseClient): Promise<vo
   const { data: orders } = await admin
     .from("orders")
     .select(
-      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id"
+      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id, operational_cluster_id"
     )
     .is("driver_id", null)
     .in("order_status", ["paid", "preparing", "ready_for_pickup"]);
@@ -176,7 +184,7 @@ export async function assignDriverOffer(
   const { data: order } = await admin
     .from("orders")
     .select(
-      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id"
+      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id, operational_cluster_id"
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -194,7 +202,7 @@ export async function declineDriverOffer(
   const { data: order } = await admin
     .from("orders")
     .select(
-      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id"
+      "id, driver_id, offered_driver_id, offered_at, offer_skip_driver_ids, order_status, delivery_address, negotiation_status, service_city_id, operational_cluster_id"
     )
     .eq("id", orderId)
     .maybeSingle();
