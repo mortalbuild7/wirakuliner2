@@ -165,6 +165,8 @@ export async function resolveOrderDispatchContext(
   if (!order) return null;
 
   let service = order.service_type as ServiceType | null;
+  const rawService = String(order.service_type ?? "").trim().toUpperCase();
+  if (rawService === "CAR") service = "NGOMOBIL";
   if (!service) {
     const addr = order.delivery_address ?? "";
     if (addr.startsWith("[NGOMOBIL]")) service = "NGOMOBIL";

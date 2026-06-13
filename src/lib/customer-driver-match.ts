@@ -63,9 +63,13 @@ type CountDriversResult = {
 };
 
 function normalizeTransitService(
-  service?: ServiceType | null
+  service?: ServiceType | string | null
 ): "NGOJEK" | "NGOMOBIL" {
-  return service === "NGOMOBIL" ? "NGOMOBIL" : "NGOJEK";
+  const raw = String(service ?? "")
+    .trim()
+    .toUpperCase();
+  if (raw === "NGOMOBIL" || raw === "CAR") return "NGOMOBIL";
+  return "NGOJEK";
 }
 
 function parseDriverCoord(value: unknown): number | null {
@@ -462,8 +466,82 @@ export async function checkDriverAvailabilityServer(
   return evaluateDriverProximityAvailability(admin, lat, lng, serviceType, opts);
 }
 
+async function findCustomerNearbyDriversViaHaversine(
+  admin: SupabaseClient,
+  opts: {
+    lat: number;
+    lng: number;
+    skipDriverIds?: string[];
+    limit?: number;
+    requestedService?: ServiceType;
+    packageVolumeCm3?: number;
+    radiusKm?: number;
+  }
+): Promise<CustomerDriverMatchRow[]> {
+  const radiusKm =
+    opts.radiusKm ??
+    resolvePickupRadiusKm(opts.requestedService ?? "NGOJEK", opts.packageVolumeCm3 ?? 0);
+  const isNgomobilBypass = normalizeTransitService(opts.requestedService) === "NGOMOBIL";
+  const skipSet = new Set(opts.skipDriverIds ?? []);
+
+  let query = admin
+    .from("drivers")
+    .select("id, current_lat, current_lng, gps_trust, service_category, rating_avg")
+    .eq("status", "idle")
+    .not("current_lat", "is", null)
+    .not("current_lng", "is", null);
+
+  if (isNgomobilBypass) {
+    query = query.in("service_category", ["MOBIL_PASSENGER", "MOBIL_CARGO", "MOTOR_HYBRID"]);
+  } else {
+    query = query.eq(
+      "service_category",
+      resolveDriverCategoryForService(
+        opts.requestedService ?? "NGOJEK",
+        opts.packageVolumeCm3 ?? 0
+      )
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(`[Haversine dispatch] ${extractServerErrorMessage(error)}`);
+  }
+
+  const rows: CustomerDriverMatchRow[] = [];
+  for (const row of data ?? []) {
+    if (skipSet.has(row.id as string)) continue;
+    if (row.gps_trust === "SUSPICIOUS") continue;
+
+    const dLat = parseDriverCoord(row.current_lat);
+    const dLng = parseDriverCoord(row.current_lng);
+    if (dLat == null || dLng == null) continue;
+
+    const distKm = haversineKm(opts.lat, opts.lng, dLat, dLng);
+    if (distKm > radiusKm) continue;
+
+    const rating = Number(row.rating_avg ?? 4);
+    rows.push({
+      driver_id: row.id as string,
+      distance_km: Math.round(distKm * 1000) / 1000,
+      priority_score: Math.round((rating * 20 + (1 - Math.min(distKm, radiusKm) / radiusKm) * 10) * 100) / 100,
+      completion_rate: 0.9,
+      acceptance_rate: 0.85,
+      average_rating: rating,
+      service_category: row.service_category as string | undefined,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (b.priority_score !== a.priority_score) return b.priority_score - a.priority_score;
+    return a.distance_km - b.distance_km;
+  });
+
+  return rows.slice(0, opts.limit ?? 20);
+}
+
 /**
- * Pencarian driver terdekat untuk dispatch — radius GPS ketat (PostGIS).
+ * Pencarian driver terdekat untuk dispatch — PostGIS + fallback Haversine (NGOMOBIL 15 km).
  */
 export async function findCustomerNearbyDrivers(
   admin: SupabaseClient,
@@ -478,12 +556,13 @@ export async function findCustomerNearbyDrivers(
     offerTimeoutSeconds?: number;
   }
 ): Promise<CustomerDriverMatchRow[]> {
-  try {
-    const radiusKm =
-      opts.radiusKm ??
-      resolvePickupRadiusKm(opts.requestedService ?? "NGOJEK", opts.packageVolumeCm3 ?? 0);
-    const rpcRadius = Math.min(radiusKm, POSTGIS_RPC_MAX_RADIUS_KM);
+  const radiusKm =
+    opts.radiusKm ??
+    resolvePickupRadiusKm(opts.requestedService ?? "NGOJEK", opts.packageVolumeCm3 ?? 0);
+  const rpcRadius = Math.min(radiusKm, POSTGIS_RPC_MAX_RADIUS_KM);
+  let rows: CustomerDriverMatchRow[] = [];
 
+  try {
     const { data, error } = await admin.rpc("find_nearest_priority_drivers_customer", {
       lat_customer: opts.lat,
       lng_customer: opts.lng,
@@ -496,9 +575,22 @@ export async function findCustomerNearbyDrivers(
     });
 
     if (error) throw error;
-    return (data ?? []) as CustomerDriverMatchRow[];
+    rows = (data ?? []) as CustomerDriverMatchRow[];
   } catch (error) {
     console.error("LOG ERROR GEOLOKASI LENGKAP:", error);
-    return [];
   }
+
+  if (!rows.length || radiusKm > POSTGIS_RPC_MAX_RADIUS_KM) {
+    try {
+      const haversineRows = await findCustomerNearbyDriversViaHaversine(admin, {
+        ...opts,
+        radiusKm,
+      });
+      if (haversineRows.length) rows = haversineRows;
+    } catch (fallbackError) {
+      console.error("LOG ERROR GEOLOKASI LENGKAP:", fallbackError);
+    }
+  }
+
+  return rows;
 }

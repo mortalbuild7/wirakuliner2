@@ -47,6 +47,11 @@ import {
   playDriverIncomingOrderSound,
   unlockDriverOrderAudio,
 } from "@/lib/driver-order-alert";
+import {
+  DRIVER_INCOMING_ALERT_MESSAGE,
+  isRelevantIncomingOrderForDriver,
+  type DriverIncomingOrderRow,
+} from "@/lib/driver-incoming-order";
 import { isOrderAlertAudioUnlocked } from "@/lib/order-alert-sound";
 import { cn } from "@/lib/utils";
 import { useDriverNavRoute } from "@/hooks/use-driver-nav-route";
@@ -168,6 +173,7 @@ export function DriverCockpit() {
     if (!orderAlertsReadyRef.current) return;
     if (lastAlertOrderIdRef.current === incomingOffer.id) return;
     lastAlertOrderIdRef.current = incomingOffer.id;
+    window.alert(DRIVER_INCOMING_ALERT_MESSAGE);
     void playDriverIncomingOrderSound();
   }, [incomingOffer?.id, hasActive, isOnline]);
 
@@ -205,6 +211,21 @@ export function DriverCockpit() {
     }
   }, [driver?.id, dismissed]);
 
+  const handleIncomingOrder = useCallback(
+    (order: DriverIncomingOrderRow) => {
+      if (!driver?.id || !isOnline || hasActive) return;
+      if (!orderAlertsReadyRef.current) return;
+      if (!isRelevantIncomingOrderForDriver(order, driver, isOnline)) return;
+      if (lastAlertOrderIdRef.current === order.id) return;
+      lastAlertOrderIdRef.current = order.id ?? null;
+
+      window.alert(DRIVER_INCOMING_ALERT_MESSAGE);
+      void playDriverIncomingOrderSound();
+      void loadPool();
+    },
+    [driver, hasActive, isOnline, loadPool]
+  );
+
   const loadStats = useCallback(async () => {
     if (!driver?.id) return;
     const start = new Date();
@@ -235,13 +256,14 @@ export function DriverCockpit() {
     void loadStats();
     void loadWallet();
 
-    const onOrderRow = (row: {
-      offered_driver_id?: string | null;
-      driver_id?: string | null;
-    }) => {
+    const onOrderRow = (row: DriverIncomingOrderRow) => {
       if (row.offered_driver_id === driver.id || row.driver_id === driver.id) {
-        void loadPool();
+        handleIncomingOrder(row);
         if (row.driver_id === driver.id) void loadStats();
+        return;
+      }
+      if (isOnline) {
+        handleIncomingOrder(row);
       }
     };
 
@@ -249,11 +271,17 @@ export function DriverCockpit() {
       .channel(`driver-cockpit-${driver.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
+        { event: "INSERT", schema: "public", table: "orders" },
         (payload) => {
-          const row = payload.new as
-            | { offered_driver_id?: string | null; driver_id?: string | null }
-            | undefined;
+          const row = payload.new as DriverIncomingOrderRow | undefined;
+          if (row) onOrderRow(row);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders" },
+        (payload) => {
+          const row = payload.new as DriverIncomingOrderRow | undefined;
           if (row) onOrderRow(row);
         }
       )
@@ -264,7 +292,7 @@ export function DriverCockpit() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [driver?.id, loadPool, loadStats, supabase]);
+  }, [driver?.id, handleIncomingOrder, isOnline, loadPool, loadStats, supabase]);
 
   useEffect(() => {
     void loadPool();

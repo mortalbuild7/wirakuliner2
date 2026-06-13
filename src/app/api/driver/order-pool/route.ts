@@ -2,6 +2,7 @@ import { getAuthDriverFromRequest } from "@/lib/driver-server";
 import { redactCustomerProfileForDriver } from "@/lib/privacy/phone-mask";
 import { isOfferExpired, offerSecondsLeft } from "@/lib/driver-order-offer-utils";
 import { processExpiredOffersAndDispatch } from "@/lib/driver-dispatch";
+import { rescueOrphanNgomobilOfferForDriver } from "@/lib/driver-offer-rescue";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isOnsiteOrder } from "@/lib/order-channel";
 import {
@@ -52,13 +53,27 @@ export async function GET(req: Request) {
     return secureJsonResponse({ activeOrder: null, incoming: [] });
   }
 
-  const { data: offeredOrders } = await admin
+  let { data: offeredOrders } = await admin
     .from("orders")
     .select(orderSelect)
     .is("driver_id", null)
     .eq("offered_driver_id", driver.id)
     .in("order_status", ["paid", "preparing", "ready_for_pickup"])
     .order("created_at", { ascending: true });
+
+  if (!(offeredOrders ?? []).some((o) => !isOfferExpired(o.offered_at))) {
+    const rescuedId = await rescueOrphanNgomobilOfferForDriver(admin, driver);
+    if (rescuedId) {
+      const { data: rescued } = await admin
+        .from("orders")
+        .select(orderSelect)
+        .eq("id", rescuedId)
+        .maybeSingle();
+      if (rescued) {
+        offeredOrders = [rescued, ...(offeredOrders ?? [])];
+      }
+    }
+  }
 
   const incomingOffer = (offeredOrders ?? []).find(
     (o) => !isOnsiteOrder(o.delivery_address) && !isOfferExpired(o.offered_at)
