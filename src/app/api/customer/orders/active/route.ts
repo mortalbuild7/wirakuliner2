@@ -1,6 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { CUSTOMER_ACTIVE_ORDER_STATUSES } from "@/lib/customer-active-order";
+import {
+  CUSTOMER_ACTIVE_ORDER_STATUSES,
+  isCustomerActiveOrderStatus,
+} from "@/lib/customer-active-order";
 import { isTransitOrderRecord } from "@/lib/order-channel";
 import {
   enforceMethod,
@@ -9,6 +12,9 @@ import {
 } from "@/lib/security/enforce";
 import { RATE_LIMITS } from "@/lib/security/rate-limit";
 import type { Order } from "@/types/database";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 /** Pesanan transit aktif terbaru (NGOJEK / NGOMOBIL / PAKET) untuk banner beranda. */
 export async function GET(req: Request) {
@@ -40,7 +46,13 @@ export async function GET(req: Request) {
   }
 
   const order =
-    (rows as Order[] | null)?.find((row) => isTransitOrderRecord(row)) ?? null;
+    (rows as Order[] | null)?.find(
+      (row) =>
+        isTransitOrderRecord(row) && isCustomerActiveOrderStatus(row.order_status)
+    ) ?? null;
 
-  return secureJsonResponse({ order });
+  const res = secureJsonResponse({ order });
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.headers.set("Pragma", "no-cache");
+  return res;
 }

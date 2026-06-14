@@ -54,15 +54,40 @@ export async function POST(
     );
   }
 
-  const { error: updateError } = await admin
+  const { data: updated, error: updateError } = await admin
     .from("orders")
     .update({ order_status: "cancelled" })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("order_status", "pending_payment")
+    .select("id")
+    .maybeSingle();
 
   if (updateError) {
     return secureJsonResponse(
       { error: updateError.message ?? "Gagal membatalkan pesanan" },
       { status: 500 }
+    );
+  }
+
+  if (!updated) {
+    const { data: current } = await admin
+      .from("orders")
+      .select("order_status")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (current?.order_status === "cancelled") {
+      return secureJsonResponse({
+        ok: true,
+        message: "Pesanan sudah dibatalkan",
+        orderId: id,
+        alreadyCancelled: true,
+      });
+    }
+
+    return secureJsonResponse(
+      { error: "Pesanan tidak bisa dibatalkan (sudah dibayar atau diproses)" },
+      { status: 400 }
     );
   }
 

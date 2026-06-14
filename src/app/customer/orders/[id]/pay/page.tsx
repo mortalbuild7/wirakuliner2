@@ -15,7 +15,7 @@ import {
   parseTransitLegs,
 } from "@/lib/order-channel";
 import {
-  clearActiveTransitOrderHint,
+  forceClearActiveTransitOrderHint,
   persistActiveTransitOrderHint,
   syncActiveTransitOrderFromOrder,
 } from "@/lib/customer-active-order";
@@ -51,13 +51,14 @@ export default function CustomerOrderPayPage() {
       }
 
       const next = json.order;
-      syncActiveTransitOrderFromOrder(next);
 
       if (next.order_status === "cancelled") {
-        clearActiveTransitOrderHint(orderId);
+        forceClearActiveTransitOrderHint();
         router.replace("/customer");
         return;
       }
+
+      syncActiveTransitOrderFromOrder(next);
 
       if (next.order_status !== "pending_payment") {
         router.replace(`/customer/orders/${orderId}`);
@@ -143,8 +144,9 @@ export default function CustomerOrderPayPage() {
         setError(json.error ?? "Gagal membatalkan pesanan");
         return;
       }
-      clearActiveTransitOrderHint(orderId);
-      router.push("/customer");
+      forceClearActiveTransitOrderHint();
+      router.replace("/customer");
+      router.refresh();
     } catch {
       setError("Gagal membatalkan pesanan");
     } finally {

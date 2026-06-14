@@ -64,16 +64,6 @@ export function readActiveTransitOrderHint(): ActiveTransitOrderHint | null {
   }
 }
 
-export function persistActiveTransitOrderHint(hint: ActiveTransitOrderHint): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(WIRA_ACTIVE_TRANSIT_ORDER_KEY, JSON.stringify(hint));
-    dispatchActiveOrderChanged();
-  } catch {
-    /* ignore quota */
-  }
-}
-
 export function clearActiveTransitOrderHint(orderId?: string): void {
   if (typeof window === "undefined") return;
   try {
@@ -89,6 +79,32 @@ export function clearActiveTransitOrderHint(orderId?: string): void {
     }
   } catch {
     /* ignore */
+  }
+}
+
+/** Hapus hint beranda tanpa syarat — dipakai setelah batalkan pesanan. */
+export function forceClearActiveTransitOrderHint(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(WIRA_ACTIVE_TRANSIT_ORDER_KEY);
+    dispatchActiveOrderChanged();
+  } catch {
+    /* ignore */
+  }
+}
+
+export function persistActiveTransitOrderHint(
+  hint: ActiveTransitOrderHint,
+  options?: { silent?: boolean }
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(WIRA_ACTIVE_TRANSIT_ORDER_KEY, JSON.stringify(hint));
+    if (!options?.silent) {
+      dispatchActiveOrderChanged();
+    }
+  } catch {
+    /* ignore quota */
   }
 }
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Bike, Car, ChevronRight, Package } from "lucide-react";
 import {
   channelLabelFromRecord,
@@ -9,8 +10,9 @@ import {
   parseTransitLegs,
 } from "@/lib/order-channel";
 import {
-  clearActiveTransitOrderHint,
   customerActiveOrderHref,
+  forceClearActiveTransitOrderHint,
+  isCustomerActiveOrderStatus,
   persistActiveTransitOrderHint,
   WIRA_ACTIVE_ORDER_CHANGED_EVENT,
 } from "@/lib/customer-active-order";
@@ -33,21 +35,25 @@ function serviceIcon(serviceType?: ServiceType | null) {
  * Hanya tampil setelah sinkron API (hindari cache localStorage yang basi).
  */
 export function CustomerActiveOrderBanner({ className }: { className?: string }) {
+  const pathname = usePathname();
   const [order, setOrder] = useState<ActiveOrder | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/customer/orders/active", { credentials: "include" });
+      const res = await fetch(`/api/customer/orders/active?t=${Date.now()}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
       if (res.status === 401) {
-        clearActiveTransitOrderHint();
+        forceClearActiveTransitOrderHint();
         setOrder(null);
         return;
       }
 
       if (!res.ok) {
-        clearActiveTransitOrderHint();
+        forceClearActiveTransitOrderHint();
         setOrder(null);
         return;
       }
@@ -55,21 +61,25 @@ export function CustomerActiveOrderBanner({ className }: { className?: string })
       const json = (await res.json()) as { order?: ActiveOrder | null };
       const active = json.order ?? null;
 
-      if (active) {
+      if (active && isCustomerActiveOrderStatus(active.order_status)) {
         setOrder(active);
-        persistActiveTransitOrderHint({
-          id: active.id,
-          order_status: active.order_status,
-          delivery_address: active.delivery_address,
-          service_type: active.service_type,
-          driver_id: active.driver_id ?? null,
-          updated_at: new Date().toISOString(),
-        });
+        persistActiveTransitOrderHint(
+          {
+            id: active.id,
+            order_status: active.order_status,
+            delivery_address: active.delivery_address,
+            service_type: active.service_type,
+            driver_id: active.driver_id ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { silent: true }
+        );
       } else {
-        clearActiveTransitOrderHint();
+        forceClearActiveTransitOrderHint();
         setOrder(null);
       }
     } catch {
+      forceClearActiveTransitOrderHint();
       setOrder(null);
     } finally {
       setLoading(false);
@@ -77,15 +87,19 @@ export function CustomerActiveOrderBanner({ className }: { className?: string })
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (pathname === "/customer") {
+      void load();
+    }
+  }, [pathname, load]);
 
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === "visible") void load();
+      if (document.visibilityState === "visible" && pathname === "/customer") {
+        void load();
+      }
     };
     const onActiveOrderChanged = () => {
-      void load();
+      if (pathname === "/customer") void load();
     };
 
     document.addEventListener("visibilitychange", onVisible);
@@ -94,7 +108,7 @@ export function CustomerActiveOrderBanner({ className }: { className?: string })
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener(WIRA_ACTIVE_ORDER_CHANGED_EVENT, onActiveOrderChanged);
     };
-  }, [load]);
+  }, [load, pathname]);
 
   if (loading || !order) {
     return null;
