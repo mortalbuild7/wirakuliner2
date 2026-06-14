@@ -1,31 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import { MapLoadErrorBoundary } from "@/components/maps/map-error-boundary";
 import { CustomerMapIframe } from "@/components/maps/customer-map-iframe";
+import {
+  CustomerMapPreviewButton,
+  CustomerMapSheet,
+} from "@/components/maps/customer-map-sheet";
 
 /** Props peta pilih titik jemput — center-pinned marker + callback onMapIdle. */
 export type PickupMapContainerProps = {
-  /** Lintang pusat peta / lokasi jemput saat ini. */
   centerLat: number;
-  /** Bujur pusat peta / lokasi jemput saat ini. */
   centerLng: number;
-  /** Lintang hub operasional (opsional radius lingkaran). */
   hubLat: number;
-  /** Bujur hub operasional. */
   hubLng: number;
   hubLabel?: string;
-  /** Tampilkan lingkaran radius layanan di sekitar hub. */
   showRadius?: boolean;
-  /** Counter dari store — naik saat search/autofill agar peta pan ke koordinat baru. */
   panTrigger?: number;
-  /** Dipanggil saat geser peta selesai — emit lat/lng pusat layar. */
   onMapIdle: (lat: number, lng: number) => void;
-  /** Tinggi peta dalam piksel. */
   height?: number;
 };
 
 /**
- * Peta jemput dalam iframe — mengisolasi tile Leaflet dari header (Chrome Android).
+ * Peta jemput dibuka di sheet fullscreen — menghindari tile Leaflet menimpa header saat scroll.
  */
 export function PickupMapContainer({
   centerLat,
@@ -37,20 +34,38 @@ export function PickupMapContainer({
   onMapIdle,
   height = 240,
 }: PickupMapContainerProps) {
+  const [open, setOpen] = useState(false);
+
   return (
     <MapLoadErrorBoundary title="Peta jemput gagal dimuat">
-      <CustomerMapIframe
-        kind="pickup"
+      <CustomerMapPreviewButton
         lat={centerLat}
         lng={centerLng}
-        hubLat={hubLat}
-        hubLng={hubLng}
-        height={height}
-        showRadius={showRadius}
-        panTrigger={panTrigger}
-        onLocationChange={onMapIdle}
-        title="Peta titik jemput"
+        label="Ketuk untuk atur di peta"
+        onOpen={() => setOpen(true)}
       />
+
+      <CustomerMapSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Titik jemput"
+        subtitle="Geser peta — pin hijau tetap di tengah"
+      >
+        <div className="h-full min-h-[50vh] p-3">
+          <CustomerMapIframe
+            kind="pickup"
+            lat={centerLat}
+            lng={centerLng}
+            hubLat={hubLat}
+            hubLng={hubLng}
+            height={Math.max(height, 360)}
+            showRadius={showRadius}
+            panTrigger={panTrigger}
+            onLocationChange={onMapIdle}
+            title="Peta titik jemput"
+          />
+        </div>
+      </CustomerMapSheet>
     </MapLoadErrorBoundary>
   );
 }

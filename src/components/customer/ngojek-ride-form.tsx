@@ -30,7 +30,7 @@ import {
   Truck,
 } from "lucide-react";
 
-import { CustomerMapIframe } from "@/components/maps/customer-map-iframe";
+import { DestinationMapContainer } from "@/components/maps/DestinationMapContainer";
 
 const SERVICE_OPTIONS: {
   type: ServiceType;
@@ -523,18 +523,15 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
             ? "Pilih dari daftar atau geser pin biru di peta."
             : "Ketik alamat — pin biru mengikuti. Atau geser pin / ketuk peta."}
         </p>
-        <CustomerMapIframe
-          kind="destination"
+        <DestinationMapContainer
           lat={ride.destLat}
           lng={ride.destLng}
           hubLat={ride.pickupLat}
           hubLng={ride.pickupLng}
           hubLabel="J"
-          height={240}
           flyToTrigger={ride.mapFlyTrigger}
           onLocationChange={ride.handleDestMapChange}
-          ringClass="ring-cyan-500/30"
-          title="Peta tujuan"
+          height={240}
         />
       </section>
 
