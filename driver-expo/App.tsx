@@ -18,16 +18,19 @@ import { DriverLoginScreen } from "./components/DriverLoginScreen";
 import { clearLocalAuth, restoreNativeSession, syncNativeSession } from "./lib/auth-session";
 import { fetchDriverMeNative, setDriverStatusNative } from "./lib/driver-api";
 import { getDriverAppEntryUrls } from "./lib/driver-url";
+import { pickReachableAppEntry } from "./lib/host-probe";
 import { getAppEntryUrl, supabase } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 import { playNativeIncomingOrderSound } from "./lib/incoming-order-sound";
 
 const ALLOWED_HOSTS = [
+  "wirakuliner2.vercel.app",
   "wirakuliner.web.id",
   "www.wirakuliner.web.id",
-  "wirakuliner2.vercel.app",
   "localhost",
 ];
+
+const WEB_LOAD_TIMEOUT_MS = 28_000;
 
 const APP_ENTRY_URLS = getDriverAppEntryUrls();
 const WEB_TIMEOUT_CODES = new Set([-8, 8, -6, 6]);
@@ -162,6 +165,7 @@ function DriverWebShell({
   webRef,
   activeWebUrl,
   webUrlIndex,
+  cacheBust,
   sessionKey,
   beforeLoadScript,
   webLoading,
@@ -177,10 +181,12 @@ function DriverWebShell({
   onHttpError,
   onContentProcessTerminate,
   reloadWebView,
+  onRetry,
 }: {
   webRef: React.RefObject<WebView | null>;
   activeWebUrl: string;
   webUrlIndex: number;
+  cacheBust: number;
   sessionKey: string;
   beforeLoadScript: string;
   webLoading: boolean;
@@ -196,6 +202,7 @@ function DriverWebShell({
   onHttpError: (statusCode: number, url?: string, description?: string) => void;
   onContentProcessTerminate: () => void;
   reloadWebView: (resetRetries?: boolean) => void;
+  onRetry: () => void;
 }) {
   const toggleDisabled = driverState.delivering && driverState.online;
 
@@ -206,19 +213,35 @@ function DriverWebShell({
     void NavigationBar.setVisibilityAsync("visible");
   }, []);
 
+  useEffect(() => {
+    if (!webLoading) return;
+    const timer = setTimeout(() => {
+      onWebError("net::ERR_TIMED_OUT", 8, activeWebUrl);
+    }, WEB_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [webLoading, activeWebUrl, onWebError]);
+
+  const useNoCache = cacheBust > 0;
+
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <StatusBar style="dark" backgroundColor="#ffffff" />
       <View style={styles.webColumn}>
         <View style={styles.webWrap}>
         <WebView
-          key={`${sessionKey}-${webUrlIndex}`}
+          key={`${sessionKey}-${webUrlIndex}-${cacheBust}`}
           ref={webRef}
           source={{ uri: activeWebUrl }}
           style={styles.web}
           startInLoadingState
-          cacheEnabled
-          cacheMode={Platform.OS === "android" ? "LOAD_CACHE_ELSE_NETWORK" : undefined}
+          cacheEnabled={!useNoCache}
+          cacheMode={
+            Platform.OS === "android"
+              ? useNoCache
+                ? "LOAD_NO_CACHE"
+                : "LOAD_DEFAULT"
+              : undefined
+          }
           injectedJavaScriptBeforeContentLoaded={beforeLoadScript}
           onLoadStart={onWebLoadStart}
           onLoadEnd={onWebLoadEnd}
@@ -240,11 +263,15 @@ function DriverWebShell({
               <Text style={styles.errorBody}>
                 {errorDesc || "Koneksi timeout — periksa internet Anda."}
               </Text>
-              {errorDomain ? (
-                <Text style={styles.errorMeta}>Domain: {errorDomain}</Text>
-              ) : null}
+              {errorDomain && errorDomain !== "undefined" ? (
+                <Text style={styles.errorMeta}>Host: {errorDomain}</Text>
+              ) : (
+                <Text style={styles.errorMeta}>
+                  Host: {activeWebUrl.replace(/^https?:\/\//, "")}
+                </Text>
+              )}
               <Text style={styles.errorMeta}>Kode: {errorCode}</Text>
-              <Pressable style={styles.errorRetryBtn} onPress={() => reloadWebView(true)}>
+              <Pressable style={styles.errorRetryBtn} onPress={onRetry}>
                 <Text style={styles.errorRetryText}>Coba lagi</Text>
               </Pressable>
             </View>
@@ -270,7 +297,7 @@ function DriverWebShell({
                 <Text style={styles.errorTitle}>Tidak bisa terhubung ke server</Text>
                 <Text style={styles.errorBody}>{webError}</Text>
                 <Text style={styles.errorMeta}>URL: {activeWebUrl.replace("https://", "")}</Text>
-                <Pressable style={styles.errorRetryBtn} onPress={() => reloadWebView(true)}>
+                <Pressable style={styles.errorRetryBtn} onPress={onRetry}>
                   <Text style={styles.errorRetryText}>Coba lagi</Text>
                 </Pressable>
               </>
@@ -340,6 +367,8 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [webLoading, setWebLoading] = useState(true);
   const [webUrlIndex, setWebUrlIndex] = useState(0);
+  const [cacheBust, setCacheBust] = useState(0);
+  const [hostProbing, setHostProbing] = useState(false);
   const [webError, setWebError] = useState<string | null>(null);
   const [sessionInjected, setSessionInjected] = useState(false);
   const [driverState, setDriverState] = useState<DriverState>({
@@ -358,12 +387,32 @@ export default function App() {
         webRetryRef.current = 0;
         setWebUrlIndex(0);
       }
+      setCacheBust((n) => n + 1);
       setWebError(null);
       setWebLoading(true);
       webRef.current?.reload();
     },
     []
   );
+
+  const tryNextHost = useCallback(async () => {
+    setHostProbing(true);
+    setWebError(null);
+    const picked = await pickReachableAppEntry(APP_ENTRY_URLS);
+    setHostProbing(false);
+    if (picked) {
+      webRetryRef.current = 0;
+      setWebUrlIndex(picked.index);
+      setCacheBust((n) => n + 1);
+      setWebLoading(true);
+      return true;
+    }
+    setWebError(
+      "Tidak bisa terhubung ke server WIRA. Cek koneksi internet (WiFi/data), lalu coba lagi."
+    );
+    hideSpinner();
+    return false;
+  }, [hideSpinner]);
 
   const handleWebLoadFailure = useCallback(
     (description: string, errorCode?: number, failedUrl?: string) => {
@@ -382,6 +431,7 @@ export default function App() {
         const next = webUrlIndex + 1;
         webRetryRef.current = 0;
         setWebUrlIndex(next);
+        setCacheBust((n) => n + 1);
         setWebError(null);
         setWebLoading(true);
         return;
@@ -389,8 +439,10 @@ export default function App() {
 
       if (webRetryRef.current < 3) {
         webRetryRef.current += 1;
+        setCacheBust((n) => n + 1);
         setWebLoading(true);
-        setTimeout(() => webRef.current?.reload(), 800 * webRetryRef.current);
+        const delay = 1500 * webRetryRef.current;
+        setTimeout(() => webRef.current?.reload(), delay);
         return;
       }
 
@@ -481,6 +533,30 @@ export default function App() {
 
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (phase !== "app") return;
+    let cancelled = false;
+    void (async () => {
+      setHostProbing(true);
+      const picked = await pickReachableAppEntry(APP_ENTRY_URLS);
+      if (cancelled) return;
+      setHostProbing(false);
+      if (picked) {
+        setWebUrlIndex(picked.index);
+        setWebError(null);
+        setWebLoading(true);
+      } else {
+        setWebError(
+          "Server tidak terjangkau. Periksa sinyal internet lalu ketuk Coba lagi."
+        );
+        hideSpinner();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, hideSpinner]);
 
   useEffect(() => {
     if (phase !== "app" || !session) return;
@@ -733,10 +809,17 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
+      {hostProbing ? (
+        <View style={styles.boot}>
+          <ActivityIndicator size="large" color="#34d399" />
+          <Text style={styles.probeText}>Menghubungkan ke server WIRA...</Text>
+        </View>
+      ) : (
       <DriverWebShell
         webRef={webRef}
         activeWebUrl={activeWebUrl}
         webUrlIndex={webUrlIndex}
+        cacheBust={cacheBust}
         sessionKey={session?.user?.id ?? "webview"}
         beforeLoadScript={beforeLoadScript}
         webLoading={webLoading}
@@ -759,7 +842,9 @@ export default function App() {
         }}
         onContentProcessTerminate={() => reloadWebView(false)}
         reloadWebView={reloadWebView}
+        onRetry={() => void tryNextHost()}
       />
+      )}
     </SafeAreaProvider>
   );
 }
@@ -770,6 +855,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#f8fafc",
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  probeText: {
+    color: "#475569",
+    fontSize: 14,
+    textAlign: "center",
   },
   root: {
     flex: 1,

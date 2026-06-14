@@ -1,7 +1,8 @@
+/** Vercel.app dulu — DNS lebih stabil di beberapa jaringan operator HP. */
 const DEFAULT_HOSTS = [
+  "https://wirakuliner2.vercel.app",
   "https://wirakuliner.web.id",
   "https://www.wirakuliner.web.id",
-  "https://wirakuliner2.vercel.app",
 ];
 
 function hostFromDriverEnv(): string | null {
