@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, resetBrowserClient } from "@/lib/supabase/client";
 import { storeDriverTokens } from "@/lib/driver-native-session";
 import {
   postNativeDriverBoot,
@@ -11,9 +11,18 @@ import {
 import { markFreshLogin } from "@/lib/hello-welcome";
 
 const STORAGE_KEY = "wira_bridge_tokens";
-const BRIDGE_TIMEOUT_MS = 12_000;
+const BRIDGE_TIMEOUT_MS = 8_000;
 
 type Tokens = { access_token: string; refresh_token: string };
+
+function isApkWebView(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as Window & {
+    ReactNativeWebView?: unknown;
+    __WIRA_APK_WEBVIEW__?: boolean;
+  };
+  return Boolean(w.ReactNativeWebView || w.__WIRA_APK_WEBVIEW__);
+}
 
 function isRefreshReuseError(message?: string) {
   return Boolean(
@@ -38,22 +47,32 @@ async function fetchWithTimeout(
   }
 }
 
-async function verifyDriverSession(
+/** Baca sesi lokal — tanpa panggilan jaringan getUser (cepat di WebView APK). */
+async function readLocalSession(
   supabase: ReturnType<typeof createClient>
 ): Promise<Session | null> {
   const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-  if (userErr || !user) return null;
-
-  const {
     data: { session },
   } = await supabase.auth.getSession();
-  return session ?? null;
+  return session?.user ? session : null;
 }
 
-async function bridgeServerCookies(tokens: Tokens): Promise<string | null> {
+function bridgeServerCookiesFireAndForget(tokens: Tokens) {
+  void fetchWithTimeout(
+    "/api/driver/bridge-session",
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tokens),
+    },
+    BRIDGE_TIMEOUT_MS
+  ).catch(() => {
+    /* best-effort — tidak blokir login APK */
+  });
+}
+
+async function bridgeServerCookiesBlocking(tokens: Tokens): Promise<string | null> {
   try {
     const bridgeRes = await fetchWithTimeout(
       "/api/driver/bridge-session",
@@ -73,7 +92,7 @@ async function bridgeServerCookies(tokens: Tokens): Promise<string | null> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/abort/i.test(msg)) {
-      return "Sinkron cookie timeout — lanjut dengan sesi lokal.";
+      return "Sinkron cookie timeout.";
     }
     return msg || "Bridge sesi gagal";
   }
@@ -86,12 +105,19 @@ export default function DriverAppEntryPage() {
   const failedRefreshRef = useRef<string | null>(null);
 
   useEffect(() => {
+    resetBrowserClient();
     let cancelled = false;
+
+    function goToDriver() {
+      if (appliedRef.current) return;
+      appliedRef.current = true;
+      markFreshLogin();
+      window.location.replace("/driver");
+    }
 
     async function completeLogin(active: Session) {
       if (cancelled || appliedRef.current) return;
 
-      const supabase = createClient();
       const tokens = {
         access_token: active.access_token,
         refresh_token: active.refresh_token,
@@ -100,11 +126,22 @@ export default function DriverAppEntryPage() {
       const w = window as Window & { __WIRA_NATIVE_SESSION__?: Tokens };
       w.__WIRA_NATIVE_SESSION__ = tokens;
       postNativeSessionSync(tokens);
+      storeDriverTokens(tokens, true);
+      postNativeDriverBoot("session_ok");
+      postNativeDriverBoot("redirecting");
+
+      const apk = isApkWebView();
+
+      if (apk) {
+        setMsg("Membuka dashboard driver...");
+        bridgeServerCookiesFireAndForget(tokens);
+        goToDriver();
+        return;
+      }
 
       setMsg("Menyinkronkan cookie...");
-      const bridgeErr = await bridgeServerCookies(tokens);
-
-      const verified = await verifyDriverSession(supabase);
+      const bridgeErr = await bridgeServerCookiesBlocking(tokens);
+      const verified = await readLocalSession(createClient());
       if (!verified?.user) {
         const rn = (
           window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
@@ -119,7 +156,6 @@ export default function DriverAppEntryPage() {
         return;
       }
 
-      appliedRef.current = true;
       storeDriverTokens(
         {
           access_token: verified.access_token,
@@ -127,12 +163,7 @@ export default function DriverAppEntryPage() {
         },
         true
       );
-      postNativeDriverBoot("session_ok");
-      postNativeDriverBoot("redirecting");
-
-      markFreshLogin();
-      await new Promise((r) => setTimeout(r, 200));
-      window.location.replace("/driver");
+      goToDriver();
     }
 
     async function run() {
@@ -155,11 +186,10 @@ export default function DriverAppEntryPage() {
       runningRef.current = true;
       try {
         const supabase = createClient();
-        const existing = await verifyDriverSession(supabase);
+        const existing = await readLocalSession(supabase);
 
         if (existing?.user) {
           if (cancelled) return;
-          setMsg("Memuat dashboard driver...");
           await completeLogin(existing);
           return;
         }
@@ -187,7 +217,7 @@ export default function DriverAppEntryPage() {
         if (error) {
           failedRefreshRef.current = tokens.refresh_token;
 
-          const recovered = await verifyDriverSession(supabase);
+          const recovered = await readLocalSession(supabase);
           if (recovered?.user) {
             await completeLogin(recovered);
             return;
@@ -215,7 +245,7 @@ export default function DriverAppEntryPage() {
           return;
         }
 
-        const latest = (await verifyDriverSession(supabase)) ?? data.session;
+        const latest = (await readLocalSession(supabase)) ?? data.session;
         await completeLogin(latest);
       } finally {
         runningRef.current = false;
@@ -255,7 +285,7 @@ export default function DriverAppEntryPage() {
       if (!native?.access_token || !native?.refresh_token) return;
       if (failedRefreshRef.current === native.refresh_token) return;
       void run();
-    }, 1500);
+    }, 2000);
 
     const timeout = setTimeout(() => {
       if (!cancelled && !appliedRef.current) {

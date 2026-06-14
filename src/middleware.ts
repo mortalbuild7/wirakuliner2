@@ -278,6 +278,15 @@ export async function middleware(request: NextRequest) {
   const requiredRole = ROLE_ROUTES[protectedPrefix];
 
   if (!user) {
+    const ua = request.headers.get("user-agent") ?? "";
+    const apkWebView =
+      ua.includes("WIRADriverExpo") &&
+      (pathname === "/driver" || pathname.startsWith("/driver/orders/"));
+
+    if (apkWebView) {
+      return forwardPathHeader(request, response);
+    }
+
     const login = new URL("/login", request.url);
     login.searchParams.set("redirect", pathname);
     return withSecurity(NextResponse.redirect(login));

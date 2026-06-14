@@ -3,6 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 let browserClient: SupabaseClient | undefined;
 
+/** Reset singleton — dipakai saat boot ulang sesi APK. */
+export function resetBrowserClient() {
+  browserClient = undefined;
+}
+
 /** Satu instance per tab — hindari loop useEffect + realtime subscribe berulang */
 export function createClient() {
   if (browserClient) return browserClient;
