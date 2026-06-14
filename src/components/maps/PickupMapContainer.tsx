@@ -1,21 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { MapLoadErrorBoundary } from "@/components/maps/map-error-boundary";
-
-/** Lazy-load Leaflet — hanya di browser (window tidak ada di SSR). */
-const PickupMapInner = dynamic(
-  () =>
-    import("@/components/maps/pickup-map-inner").then((m) => m.PickupMapInner),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[240px] items-center justify-center rounded-2xl bg-emerald-950/40 text-sm text-emerald-200/80">
-        Memuat peta jemput...
-      </div>
-    ),
-  }
-);
+import { CustomerMapIframe } from "@/components/maps/customer-map-iframe";
 
 /** Props peta pilih titik jemput — center-pinned marker + callback onMapIdle. */
 export type PickupMapContainerProps = {
@@ -39,16 +25,32 @@ export type PickupMapContainerProps = {
 };
 
 /**
- * Peta "Pilih lewat Map" untuk NGOJEK & NGOMOBIL.
- * Pin tetap di tengah layar; peta yang bergerak (center-pinned marker).
- * Koordinat akhir ditangkap via onMapIdle → reverse geocode di parent.
+ * Peta jemput dalam iframe — mengisolasi tile Leaflet dari header (Chrome Android).
  */
-export function PickupMapContainer(props: PickupMapContainerProps) {
+export function PickupMapContainer({
+  centerLat,
+  centerLng,
+  hubLat,
+  hubLng,
+  showRadius = false,
+  panTrigger = 0,
+  onMapIdle,
+  height = 240,
+}: PickupMapContainerProps) {
   return (
     <MapLoadErrorBoundary title="Peta jemput gagal dimuat">
-      <div className="customer-map-wrap relative z-0 isolate">
-        <PickupMapInner {...props} />
-      </div>
+      <CustomerMapIframe
+        kind="pickup"
+        lat={centerLat}
+        lng={centerLng}
+        hubLat={hubLat}
+        hubLng={hubLng}
+        height={height}
+        showRadius={showRadius}
+        panTrigger={panTrigger}
+        onLocationChange={onMapIdle}
+        title="Peta titik jemput"
+      />
     </MapLoadErrorBoundary>
   );
 }

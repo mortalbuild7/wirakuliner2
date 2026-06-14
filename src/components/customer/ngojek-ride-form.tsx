@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,18 +30,7 @@ import {
   Truck,
 } from "lucide-react";
 
-const DestinationMap = dynamic(
-  () =>
-    import("@/components/maps/location-map-inner").then((m) => m.LocationMapInner),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[240px] items-center justify-center rounded-2xl bg-emerald-950/60 text-sm text-emerald-200/80">
-        Memuat peta...
-      </div>
-    ),
-  }
-);
+import { CustomerMapIframe } from "@/components/maps/customer-map-iframe";
 
 const SERVICE_OPTIONS: {
   type: ServiceType;
@@ -535,21 +523,18 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
             ? "Pilih dari daftar atau geser pin biru di peta."
             : "Ketik alamat — pin biru mengikuti. Atau geser pin / ketuk peta."}
         </p>
-        <DestinationMap
-          latitude={ride.destLat}
-          longitude={ride.destLng}
-          onLocationChange={ride.handleDestMapChange}
-          accuracyM={null}
+        <CustomerMapIframe
+          kind="destination"
+          lat={ride.destLat}
+          lng={ride.destLng}
           hubLat={ride.pickupLat}
           hubLng={ride.pickupLng}
           hubLabel="J"
-          showRadius={false}
-          followGps={false}
-          lockZoom={false}
-          manualPickMode
-          manualPickCenter="both"
-          flyToTrigger={ride.mapFlyTrigger}
           height={240}
+          flyToTrigger={ride.mapFlyTrigger}
+          onLocationChange={ride.handleDestMapChange}
+          ringClass="ring-cyan-500/30"
+          title="Peta tujuan"
         />
       </section>
 
