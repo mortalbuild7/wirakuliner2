@@ -18,7 +18,7 @@ import { clearLocalAuth, restoreNativeSession, syncNativeSession } from "./lib/a
 import { fetchDriverMeNative, setDriverStatusNative } from "./lib/driver-api";
 import { getDriverAppEntryUrls, getDriverHomeUrls } from "./lib/driver-url";
 import { pickReachableAppEntry } from "./lib/host-probe";
-import { getAppEntryUrl, supabase } from "./lib/supabase";
+import { supabase } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 import {
   initDriverOrderNotifications,
@@ -147,14 +147,23 @@ function sessionBootstrapScript(session: Session) {
   `;
 }
 
-/** Lewati app-entry sebelum React — langsung ke dashboard jika token sudah di-inject. */
+/** Lewati app-entry sebelum React — langsung ke dashboard jika token sudah ada. */
 function skipAppEntryRedirectScript() {
   return `
     (function() {
       try {
+        window.__WIRA_APK_WEBVIEW__ = true;
         var p = location.pathname || '';
         if (p.indexOf('/driver/app-entry') === -1) return;
-        if (!window.__WIRA_NATIVE_SESSION__ || !window.__WIRA_NATIVE_SESSION__.access_token) return;
+        var tok = window.__WIRA_NATIVE_SESSION__;
+        if (!tok || !tok.access_token) {
+          try {
+            var raw = sessionStorage.getItem('wira_bridge_tokens');
+            if (raw) tok = JSON.parse(raw);
+          } catch (e) {}
+        }
+        if (!tok || !tok.access_token) return;
+        window.__WIRA_NATIVE_SESSION__ = tok;
         location.replace('/driver');
       } catch (e) {}
     })();
@@ -522,9 +531,9 @@ export default function App() {
     sessionInjectedRef.current = false;
     nativeSessionInjectedRef.current = false;
     setSessionInjected(false);
-    setForcedWebUrl(getAppEntryUrl());
-    setWebLoading(true);
-    setCacheBust((n) => n + 1);
+    setForcedWebUrl(null);
+    setWebError(null);
+    setPhase("login");
   }, [navigateToDriverDashboard]);
 
   const reinjectFreshSession = useCallback(async () => {
@@ -657,7 +666,21 @@ export default function App() {
       }
 
       if (nav.url.includes("/driver/app-entry")) {
-        navigateToDriverDashboard();
+        if (sessionRef.current) {
+          injectSession(webRef, sessionRef.current, true);
+          webRef.current?.injectJavaScript(`
+            (function() {
+              try {
+                window.__WIRA_APK_WEBVIEW__ = true;
+                if ((location.pathname || '').indexOf('/driver/app-entry') !== -1) {
+                  location.replace('/driver');
+                }
+              } catch (e) {}
+            })();
+            true;
+          `);
+          hideSpinner();
+        }
         return;
       }
 
@@ -743,8 +766,27 @@ export default function App() {
           }
         }
 
+        if (data.type === "WIRA_REQUEST_SESSION") {
+          const active = sessionRef.current;
+          if (active) {
+            injectSession(webRef, active, true);
+            webRef.current?.injectJavaScript(`
+              (function() {
+                try {
+                  if ((location.pathname || '').indexOf('/driver/app-entry') !== -1) {
+                    location.replace('/driver');
+                  }
+                } catch (e) {}
+              })();
+              true;
+            `);
+            hideSpinner();
+          }
+        }
+
         if (data.type === "WIRA_NAVIGATE" || data.type === "WIRA_GO_DRIVER") {
           const url = (data as { url?: string }).url;
+          setForcedWebUrl(null);
           navigateToDriverDashboard(url);
         }
 
@@ -881,6 +923,7 @@ export default function App() {
               chunkReloadRef.current = 0;
               webRetryRef.current = 0;
               setWebUrlIndex(0);
+              setForcedWebUrl(null);
               setWebError(null);
               setWebLoading(true);
               setPhase("app");

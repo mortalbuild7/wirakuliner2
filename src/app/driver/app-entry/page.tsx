@@ -12,6 +12,8 @@ import { markFreshLogin } from "@/lib/hello-welcome";
 
 const STORAGE_KEY = "wira_bridge_tokens";
 const BRIDGE_TIMEOUT_MS = 8_000;
+const APK_SESSION_POLL_MS = 500;
+const APK_SESSION_REQUEST_MS = 2_000;
 
 type Tokens = { access_token: string; refresh_token: string };
 
@@ -109,13 +111,21 @@ async function bridgeServerCookiesBlocking(tokens: Tokens): Promise<string | nul
   }
 }
 
-function apkGoDriver(tokens: Tokens) {
+function requestNativeSession() {
+  const rn = (
+    window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
+  ).ReactNativeWebView;
+  rn?.postMessage(JSON.stringify({ type: "WIRA_REQUEST_SESSION" }));
+}
+
+function apkRedirectToDriver(tokens: Tokens) {
   const w = window as Window & { __WIRA_NATIVE_SESSION__?: Tokens };
   w.__WIRA_NATIVE_SESSION__ = tokens;
   storeDriverTokens(tokens, true);
   postNativeSessionSync(tokens);
   postNativeDriverBoot("session_ok");
   markFreshLogin();
+  bridgeServerCookiesFireAndForget(tokens);
 
   const target = `${window.location.origin}/driver`;
   const rn = (
@@ -123,8 +133,11 @@ function apkGoDriver(tokens: Tokens) {
   ).ReactNativeWebView;
   rn?.postMessage(JSON.stringify({ type: "WIRA_GO_DRIVER", url: target }));
 
-  bridgeServerCookiesFireAndForget(tokens);
-  window.location.href = target;
+  try {
+    window.location.replace(target);
+  } catch {
+    window.location.href = target;
+  }
 }
 
 export default function DriverAppEntryPage() {
@@ -141,15 +154,16 @@ export default function DriverAppEntryPage() {
       const early = readInjectedTokens();
       if (early) {
         appliedRef.current = true;
-        apkGoDriver(early);
+        apkRedirectToDriver(early);
         return;
       }
+      requestNativeSession();
     }
 
     function goToDriver(tokens: Tokens) {
       if (isApkWebView()) {
         appliedRef.current = true;
-        apkGoDriver(tokens);
+        apkRedirectToDriver(tokens);
         return;
       }
 
@@ -206,7 +220,7 @@ export default function DriverAppEntryPage() {
       const tokens = readInjectedTokens();
       if (isApkWebView() && tokens) {
         appliedRef.current = true;
-        apkGoDriver(tokens);
+        apkRedirectToDriver(tokens);
         return;
       }
 
@@ -268,7 +282,7 @@ export default function DriverAppEntryPage() {
 
       if (isApkWebView()) {
         appliedRef.current = true;
-        apkGoDriver({
+        apkRedirectToDriver({
           access_token: detail.access_token,
           refresh_token: detail.refresh_token,
         });
@@ -289,27 +303,37 @@ export default function DriverAppEntryPage() {
     const poll = setInterval(() => {
       if (appliedRef.current || runningRef.current) return;
       const native = readInjectedTokens();
-      if (!native) return;
+      if (!native) {
+        if (isApkWebView()) requestNativeSession();
+        return;
+      }
       if (failedRefreshRef.current === native.refresh_token) return;
       if (isApkWebView()) {
         appliedRef.current = true;
-        apkGoDriver(native);
+        apkRedirectToDriver(native);
         return;
       }
       void run();
-    }, 1500);
+    }, APK_SESSION_POLL_MS);
+
+    const requestTimer = setInterval(() => {
+      if (appliedRef.current || !isApkWebView()) return;
+      if (readInjectedTokens()) return;
+      requestNativeSession();
+    }, APK_SESSION_REQUEST_MS);
 
     const timeout = setTimeout(() => {
       if (!cancelled && !appliedRef.current) {
         postNativeDriverBoot("waiting_token");
-        setMsg("Menunggu token terlalu lama. Login ulang di aplikasi.");
+        setMsg("Menunggu token terlalu lama. Tutup app, buka lagi, lalu login ulang.");
       }
-    }, 15000);
+    }, 12_000);
 
     return () => {
       cancelled = true;
       window.removeEventListener("wira-set-session", onNative);
       clearInterval(poll);
+      clearInterval(requestTimer);
       clearTimeout(timeout);
     };
   }, []);
