@@ -147,6 +147,21 @@ function sessionBootstrapScript(session: Session) {
   `;
 }
 
+/** Lewati app-entry sebelum React — langsung ke dashboard jika token sudah di-inject. */
+function skipAppEntryRedirectScript() {
+  return `
+    (function() {
+      try {
+        var p = location.pathname || '';
+        if (p.indexOf('/driver/app-entry') === -1) return;
+        if (!window.__WIRA_NATIVE_SESSION__ || !window.__WIRA_NATIVE_SESSION__.access_token) return;
+        location.replace('/driver');
+      } catch (e) {}
+    })();
+    true;
+  `;
+}
+
 function isDriverHomeUrl(url: string) {
   try {
     const path = new URL(url).pathname.replace(/\/$/, "") || "/";
@@ -261,7 +276,18 @@ function DriverWebShell({
           onLoadStart={onWebLoadStart}
           onLoadEnd={onWebLoadEnd}
           onNavigationStateChange={onNavChange}
-          onShouldStartLoadWithRequest={(req) => isDriverWebPath(req.url)}
+          onShouldStartLoadWithRequest={(req) => {
+            if (!isAllowedUrl(req.url)) return false;
+            try {
+              const p = new URL(req.url).pathname;
+              if (p.startsWith("/customer") || p.startsWith("/merchant") || p.startsWith("/admin")) {
+                return false;
+              }
+              return true;
+            } catch {
+              return false;
+            }
+          }}
           onMessage={onMessage}
           onError={(e) => {
             const { description, code, url } = e.nativeEvent;
@@ -385,6 +411,7 @@ export default function App() {
   const [webUrlIndex, setWebUrlIndex] = useState(0);
   const [cacheBust, setCacheBust] = useState(0);
   const [webError, setWebError] = useState<string | null>(null);
+  const [forcedWebUrl, setForcedWebUrl] = useState<string | null>(null);
   const [sessionInjected, setSessionInjected] = useState(false);
   const [driverState, setDriverState] = useState<DriverState>({
     online: false,
@@ -394,7 +421,22 @@ export default function App() {
 
   const hideSpinner = useCallback(() => setWebLoading(false), []);
 
-  const activeWebUrl = DRIVER_HOME_URLS[webUrlIndex] ?? DRIVER_HOME_URLS[0];
+  const activeWebUrl = forcedWebUrl ?? DRIVER_HOME_URLS[webUrlIndex] ?? DRIVER_HOME_URLS[0];
+
+  const navigateToDriverDashboard = useCallback(
+    (url?: string) => {
+      const target = url ?? DRIVER_HOME_URLS[webUrlIndex] ?? DRIVER_HOME_URLS[0];
+      bootGraceUntilRef.current = Date.now() + 30_000;
+      bootCompleteRef.current = true;
+      nativeSessionInjectedRef.current = false;
+      setForcedWebUrl(target);
+      setWebError(null);
+      setWebLoading(true);
+      setCacheBust((n) => n + 1);
+      hideSpinner();
+    },
+    [hideSpinner, webUrlIndex]
+  );
 
   const reloadWebView = useCallback(
     (resetRetries = false) => {
@@ -472,17 +514,18 @@ export default function App() {
   );
 
   const redirectToAppEntry = useCallback(() => {
+    if (sessionRef.current) {
+      navigateToDriverDashboard();
+      return;
+    }
     bootCompleteRef.current = false;
     sessionInjectedRef.current = false;
     nativeSessionInjectedRef.current = false;
     setSessionInjected(false);
-    if (sessionRef.current) {
-      injectSession(webRef, sessionRef.current);
-    }
-    webRef.current?.injectJavaScript(
-      `window.location.replace(${JSON.stringify(getAppEntryUrl())}); true;`
-    );
-  }, []);
+    setForcedWebUrl(getAppEntryUrl());
+    setWebLoading(true);
+    setCacheBust((n) => n + 1);
+  }, [navigateToDriverDashboard]);
 
   const reinjectFreshSession = useCallback(async () => {
     const next = await restoreNativeSession();
@@ -492,21 +535,20 @@ export default function App() {
     }
     sessionRef.current = next;
     setSession(next);
-    bootCompleteRef.current = false;
     sessionRetryRef.current = 0;
     sessionInjectedRef.current = false;
     nativeSessionInjectedRef.current = false;
     setSessionInjected(false);
-    injectSession(webRef, next, true);
-    webRef.current?.injectJavaScript(
-      `window.location.replace(${JSON.stringify(getAppEntryUrl())}); true;`
-    );
-  }, []);
+    navigateToDriverDashboard();
+  }, [navigateToDriverDashboard]);
 
   const beforeLoadScript = useMemo(() => {
     const bootstrap = nativeToolbarBootstrapScript();
-    if (!session) return bootstrap + webErrorGuardScript();
-    return bootstrap + sessionBootstrapScript(session) + webErrorGuardScript();
+    const skipEntry = skipAppEntryRedirectScript();
+    if (!session) return bootstrap + skipEntry + webErrorGuardScript();
+    return (
+      bootstrap + sessionBootstrapScript(session) + skipEntry + webErrorGuardScript()
+    );
   }, [session?.access_token, session?.refresh_token]);
 
   useEffect(() => {
@@ -605,11 +647,17 @@ export default function App() {
       }
 
       if (isDriverHomeUrl(nav.url)) {
+        setForcedWebUrl(null);
         bootCompleteRef.current = true;
         hideSpinner();
         if (sessionRef.current) {
           injectSession(webRef, sessionRef.current, true);
         }
+        return;
+      }
+
+      if (nav.url.includes("/driver/app-entry")) {
+        navigateToDriverDashboard();
         return;
       }
 
@@ -636,7 +684,7 @@ export default function App() {
         redirectToAppEntry();
       }
     },
-    [hideSpinner, redirectToAppEntry]
+    [hideSpinner, navigateToDriverDashboard, redirectToAppEntry]
   );
 
   const onMessage = useCallback(
@@ -695,17 +743,9 @@ export default function App() {
           }
         }
 
-        if (data.type === "WIRA_NAVIGATE") {
+        if (data.type === "WIRA_NAVIGATE" || data.type === "WIRA_GO_DRIVER") {
           const url = (data as { url?: string }).url;
-          if (url) {
-            hideSpinner();
-            bootGraceUntilRef.current = Date.now() + 20_000;
-            nativeSessionInjectedRef.current = false;
-            setWebLoading(true);
-            webRef.current?.injectJavaScript(
-              `window.location.replace(${JSON.stringify(url)}); true;`
-            );
-          }
+          navigateToDriverDashboard(url);
         }
 
         if (data.type === "WIRA_DRIVER_STATE" || data.type === "WIRA_APP_READY") {
@@ -755,7 +795,7 @@ export default function App() {
         /* ignore */
       }
     },
-    [hideSpinner, reinjectFreshSession]
+    [hideSpinner, navigateToDriverDashboard, reinjectFreshSession]
   );
 
   const onWebLoadEnd = useCallback(() => {

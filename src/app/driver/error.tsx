@@ -29,7 +29,12 @@ export default function DriverError({
       <button
         type="button"
         onClick={() => {
-          window.location.href = "/driver/app-entry";
+          const w = window as Window & { ReactNativeWebView?: unknown; __WIRA_APK_WEBVIEW__?: boolean };
+          if (w.ReactNativeWebView || w.__WIRA_APK_WEBVIEW__) {
+            window.location.href = "/driver";
+          } else {
+            window.location.href = "/driver/app-entry";
+          }
         }}
         className="text-xs text-emerald-300 underline"
       >

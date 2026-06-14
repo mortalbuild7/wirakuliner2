@@ -24,6 +24,22 @@ function isApkWebView(): boolean {
   return Boolean(w.ReactNativeWebView || w.__WIRA_APK_WEBVIEW__);
 }
 
+function readInjectedTokens(): Tokens | null {
+  const w = window as Window & { __WIRA_NATIVE_SESSION__?: Tokens };
+  if (w.__WIRA_NATIVE_SESSION__?.access_token && w.__WIRA_NATIVE_SESSION__?.refresh_token) {
+    return w.__WIRA_NATIVE_SESSION__;
+  }
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Tokens;
+    if (parsed.access_token && parsed.refresh_token) return parsed;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 function isRefreshReuseError(message?: string) {
   return Boolean(
     message &&
@@ -66,9 +82,7 @@ function bridgeServerCookiesFireAndForget(tokens: Tokens) {
       body: JSON.stringify(tokens),
     },
     BRIDGE_TIMEOUT_MS
-  ).catch(() => {
-    /* best-effort */
-  });
+  ).catch(() => {});
 }
 
 async function bridgeServerCookiesBlocking(tokens: Tokens): Promise<string | null> {
@@ -90,11 +104,27 @@ async function bridgeServerCookiesBlocking(tokens: Tokens): Promise<string | nul
     return j.error ?? `Bridge gagal (HTTP ${bridgeRes.status})`;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (/abort/i.test(msg)) {
-      return "Sinkron cookie timeout.";
-    }
+    if (/abort/i.test(msg)) return "Sinkron cookie timeout.";
     return msg || "Bridge sesi gagal";
   }
+}
+
+function apkGoDriver(tokens: Tokens) {
+  const w = window as Window & { __WIRA_NATIVE_SESSION__?: Tokens };
+  w.__WIRA_NATIVE_SESSION__ = tokens;
+  storeDriverTokens(tokens, true);
+  postNativeSessionSync(tokens);
+  postNativeDriverBoot("session_ok");
+  markFreshLogin();
+
+  const target = `${window.location.origin}/driver`;
+  const rn = (
+    window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
+  ).ReactNativeWebView;
+  rn?.postMessage(JSON.stringify({ type: "WIRA_GO_DRIVER", url: target }));
+
+  bridgeServerCookiesFireAndForget(tokens);
+  window.location.href = target;
 }
 
 export default function DriverAppEntryPage() {
@@ -107,28 +137,25 @@ export default function DriverAppEntryPage() {
     resetBrowserClient();
     let cancelled = false;
 
-    function goToDriver() {
+    if (isApkWebView()) {
+      const early = readInjectedTokens();
+      if (early) {
+        appliedRef.current = true;
+        apkGoDriver(early);
+        return;
+      }
+    }
+
+    function goToDriver(tokens: Tokens) {
+      if (isApkWebView()) {
+        appliedRef.current = true;
+        apkGoDriver(tokens);
+        return;
+      }
+
       markFreshLogin();
-      setMsg("Membuka dashboard driver...");
       postNativeDriverBoot("redirecting");
-
-      const target = `${window.location.origin}/driver`;
-      window.location.replace(target);
-
-      window.setTimeout(() => {
-        if (cancelled) return;
-        if (window.location.pathname.includes("app-entry")) {
-          window.location.href = `${target}?_boot=${Date.now()}`;
-        }
-      }, 2000);
-
-      window.setTimeout(() => {
-        if (cancelled) return;
-        if (window.location.pathname.includes("app-entry")) {
-          appliedRef.current = false;
-          window.location.assign(`${target}?_force=${Date.now()}`);
-        }
-      }, 5000);
+      window.location.replace(`${window.location.origin}/driver`);
     }
 
     async function completeLogin(active: Session) {
@@ -140,34 +167,22 @@ export default function DriverAppEntryPage() {
         refresh_token: active.refresh_token,
       };
 
+      if (isApkWebView()) {
+        goToDriver(tokens);
+        return;
+      }
+
       const w = window as Window & { __WIRA_NATIVE_SESSION__?: Tokens };
       w.__WIRA_NATIVE_SESSION__ = tokens;
       postNativeSessionSync(tokens);
       storeDriverTokens(tokens, true);
       postNativeDriverBoot("session_ok");
 
-      const apk = isApkWebView();
-
-      if (apk) {
-        bridgeServerCookiesFireAndForget(tokens);
-        goToDriver();
-        return;
-      }
-
       setMsg("Menyinkronkan cookie...");
       const bridgeErr = await bridgeServerCookiesBlocking(tokens);
       const verified = await readLocalSession(createClient());
       if (!verified?.user) {
         appliedRef.current = false;
-        const rn = (
-          window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
-        ).ReactNativeWebView;
-        rn?.postMessage(
-          JSON.stringify({
-            type: "WIRA_SESSION_FAILED",
-            message: bridgeErr ?? "Sesi driver tidak valid setelah sinkron.",
-          })
-        );
         setMsg("Gagal sinkron sesi. Login ulang di aplikasi.");
         return;
       }
@@ -179,24 +194,20 @@ export default function DriverAppEntryPage() {
         },
         true
       );
-      goToDriver();
+      goToDriver({
+        access_token: verified.access_token,
+        refresh_token: verified.refresh_token,
+      });
     }
 
     async function run() {
       if (appliedRef.current || runningRef.current) return;
 
-      const w = window as Window & {
-        __WIRA_NATIVE_SESSION__?: Tokens;
-      };
-
-      let tokens = w.__WIRA_NATIVE_SESSION__;
-      if (!tokens) {
-        try {
-          const raw = sessionStorage.getItem(STORAGE_KEY);
-          if (raw) tokens = JSON.parse(raw);
-        } catch {
-          /* ignore */
-        }
+      const tokens = readInjectedTokens();
+      if (isApkWebView() && tokens) {
+        appliedRef.current = true;
+        apkGoDriver(tokens);
+        return;
       }
 
       runningRef.current = true;
@@ -211,14 +222,7 @@ export default function DriverAppEntryPage() {
         }
 
         if (!tokens?.access_token || !tokens?.refresh_token) return;
-
         if (failedRefreshRef.current === tokens.refresh_token) return;
-
-        try {
-          sessionStorage.removeItem(STORAGE_KEY);
-        } catch {
-          /* ignore */
-        }
 
         if (cancelled) return;
         setMsg("Memuat dashboard driver...");
@@ -232,22 +236,11 @@ export default function DriverAppEntryPage() {
 
         if (error) {
           failedRefreshRef.current = tokens.refresh_token;
-
           const recovered = await readLocalSession(supabase);
           if (recovered?.user) {
             await completeLogin(recovered);
             return;
           }
-
-          const rn = (
-            window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
-          ).ReactNativeWebView;
-          rn?.postMessage(
-            JSON.stringify({
-              type: "WIRA_SESSION_FAILED",
-              message: error.message,
-            })
-          );
           setMsg(
             isRefreshReuseError(error.message)
               ? "Sesi bentrok. Tutup app, buka lagi, lalu login ulang."
@@ -261,8 +254,7 @@ export default function DriverAppEntryPage() {
           return;
         }
 
-        const latest = (await readLocalSession(supabase)) ?? data.session;
-        await completeLogin(latest);
+        await completeLogin((await readLocalSession(supabase)) ?? data.session);
       } finally {
         runningRef.current = false;
       }
@@ -274,15 +266,16 @@ export default function DriverAppEntryPage() {
         .detail;
       if (!detail?.access_token || !detail?.refresh_token) return;
 
-      const w = window as Window & { __WIRA_NATIVE_SESSION__?: Tokens };
-      const prev = w.__WIRA_NATIVE_SESSION__;
-      if (
-        prev?.refresh_token === detail.refresh_token &&
-        failedRefreshRef.current === detail.refresh_token
-      ) {
+      if (isApkWebView()) {
+        appliedRef.current = true;
+        apkGoDriver({
+          access_token: detail.access_token,
+          refresh_token: detail.refresh_token,
+        });
         return;
       }
 
+      const w = window as Window & { __WIRA_NATIVE_SESSION__?: Tokens };
       w.__WIRA_NATIVE_SESSION__ = {
         access_token: detail.access_token,
         refresh_token: detail.refresh_token,
@@ -295,20 +288,23 @@ export default function DriverAppEntryPage() {
 
     const poll = setInterval(() => {
       if (appliedRef.current || runningRef.current) return;
-      const native = (
-        window as Window & { __WIRA_NATIVE_SESSION__?: Tokens }
-      ).__WIRA_NATIVE_SESSION__;
-      if (!native?.access_token || !native?.refresh_token) return;
+      const native = readInjectedTokens();
+      if (!native) return;
       if (failedRefreshRef.current === native.refresh_token) return;
+      if (isApkWebView()) {
+        appliedRef.current = true;
+        apkGoDriver(native);
+        return;
+      }
       void run();
-    }, 2000);
+    }, 1500);
 
     const timeout = setTimeout(() => {
       if (!cancelled && !appliedRef.current) {
         postNativeDriverBoot("waiting_token");
         setMsg("Menunggu token terlalu lama. Login ulang di aplikasi.");
       }
-    }, 20000);
+    }, 15000);
 
     return () => {
       cancelled = true;
