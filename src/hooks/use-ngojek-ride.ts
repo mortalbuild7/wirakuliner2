@@ -807,6 +807,19 @@ export function useNgojekRide() {
       }
 
       if (json.needsPayment) {
+        persistActiveTransitOrderHint({
+          id: orderId,
+          order_status: "pending_payment",
+          delivery_address: formatTransitAddressByService(
+            serviceType,
+            pickupAddress.trim() || "Lokasi jemput",
+            destAddress.trim()
+          ),
+          service_type: serviceType,
+          driver_id: null,
+          updated_at: new Date().toISOString(),
+        });
+
         if (paymentBypass || payload.skipPayment) {
           const confirmRes = await fetch("/api/orders/confirm-payment", {
             method: "POST",

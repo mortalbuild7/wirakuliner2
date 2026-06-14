@@ -10,6 +10,7 @@ import {
 } from "@/lib/order-channel";
 import {
   clearActiveTransitOrderHint,
+  customerActiveOrderHref,
   persistActiveTransitOrderHint,
   readActiveTransitOrderHint,
   type ActiveTransitOrderHint,
@@ -109,34 +110,65 @@ export function CustomerActiveOrderBanner({ className }: { className?: string })
     legs?.pickup && legs?.destination
       ? `${legs.pickup} → ${legs.destination}`
       : order.delivery_address;
+  const isPendingPayment = order.order_status === "pending_payment";
+  const href = customerActiveOrderHref(order);
+  const ctaLabel = isPendingPayment ? "Bayar" : "Lacak";
+  const headline = isPendingPayment
+    ? "Pesanan menunggu pembayaran"
+    : "Pesanan sedang berjalan";
 
   return (
     <Link
-      href={`/customer/orders/${order.id}`}
+      href={href}
       className={cn(
-        "block rounded-2xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-sky-50 p-4 shadow-sm transition active:scale-[0.99] hover:border-emerald-400 hover:shadow-md",
+        "block rounded-2xl border p-4 shadow-sm transition active:scale-[0.99] hover:shadow-md",
+        isPendingPayment
+          ? "border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 hover:border-amber-400"
+          : "border-emerald-300 bg-gradient-to-r from-emerald-50 to-sky-50 hover:border-emerald-400",
         className
       )}
     >
       <div className="flex items-start gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md">
+        <span
+          className={cn(
+            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md",
+            isPendingPayment ? "bg-amber-600" : "bg-emerald-600"
+          )}
+        >
           <Icon className="h-5 w-5" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
-            Pesanan sedang berjalan
+          <p
+            className={cn(
+              "text-xs font-bold uppercase tracking-wide",
+              isPendingPayment ? "text-amber-800" : "text-emerald-800"
+            )}
+          >
+            {headline}
           </p>
           <p className="mt-0.5 text-sm font-bold text-slate-900">{channel}</p>
           <p className="mt-1 line-clamp-2 text-xs text-slate-600">{routeHint}</p>
-          <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200">
+          <p
+            className={cn(
+              "mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-semibold ring-1",
+              isPendingPayment
+                ? "text-amber-800 ring-amber-200"
+                : "text-emerald-800 ring-emerald-200"
+            )}
+          >
             {loading ? (
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : null}
             {statusLabel}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1 text-emerald-800">
-          <span className="text-[11px] font-bold">Lacak</span>
+        <div
+          className={cn(
+            "flex shrink-0 flex-col items-end gap-1",
+            isPendingPayment ? "text-amber-800" : "text-emerald-800"
+          )}
+        >
+          <span className="text-[11px] font-bold">{ctaLabel}</span>
           <ChevronRight className="h-5 w-5" aria-hidden />
         </div>
       </div>

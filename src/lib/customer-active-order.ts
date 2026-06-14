@@ -33,6 +33,14 @@ export function isCustomerActiveOrderStatus(status: OrderStatus): boolean {
   return CUSTOMER_ACTIVE_ORDER_STATUSES.includes(status);
 }
 
+/** Tujuan banner beranda: bayar jika belum lunas, lacak jika sudah dibayar. */
+export function customerActiveOrderHref(order: Pick<ActiveTransitOrderRecord, "id" | "order_status">): string {
+  if (order.order_status === "pending_payment") {
+    return `/customer/orders/${order.id}/pay`;
+  }
+  return `/customer/orders/${order.id}`;
+}
+
 export function readActiveTransitOrderHint(): ActiveTransitOrderHint | null {
   if (typeof window === "undefined") return null;
   try {

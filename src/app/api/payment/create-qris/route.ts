@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { isNgojekOrder } from "@/lib/order-channel";
+import { isTransitOrder } from "@/lib/order-channel";
 import {
   buildMidtransOrderId,
   chargeMidtransQris,
@@ -117,11 +117,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const isNgojek = isNgojekOrder(order.delivery_address ?? "");
-    if (paymentType === "ngojek" && !isNgojek) {
-      return secureJsonResponse({ error: "Bukan pesanan NGOJEK" }, { status: 400 });
+    const isTransitRide = isTransitOrder(order.delivery_address ?? "");
+    if (paymentType === "ngojek" && !isTransitRide) {
+      return secureJsonResponse({ error: "Bukan pesanan layanan transport" }, { status: 400 });
     }
-    if (paymentType === "food" && isNgojek) {
+    if (paymentType === "food" && isTransitRide) {
       return secureJsonResponse({ error: "Bukan pesanan kuliner" }, { status: 400 });
     }
 

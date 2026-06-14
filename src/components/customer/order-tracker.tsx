@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useSubscribeDriverGps } from "@/hooks/use-subscribe-driver-gps";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +73,7 @@ type TrackResponse = {
 };
 
 export function OrderTracker({ orderId }: { orderId: string }) {
+  const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
   const [customerUserId, setCustomerUserId] = useState<string | null>(null);
   const [driverPos, setDriverPos] = useState<{ lat: number; lng: number } | null>(null);
@@ -97,8 +99,11 @@ export function OrderTracker({ orderId }: { orderId: string }) {
       setError(null);
       setLoading(false);
       syncActiveTransitOrderFromOrder(next);
+      if (next.order_status === "pending_payment") {
+        router.replace(`/customer/orders/${orderId}/pay`);
+      }
     },
-    []
+    [orderId, router]
   );
 
   const resolveDriverPos = useCallback(
