@@ -286,6 +286,13 @@
   position: relative;
   z-index: 0;
   overflow: hidden;
+  contain: paint;
+}
+
+.customer-layout-root .customer-ride-map .leaflet-container {
+  z-index: 0 !important;
+  position: relative !important;
+  overflow: hidden !important;
 }
 
 .customer-layout-root .customer-ride-map .leaflet-pane,

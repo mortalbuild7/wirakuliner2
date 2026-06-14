@@ -27,13 +27,11 @@ export type PickupMapContainerProps = {
   height?: number;
 };
 
-/** Fase 2: peta jemput inline sederhana — tanpa iframe/portal/sheet. */
+/** Peta jemput inline — satu layer wrapper di PickupMapInner. */
 export function PickupMapContainer(props: PickupMapContainerProps) {
   return (
     <MapLoadErrorBoundary title="Peta jemput gagal dimuat">
-      <div className="customer-ride-map overflow-hidden rounded-2xl">
-        <PickupMapInner {...props} />
-      </div>
+      <PickupMapInner {...props} />
     </MapLoadErrorBoundary>
   );
 }

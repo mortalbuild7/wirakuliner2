@@ -149,7 +149,7 @@ export function PickupMapInner({
 
       {/* Center-pinned marker — peta bergerak, pin tetap di tengah layar */}
       <div
-        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+        className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center"
         aria-hidden
       >
         <div className="-mt-8 flex flex-col items-center">
