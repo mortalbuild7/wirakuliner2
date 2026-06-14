@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Toaster } from "sonner";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -36,35 +37,92 @@ const NAV = [
   },
 ];
 
-/** Potong tile Leaflet yang menembus header saat scroll (bug GPU Chrome Android). */
-function clipCustomerMapsBelowHeader() {
+function CustomerHeaderBar({ customerName }: { customerName: string | null }) {
+  return (
+    <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <Link href="/customer" className="flex items-center gap-2.5">
+        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/25">
+          <Sparkles className="h-5 w-5 text-white" />
+        </span>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+            <p className="text-sm font-bold tracking-tight text-slate-900">WIRA</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">
+              Kuliner
+            </p>
+          </div>
+          <PoweredByDaffacell variant="header" />
+        </div>
+      </Link>
+      <PoweredByDaffacell variant="hidden" />
+      <div className="flex items-center gap-2">
+        <WalletBalanceBadge href="/customer/wallet" />
+        {customerName ? (
+          <span
+            className="flex max-w-[9rem] items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50 px-3 py-1.5 text-[11px] font-medium text-emerald-800 sm:max-w-[12rem]"
+            title={customerName}
+          >
+            <User className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{customerName}</span>
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Sembunyikan peta yang menyentuh zona header. */
+function shieldMapsFromHeader() {
   const scrollEl = document.querySelector<HTMLElement>(".customer-scroll-layer");
-  const headerEl = document.querySelector<HTMLElement>(".customer-app-header");
+  const headerEl = document.querySelector<HTMLElement>(".customer-app-header-portal");
   if (!scrollEl || !headerEl) return;
 
   const headerBottom = headerEl.getBoundingClientRect().bottom;
-  scrollEl.querySelectorAll<HTMLElement>(".customer-map-wrap").forEach((wrap) => {
-    const top = wrap.getBoundingClientRect().top;
-    const clip = Math.max(0, Math.ceil(headerBottom - top));
-    if (clip > 0) {
-      wrap.style.clipPath = `inset(${clip}px 0 0 0)`;
-      wrap.style.setProperty("-webkit-clip-path", `inset(${clip}px 0 0 0)`);
-    } else {
-      wrap.style.clipPath = "";
-      wrap.style.removeProperty("-webkit-clip-path");
-    }
-  });
+  scrollEl
+    .querySelectorAll<HTMLElement>(".customer-map-wrap, .customer-map-frame")
+    .forEach((el) => {
+      const top = el.getBoundingClientRect().top;
+      if (top < headerBottom - 1) {
+        el.style.visibility = "hidden";
+        el.style.pointerEvents = "none";
+      } else {
+        el.style.visibility = "";
+        el.style.pointerEvents = "";
+      }
+    });
 }
 
 export function CustomerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [customerName, setCustomerName] = useState<string | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
+  const headerMeasureRef = useRef<HTMLElement>(null);
   const supabase = createClient();
 
   useLayoutEffect(() => {
     document.documentElement.classList.add("customer-app-active");
-    return () => document.documentElement.classList.remove("customer-app-active");
+    setPortalReady(true);
+    return () => {
+      document.documentElement.classList.remove("customer-app-active");
+      setPortalReady(false);
+    };
   }, []);
+
+  useLayoutEffect(() => {
+    const el = headerMeasureRef.current;
+    if (!el) return;
+
+    const sync = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      document.documentElement.style.setProperty("--customer-header-h", `${h}px`);
+      shieldMapsFromHeader();
+    };
+    sync();
+
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [customerName, portalReady]);
 
   useEffect(() => {
     const scrollEl = document.querySelector<HTMLElement>(".customer-scroll-layer");
@@ -83,37 +141,23 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
     const scrollEl = document.querySelector<HTMLElement>(".customer-scroll-layer");
     if (!scrollEl) return;
 
-    const maps = () => scrollEl.querySelectorAll<HTMLElement>(".customer-map-wrap");
-
-    const onScroll = () => clipCustomerMapsBelowHeader();
-    const observeMaps = () => maps().forEach((el) => ro.observe(el));
-
-    clipCustomerMapsBelowHeader();
-    observeMaps();
+    const onScroll = () => shieldMapsFromHeader();
+    shieldMapsFromHeader();
 
     scrollEl.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
 
     const ro = new ResizeObserver(onScroll);
     ro.observe(scrollEl);
-    observeMaps();
 
-    const mo = new MutationObserver(() => {
-      onScroll();
-      observeMaps();
-    });
+    const mo = new MutationObserver(onScroll);
     mo.observe(scrollEl, { childList: true, subtree: true });
-
-    const t1 = window.setTimeout(onScroll, 300);
-    const t2 = window.setTimeout(onScroll, 1200);
 
     return () => {
       scrollEl.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
       ro.disconnect();
       mo.disconnect();
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
     };
   }, [pathname]);
 
@@ -129,43 +173,28 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
     });
   }, [supabase]);
 
+  const headerPortal =
+    portalReady &&
+    createPortal(
+      <header className="customer-app-header-portal border-b border-slate-200 bg-white shadow-sm">
+        <CustomerHeaderBar customerName={customerName} />
+      </header>,
+      document.body
+    );
+
   return (
     <div className="customer-layout-root flex h-[100svh] min-h-[100svh] flex-col overflow-hidden bg-slate-50 text-slate-900">
+      {headerPortal}
+
       <HelloWelcome />
 
-      <header className="customer-app-header fixed inset-x-0 top-0 border-b border-slate-200 bg-white shadow-sm">
-        <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <Link href="/customer" className="flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/25">
-              <Sparkles className="h-5 w-5 text-white" />
-            </span>
-            <div className="flex flex-col gap-0.5">
-              <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
-                <p className="text-sm font-bold tracking-tight text-slate-900">WIRA</p>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">
-                  Kuliner
-                </p>
-              </div>
-              <PoweredByDaffacell variant="header" />
-            </div>
-          </Link>
-          <PoweredByDaffacell variant="hidden" />
-          <div className="flex items-center gap-2">
-            <WalletBalanceBadge href="/customer/wallet" />
-            {customerName ? (
-              <span
-                className="flex max-w-[9rem] items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50 px-3 py-1.5 text-[11px] font-medium text-emerald-800 sm:max-w-[12rem]"
-                title={customerName}
-              >
-                <User className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{customerName}</span>
-              </span>
-            ) : null}
-          </div>
-        </div>
+      <header
+        ref={headerMeasureRef}
+        className="customer-app-header-measure pointer-events-none invisible shrink-0"
+        aria-hidden
+      >
+        <CustomerHeaderBar customerName={customerName} />
       </header>
-
-      <div className="customer-header-spacer shrink-0" aria-hidden />
 
       <main className="customer-scroll-layer relative z-0 mx-auto min-h-0 w-full max-w-mobile flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain safe-pb-nav">
         <div className="customer-scroll-content relative z-0">
