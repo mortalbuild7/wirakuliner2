@@ -55,6 +55,8 @@ export const RATE_LIMITS = {
   api: { limit: 60, windowMs: 60_000 },
   apiWrite: { limit: 30, windowMs: 60_000 },
   auth: { limit: 10, windowMs: 15 * 60_000 },
+  /** Bridge sesi WebView APK driver — terpisah dari login */
+  driverBridge: { limit: 40, windowMs: 15 * 60_000 },
   page: { limit: 120, windowMs: 60_000 },
   /** Panel & API admin — lebih ketat */
   admin: { limit: 45, windowMs: 60_000 },

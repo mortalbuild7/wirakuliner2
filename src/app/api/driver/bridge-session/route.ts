@@ -13,7 +13,7 @@ import { RATE_LIMITS } from "@/lib/security/rate-limit";
 export async function POST(req: Request) {
   const methodBlock = enforceMethod(req, ["POST"]);
   if (methodBlock) return methodBlock;
-  const rl = enforceRateLimit(req, "driver-bridge", RATE_LIMITS.auth);
+  const rl = enforceRateLimit(req, "driver-bridge", RATE_LIMITS.driverBridge);
   if (rl) return rl;
 
   const parsed = await readJsonBody<{

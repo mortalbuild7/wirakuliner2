@@ -34,6 +34,7 @@ const WEB_LOAD_TIMEOUT_MS = 28_000;
 
 const APP_ENTRY_URLS = getDriverAppEntryUrls();
 const WEB_TIMEOUT_CODES = new Set([-8, 8, -6, 6]);
+const nativeSessionInjectedRef = { current: false };
 
 function isAllowedUrl(url: string) {
   try {
@@ -58,9 +59,15 @@ function injectNativeCommand(
   `);
 }
 
-function injectSession(webRef: React.RefObject<WebView | null>, session: Session) {
+function injectSession(
+  webRef: React.RefObject<WebView | null>,
+  session: Session,
+  force = false
+) {
   if (!webRef.current) return false;
+  if (nativeSessionInjectedRef.current && !force) return false;
   webRef.current.injectJavaScript(sessionBootstrapScript(session));
+  nativeSessionInjectedRef.current = true;
   return true;
 }
 
@@ -125,7 +132,12 @@ function sessionBootstrapScript(session: Session) {
   return `
     (function() {
       var detail = ${payload};
+      var prev = window.__WIRA_NATIVE_SESSION__;
+      if (prev && prev.refresh_token === detail.refresh_token && window.__WIRA_SESSION_INJECTED__) {
+        return;
+      }
       window.__WIRA_NATIVE_SESSION__ = detail;
+      window.__WIRA_SESSION_INJECTED__ = true;
       window.dispatchEvent(new CustomEvent('wira-set-session', { detail: detail }));
     })();
     true;
@@ -459,6 +471,7 @@ export default function App() {
   const redirectToAppEntry = useCallback(() => {
     bootCompleteRef.current = false;
     sessionInjectedRef.current = false;
+    nativeSessionInjectedRef.current = false;
     setSessionInjected(false);
     if (sessionRef.current) {
       injectSession(webRef, sessionRef.current);
@@ -477,9 +490,11 @@ export default function App() {
     sessionRef.current = next;
     setSession(next);
     bootCompleteRef.current = false;
+    sessionRetryRef.current = 0;
     sessionInjectedRef.current = false;
+    nativeSessionInjectedRef.current = false;
     setSessionInjected(false);
-    injectSession(webRef, next);
+    injectSession(webRef, next, true);
     webRef.current?.injectJavaScript(
       `window.location.replace(${JSON.stringify(getAppEntryUrl())}); true;`
     );
@@ -572,19 +587,9 @@ export default function App() {
       hideSpinner();
     });
 
-    const injectRetry = setInterval(() => {
-      if (bootCompleteRef.current || !sessionRef.current) return;
-      if (sessionInjectedRef.current) return;
-      if (injectSession(webRef, sessionRef.current)) {
-        sessionInjectedRef.current = true;
-        setSessionInjected(true);
-      }
-    }, 600);
-
     const stopSpinner = setTimeout(hideSpinner, 4000);
 
     return () => {
-      clearInterval(injectRetry);
       clearTimeout(stopSpinner);
     };
   }, [phase, session, hideSpinner]);
@@ -649,6 +654,7 @@ export default function App() {
         }
 
         if (data.type === "WIRA_SESSION_FAILED") {
+          const failMsg = (data as { message?: string }).message?.trim();
           if (sessionRetryRef.current < 2) {
             sessionRetryRef.current += 1;
             void reinjectFreshSession();
@@ -657,7 +663,8 @@ export default function App() {
             setPhase("login");
             Alert.alert(
               "Sesi gagal",
-              "Token login kedaluwarsa. Silakan masuk ulang."
+              failMsg ||
+                "Token login tidak valid. Silakan masuk ulang."
             );
           }
         }
@@ -720,7 +727,7 @@ export default function App() {
     setWebError(null);
     webRef.current?.injectJavaScript(webErrorGuardScript());
     const active = sessionRef.current;
-    if (active) {
+    if (active && !nativeSessionInjectedRef.current) {
       injectSession(webRef, active);
       sessionInjectedRef.current = true;
       setSessionInjected(true);
@@ -793,6 +800,7 @@ export default function App() {
               bootCompleteRef.current = false;
               sessionRetryRef.current = 0;
               sessionInjectedRef.current = false;
+              nativeSessionInjectedRef.current = false;
               setSessionInjected(false);
               chunkReloadRef.current = 0;
               webRetryRef.current = 0;
