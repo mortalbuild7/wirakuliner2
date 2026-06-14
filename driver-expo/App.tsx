@@ -38,6 +38,7 @@ const APP_ENTRY_URLS = getDriverAppEntryUrls();
 const DRIVER_HOME_URLS = getDriverHomeUrls();
 const WEB_TIMEOUT_CODES = new Set([-8, 8, -6, 6]);
 const nativeSessionInjectedRef = { current: false };
+const lastInjectedRefreshRef = { current: "" as string | null };
 
 function isAllowedUrl(url: string) {
   try {
@@ -68,9 +69,16 @@ function injectSession(
   force = false
 ) {
   if (!webRef.current) return false;
-  if (nativeSessionInjectedRef.current && !force) return false;
-  webRef.current.injectJavaScript(apkSessionBootstrapScript(session));
+  if (
+    !force &&
+    nativeSessionInjectedRef.current &&
+    lastInjectedRefreshRef.current === session.refresh_token
+  ) {
+    return false;
+  }
+  webRef.current.injectJavaScript(apkSessionBootstrapScript(session, false));
   nativeSessionInjectedRef.current = true;
+  lastInjectedRefreshRef.current = session.refresh_token;
   return true;
 }
 
@@ -127,7 +135,7 @@ function webErrorGuardScript() {
   `;
 }
 
-function apkSessionBootstrapScript(session: Session) {
+function apkSessionBootstrapScript(session: Session, dispatchEvent = false) {
   const payload = JSON.stringify({
     access_token: session.access_token,
     refresh_token: session.refresh_token,
@@ -137,7 +145,8 @@ function apkSessionBootstrapScript(session: Session) {
       window.__WIRA_APK_WEBVIEW__ = true;
       var detail = ${payload};
       var prev = window.__WIRA_NATIVE_SESSION__;
-      if (prev && prev.refresh_token === detail.refresh_token && window.__WIRA_SESSION_INJECTED__) {
+      var same = prev && prev.refresh_token === detail.refresh_token;
+      if (same && window.__WIRA_SESSION_INJECTED__) {
         var path0 = location.pathname || '';
         if (path0.indexOf('/driver/app-entry') !== -1 || path0.indexOf('driver-bridge') !== -1) {
           location.replace('/driver');
@@ -149,7 +158,9 @@ function apkSessionBootstrapScript(session: Session) {
       try {
         sessionStorage.setItem('wira_bridge_tokens', JSON.stringify(detail));
       } catch (e) {}
-      window.dispatchEvent(new CustomEvent('wira-set-session', { detail: detail }));
+      if (${dispatchEvent ? "true" : "false"} && !same) {
+        window.dispatchEvent(new CustomEvent('wira-set-session', { detail: detail }));
+      }
       var path = location.pathname || '';
       if (path.indexOf('/driver/app-entry') !== -1 || path.indexOf('driver-bridge') !== -1) {
         location.replace('/driver');
@@ -234,6 +245,7 @@ function DriverWebShell({
   reloadWebView,
   onRetry,
   onEscapeBridge,
+  showWebLoader,
 }: {
   webRef: React.RefObject<WebView | null>;
   activeWebUrl: string;
@@ -256,6 +268,7 @@ function DriverWebShell({
   reloadWebView: (resetRetries?: boolean) => void;
   onRetry: () => void;
   onEscapeBridge?: () => void;
+  showWebLoader: boolean;
 }) {
   const toggleDisabled = driverState.delivering && driverState.online;
 
@@ -358,7 +371,7 @@ function DriverWebShell({
               : "WIRADriverExpo/1.0 iOS"
           }
         />
-        {(webLoading || webError) && (
+        {(showWebLoader || webError) && (
           <View style={styles.loader} pointerEvents={webError ? "auto" : "none"}>
             {webError ? (
               <>
@@ -370,7 +383,10 @@ function DriverWebShell({
                 </Pressable>
               </>
             ) : (
-              <ActivityIndicator size="large" color="#34d399" />
+              <>
+                <ActivityIndicator size="large" color="#34d399" />
+                <Text style={styles.loaderText}>Memuat dashboard...</Text>
+              </>
             )}
           </View>
         )}
@@ -445,8 +461,12 @@ export default function App() {
     delivering: false,
     hasDriver: false,
   });
+  const [webUiReady, setWebUiReady] = useState(false);
 
-  const hideSpinner = useCallback(() => setWebLoading(false), []);
+  const hideSpinner = useCallback(() => {
+    setWebLoading(false);
+    setWebUiReady(true);
+  }, []);
 
   const activeWebUrl = forcedWebUrl ?? DRIVER_HOME_URLS[webUrlIndex] ?? DRIVER_HOME_URLS[0];
 
@@ -601,7 +621,7 @@ export default function App() {
     const bootstrap = nativeToolbarBootstrapScript();
     const skipEntry = skipAppEntryRedirectScript();
     if (!session) return bootstrap + skipEntry + webErrorGuardScript();
-    return bootstrap + apkSessionBootstrapScript(session) + skipEntry + webErrorGuardScript();
+    return bootstrap + apkSessionBootstrapScript(session, false) + skipEntry + webErrorGuardScript();
   }, [session?.access_token, session?.refresh_token]);
 
   useEffect(() => {
@@ -703,9 +723,6 @@ export default function App() {
         setForcedWebUrl(null);
         bootCompleteRef.current = true;
         hideSpinner();
-        if (sessionRef.current) {
-          injectSession(webRef, sessionRef.current, true);
-        }
         return;
       }
 
@@ -776,7 +793,11 @@ export default function App() {
 
         if (data.type === "WIRA_SESSION_FAILED") {
           const failMsg = (data as { message?: string }).message?.trim();
-          if (sessionRetryRef.current < 2) {
+          if (webUiReady || bootCompleteRef.current) {
+            hideSpinner();
+            return;
+          }
+          if (sessionRetryRef.current < 1) {
             sessionRetryRef.current += 1;
             void reinjectFreshSession();
           } else {
@@ -784,8 +805,7 @@ export default function App() {
             setPhase("login");
             Alert.alert(
               "Sesi gagal",
-              failMsg ||
-                "Token login tidak valid. Silakan masuk ulang."
+              failMsg || "Token login tidak valid. Silakan masuk ulang."
             );
           }
         }
@@ -801,7 +821,7 @@ export default function App() {
         if (data.type === "WIRA_REQUEST_SESSION") {
           const active = sessionRef.current;
           if (active) {
-            forceDriverDashboard();
+            injectSession(webRef, active, false);
           }
         }
 
@@ -832,7 +852,7 @@ export default function App() {
           console.warn("[WebView] chunk error, reloading…", (data as { message?: string }).message);
           if (chunkReloadRef.current < 3) {
             chunkReloadRef.current += 1;
-            setWebLoading(true);
+            if (!webUiReady) setWebLoading(true);
             setTimeout(() => webRef.current?.reload(), 400);
           } else {
             hideSpinner();
@@ -844,7 +864,7 @@ export default function App() {
           if (/ChunkLoadError|Loading chunk \d+ failed/i.test(msg)) {
             if (chunkReloadRef.current < 3) {
               chunkReloadRef.current += 1;
-              setWebLoading(true);
+              if (!webUiReady) setWebLoading(true);
               setTimeout(() => webRef.current?.reload(), 400);
             } else {
               hideSpinner();
@@ -857,7 +877,7 @@ export default function App() {
         /* ignore */
       }
     },
-    [hideSpinner, forceDriverDashboard, reinjectFreshSession]
+    [hideSpinner, forceDriverDashboard, reinjectFreshSession, webUiReady]
   );
 
   const onWebLoadEnd = useCallback(() => {
@@ -865,13 +885,15 @@ export default function App() {
     setWebError(null);
     webRef.current?.injectJavaScript(webErrorGuardScript());
     const active = sessionRef.current;
-    if (active) {
-      injectSession(webRef, active, true);
+    if (active && !nativeSessionInjectedRef.current) {
+      injectSession(webRef, active, false);
       sessionInjectedRef.current = true;
       setSessionInjected(true);
     }
-    setTimeout(hideSpinner, 600);
-  }, [hideSpinner]);
+    if (!webUiReady) {
+      setTimeout(hideSpinner, 800);
+    }
+  }, [hideSpinner, webUiReady]);
 
   async function handleToggle() {
     if (phase !== "app") {
@@ -947,6 +969,9 @@ export default function App() {
               setForcedWebUrl(null);
               setWebError(null);
               setWebLoading(true);
+              setWebUiReady(false);
+              nativeSessionInjectedRef.current = false;
+              lastInjectedRefreshRef.current = null;
               setPhase("app");
             }}
           />
@@ -980,7 +1005,7 @@ export default function App() {
         onLogout={() => void handleLogout()}
         onWebLoadStart={() => {
           setWebError(null);
-          setWebLoading(true);
+          if (!webUiReady) setWebLoading(true);
         }}
         onWebLoadEnd={onWebLoadEnd}
         onNavChange={onNavChange}
@@ -995,6 +1020,7 @@ export default function App() {
         reloadWebView={reloadWebView}
         onRetry={() => void tryNextHost()}
         onEscapeBridge={() => forceDriverDashboard()}
+        showWebLoader={webLoading && !webUiReady}
       />
     </SafeAreaProvider>
   );
@@ -1106,6 +1132,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.94)",
+    gap: 10,
+  },
+  loaderText: {
+    color: "#64748b",
+    fontSize: 13,
+    fontWeight: "500",
   },
   errorScreen: {
     flex: 1,

@@ -4,6 +4,7 @@ import { createContext, useContext, useCallback, useEffect, useRef, useState } f
 import { createClient } from "@/lib/supabase/client";
 import {
   ensureDriverNativeSession,
+  getNativeAccessToken,
   isDriverApkWebView,
   waitForNativeAccessToken,
 } from "@/lib/driver-native-session";
@@ -91,88 +92,126 @@ function useDriverProfileImpl(): DriverProfileValue {
   const supabase = createClient();
   const refreshGenRef = useRef(0);
   const refreshingRef = useRef(false);
+  const loadedTokenRef = useRef<string | null>(null);
+  const nativeReadySentRef = useRef(false);
+  const sessionFailAtRef = useRef(0);
+  const driverRef = useRef<Driver | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (refreshingRef.current) return;
-    refreshingRef.current = true;
-    const gen = ++refreshGenRef.current;
+  useEffect(() => {
+    driverRef.current = driver;
+  }, [driver]);
 
-    try {
-      if (isDriverApkWebView()) {
-        const token = await waitForNativeAccessToken(5_000);
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (refreshingRef.current) return;
+      refreshingRef.current = true;
+      const gen = ++refreshGenRef.current;
+      const silent = Boolean(opts?.silent);
+      const currentDriver = driverRef.current;
+
+      try {
+        if (isDriverApkWebView()) {
+          const token =
+            getNativeAccessToken() ?? (await waitForNativeAccessToken(silent ? 1_500 : 4_000));
+          if (gen !== refreshGenRef.current) return;
+
+          if (!token) {
+            if (!silent && !currentDriver) {
+              const now = Date.now();
+              if (now - sessionFailAtRef.current > 30_000) {
+                sessionFailAtRef.current = now;
+                postNativeSessionFailed("Token driver belum tersedia");
+              }
+            }
+            return;
+          }
+
+          if (loadedTokenRef.current === token && currentDriver) {
+            return;
+          }
+
+          const { driver: apkDriver, status } = await fetchDriverMeBearer(token);
+          if (gen !== refreshGenRef.current) return;
+
+          if (apkDriver) {
+            loadedTokenRef.current = token;
+            setDriver(apkDriver);
+            setUserId(apkDriver.profile_id);
+            if (!nativeReadySentRef.current) {
+              nativeReadySentRef.current = true;
+              postNativeReady(apkDriver);
+            }
+            return;
+          }
+
+          if (!silent && !currentDriver && (status === 401 || status === 403)) {
+            const now = Date.now();
+            if (now - sessionFailAtRef.current > 30_000) {
+              sessionFailAtRef.current = now;
+              postNativeSessionFailed("Sesi driver kedaluwarsa — login ulang");
+            }
+          }
+          return;
+        }
+
+        await ensureDriverNativeSession(supabase);
         if (gen !== refreshGenRef.current) return;
 
-        if (!token) {
+        const sessionRes = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<{ data: { session: null } }>((resolve) =>
+            setTimeout(() => resolve({ data: { session: null } }), 5_000)
+          ),
+        ]);
+        const uid = sessionRes.data.session?.user?.id ?? null;
+
+        if (!uid) {
           setDriver(null);
           setUserId(null);
-          postNativeSessionFailed("Token driver belum tersedia");
           return;
         }
 
-        const { driver: apkDriver, status } = await fetchDriverMeBearer(token);
+        setUserId(uid);
+        const row = await queryDriverRow(supabase, uid);
         if (gen !== refreshGenRef.current) return;
-
-        if (apkDriver) {
-          setDriver(apkDriver);
-          setUserId(apkDriver.profile_id);
-          postNativeReady(apkDriver);
-          return;
+        setDriver(row);
+        if (row && !nativeReadySentRef.current) {
+          nativeReadySentRef.current = true;
+          postNativeReady(row);
         }
-
-        setDriver(null);
-        setUserId(null);
-        if (status === 401 || status === 403) {
-          postNativeSessionFailed("Sesi driver kedaluwarsa — login ulang");
+      } catch (e) {
+        console.warn("[driver profile]", e);
+        if (!silent) setDriver(null);
+      } finally {
+        refreshingRef.current = false;
+        if (gen === refreshGenRef.current) {
+          setLoading(false);
         }
-        return;
       }
-
-      await ensureDriverNativeSession(supabase);
-      if (gen !== refreshGenRef.current) return;
-
-      const sessionRes = await Promise.race([
-        supabase.auth.getSession(),
-        new Promise<{ data: { session: null } }>((resolve) =>
-          setTimeout(() => resolve({ data: { session: null } }), 5_000)
-        ),
-      ]);
-      const uid = sessionRes.data.session?.user?.id ?? null;
-
-      if (!uid) {
-        setDriver(null);
-        setUserId(null);
-        return;
-      }
-
-      setUserId(uid);
-      const row = await queryDriverRow(supabase, uid);
-      if (gen !== refreshGenRef.current) return;
-      setDriver(row);
-      if (row) postNativeReady(row);
-    } catch (e) {
-      console.warn("[driver profile]", e);
-      setDriver(null);
-    } finally {
-      refreshingRef.current = false;
-      if (gen === refreshGenRef.current) {
-        setLoading(false);
-      }
-    }
-  }, [supabase]);
+    },
+    [supabase]
+  );
 
   useEffect(() => {
     void refresh();
 
-    function onNativeSession() {
-      setLoading(true);
-      void refresh();
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+    function onNativeSession(e: Event) {
+      const detail = (e as CustomEvent<{ refresh_token?: string }>).detail;
+      const rt = detail?.refresh_token ?? null;
+      if (rt && loadedTokenRef.current && driverRef.current) return;
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        void refresh({ silent: Boolean(driverRef.current) });
+      }, 400);
     }
     window.addEventListener("wira-set-session", onNativeSession);
 
     let sub: { unsubscribe: () => void } | undefined;
     if (!isDriverApkWebView()) {
       const { data } = supabase.auth.onAuthStateChange(() => {
-        void refresh();
+        void refresh({ silent: true });
       });
       sub = data.subscription;
     }
@@ -180,29 +219,12 @@ function useDriverProfileImpl(): DriverProfileValue {
     const safety = setTimeout(() => setLoading(false), 12_000);
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener("wira-set-session", onNativeSession);
       sub?.unsubscribe();
       clearTimeout(safety);
     };
   }, [refresh, supabase]);
-
-  useEffect(() => {
-    if (loading) return;
-    const d = driver;
-    postNativeReady(d);
-    if (d) {
-      const rn = (window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } })
-        .ReactNativeWebView;
-      rn?.postMessage(
-        JSON.stringify({
-          type: "WIRA_DRIVER_STATE",
-          online: d.status === "idle" || d.status === "delivering",
-          delivering: d.status === "delivering",
-          hasDriver: true,
-        })
-      );
-    }
-  }, [loading, driver]);
 
   useEffect(() => {
     if (!driver?.id) return;
@@ -219,7 +241,12 @@ function useDriverProfileImpl(): DriverProfileValue {
     };
   }, [driver?.id, supabase]);
 
-  return { driver, userId, loading, refresh };
+  return {
+    driver,
+    userId,
+    loading,
+    refresh: () => refresh({ silent: false }),
+  };
 }
 
 export function DriverProfileProvider({ children }: { children: React.ReactNode }) {
