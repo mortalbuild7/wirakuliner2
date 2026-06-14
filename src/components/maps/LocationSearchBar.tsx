@@ -23,9 +23,7 @@ export type LocationSearchBarProps = {
 };
 
 /**
- * Input pencarian alamat manual — pesan untuk orang lain.
- * Debounce 450ms → searchAddresses (server) → dropdown rounded-2xl.
- * Klik hasil → onSelect → kamera peta melompat via bumpPickupMapFly di parent.
+ * Input pencarian alamat manual — tema terang untuk halaman customer.
  */
 export function LocationSearchBar({
   label,
@@ -35,7 +33,7 @@ export function LocationSearchBar({
   placeholder = "Ketik nama jalan, gedung, atau landmark…",
   nearLat,
   nearLng,
-  accentClass = "text-emerald-300",
+  accentClass = "text-emerald-800",
   disabled = false,
 }: LocationSearchBarProps) {
   const [suggestions, setSuggestions] = useState<GeoLocationPoint[]>([]);
@@ -45,7 +43,6 @@ export function LocationSearchBar({
   const skipSearchRef = useRef(false);
 
   useEffect(() => {
-    // Lewati pencarian setelah user memilih dari dropdown (hindari loop)
     if (skipSearchRef.current) {
       skipSearchRef.current = false;
       return;
@@ -91,30 +88,30 @@ export function LocationSearchBar({
 
   return (
     <div className="relative">
-      <Label className={`text-xs ${accentClass}`}>{label}</Label>
+      <Label className={`text-xs font-semibold ${accentClass}`}>{label}</Label>
       <div className="relative mt-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
-          className="border-white/10 bg-white/5 pl-9 pr-9"
+          className="border-slate-200 bg-white pl-9 pr-9 text-slate-900 placeholder:text-slate-400"
         />
         {searching && (
-          <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-emerald-400" />
+          <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-emerald-600" />
         )}
       </div>
       {searchError && (
-        <p className="mt-1 text-[10px] text-amber-300/90">{searchError}</p>
+        <p className="mt-1 text-[10px] font-medium text-amber-700">{searchError}</p>
       )}
       {suggestions.length > 0 && (
-        <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-44 overflow-y-auto rounded-2xl border border-white/15 bg-slate-950 shadow-xl">
+        <ul className="mt-1 max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-md">
           {suggestions.map((hit) => (
             <li key={`${hit.latitude}-${hit.longitude}-${hit.address}`}>
               <button
                 type="button"
-                className="w-full px-3 py-2.5 text-left text-xs text-white hover:bg-emerald-500/15"
+                className="w-full border-b border-slate-100 px-3 py-2.5 text-left text-xs text-slate-800 last:border-b-0 hover:bg-emerald-50"
                 onClick={() => pick(hit)}
               >
                 {hit.address}

@@ -366,7 +366,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
       )}
 
       {ride.showFlexiblePickup ? (
-        <section className="glass-card relative z-0 overflow-hidden space-y-3 p-4">
+        <section className="glass-card relative space-y-3 p-4">
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
               <MapPinned className="h-4 w-4" />
@@ -409,7 +409,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
               type="button"
               variant="outline"
               size="sm"
-              className="border-emerald-500/40 text-emerald-200"
+              className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
               onClick={ride.applyPickupFromDevice}
               disabled={ride.gpsLoading || !ride.currentDeviceLocation}
             >
@@ -420,7 +420,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
               type="button"
               variant="outline"
               size="sm"
-              className="border-white/20 text-muted-foreground"
+              className="border-slate-200 text-slate-700 hover:bg-slate-50"
               onClick={ride.refreshPickupGps}
               disabled={ride.gpsLoading}
             >
@@ -461,7 +461,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
                 value={ride.pickupAddress}
                 onChange={(e) => ride.onPickupAddressChange(e.target.value)}
                 placeholder="Lokasi pengambilan paket"
-                className="mt-1 border-white/10 bg-white/5"
+                className="mt-1 border-slate-200 bg-white text-slate-900"
               />
             </div>
           </div>
@@ -487,23 +487,23 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
               />
             ) : (
               <>
-                <Label className="text-xs text-cyan-300">Alamat penerima</Label>
+                <Label className="text-xs font-semibold text-sky-800">Alamat penerima</Label>
                 <Input
                   value={ride.destAddress}
                   onChange={(e) => ride.onDestAddressChange(e.target.value)}
                   placeholder="Alamat pengantaran paket..."
-                  className="mt-1 border-white/10 bg-white/5 pr-9"
+                  className="mt-1 border-slate-200 bg-white pr-9 text-slate-900 placeholder:text-slate-400"
                 />
                 {ride.geocodingDest && (
-                  <Loader2 className="absolute right-3 top-[2.15rem] h-4 w-4 animate-spin text-cyan-400" />
+                  <Loader2 className="absolute right-3 top-[2.15rem] h-4 w-4 animate-spin text-sky-600" />
                 )}
                 {ride.destSuggestions.length > 0 && (
-                  <ul className="absolute left-0 right-0 top-full z-40 mt-1 max-h-40 overflow-y-auto rounded-xl border border-white/15 bg-slate-950 shadow-xl">
+                  <ul className="mt-1 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-md">
                     {ride.destSuggestions.map((hit) => (
                       <li key={`${hit.lat}-${hit.lng}-${hit.label}`}>
                         <button
                           type="button"
-                          className="w-full px-3 py-2.5 text-left text-xs text-white hover:bg-cyan-500/15"
+                          className="w-full border-b border-slate-100 px-3 py-2.5 text-left text-xs text-slate-800 last:border-b-0 hover:bg-sky-50"
                           onClick={() => ride.applyDestinationHit(hit)}
                         >
                           {hit.label}

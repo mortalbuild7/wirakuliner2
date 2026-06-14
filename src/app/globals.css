@@ -304,6 +304,13 @@
   z-index: 0 !important;
 }
 
+.customer-layout-root .customer-ride-map .leaflet-control-attribution {
+  background: rgb(255 255 255 / 0.9) !important;
+  color: #64748b !important;
+  font-size: 9px !important;
+  border-radius: 0.5rem 0 0 0;
+}
+
 .customer-layout-root .customer-ride-map .leaflet-top,
 .customer-layout-root .customer-ride-map .leaflet-bottom,
 .customer-layout-root .customer-ride-map .leaflet-control {
