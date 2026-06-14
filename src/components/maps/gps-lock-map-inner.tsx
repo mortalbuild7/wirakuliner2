@@ -288,6 +288,7 @@ export function GpsLockMapInner({
         center={userPos}
         zoom={zoom}
         maxZoom={mapMaxZoom}
+        preferCanvas
         scrollWheelZoom={manualPickMode || !interactionsLocked}
         doubleClickZoom={manualPickMode || !interactionsLocked}
         touchZoom={manualPickMode || !interactionsLocked}

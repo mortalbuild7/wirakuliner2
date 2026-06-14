@@ -36,6 +36,26 @@ const NAV = [
   },
 ];
 
+/** Potong tile Leaflet yang menembus header saat scroll (bug GPU Chrome Android). */
+function clipCustomerMapsBelowHeader() {
+  const scrollEl = document.querySelector<HTMLElement>(".customer-scroll-layer");
+  const headerEl = document.querySelector<HTMLElement>(".customer-app-header");
+  if (!scrollEl || !headerEl) return;
+
+  const headerBottom = headerEl.getBoundingClientRect().bottom;
+  scrollEl.querySelectorAll<HTMLElement>(".customer-map-wrap").forEach((wrap) => {
+    const top = wrap.getBoundingClientRect().top;
+    const clip = Math.max(0, Math.ceil(headerBottom - top));
+    if (clip > 0) {
+      wrap.style.clipPath = `inset(${clip}px 0 0 0)`;
+      wrap.style.setProperty("-webkit-clip-path", `inset(${clip}px 0 0 0)`);
+    } else {
+      wrap.style.clipPath = "";
+      wrap.style.removeProperty("-webkit-clip-path");
+    }
+  });
+}
+
 export function CustomerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [customerName, setCustomerName] = useState<string | null>(null);
@@ -60,6 +80,44 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const scrollEl = document.querySelector<HTMLElement>(".customer-scroll-layer");
+    if (!scrollEl) return;
+
+    const maps = () => scrollEl.querySelectorAll<HTMLElement>(".customer-map-wrap");
+
+    const onScroll = () => clipCustomerMapsBelowHeader();
+    const observeMaps = () => maps().forEach((el) => ro.observe(el));
+
+    clipCustomerMapsBelowHeader();
+    observeMaps();
+
+    scrollEl.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+
+    const ro = new ResizeObserver(onScroll);
+    ro.observe(scrollEl);
+    observeMaps();
+
+    const mo = new MutationObserver(() => {
+      onScroll();
+      observeMaps();
+    });
+    mo.observe(scrollEl, { childList: true, subtree: true });
+
+    const t1 = window.setTimeout(onScroll, 300);
+    const t2 = window.setTimeout(onScroll, 1200);
+
+    return () => {
+      scrollEl.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      ro.disconnect();
+      mo.disconnect();
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [pathname]);
+
+  useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
       supabase
@@ -75,7 +133,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
     <div className="customer-layout-root flex h-[100svh] min-h-[100svh] flex-col overflow-hidden bg-slate-50 text-slate-900">
       <HelloWelcome />
 
-      <header className="customer-app-header relative z-[100000] shrink-0 border-b border-slate-200 bg-white shadow-sm">
+      <header className="customer-app-header fixed inset-x-0 top-0 border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <Link href="/customer" className="flex items-center gap-2.5">
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/25">
@@ -106,6 +164,8 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
+
+      <div className="customer-header-spacer shrink-0" aria-hidden />
 
       <main className="customer-scroll-layer relative z-0 mx-auto min-h-0 w-full max-w-mobile flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain safe-pb-nav">
         <div className="customer-scroll-content relative z-0">

@@ -118,6 +118,7 @@ export function PickupMapInner({
         center={[centerLat, centerLng]}
         zoom={15}
         maxZoom={19}
+        preferCanvas
         scrollWheelZoom
         doubleClickZoom
         touchZoom
