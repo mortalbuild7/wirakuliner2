@@ -263,7 +263,7 @@
 
 /*
  * Customer layout vs Leaflet — di luar @layer agar mengalahkan leaflet.css.
- * Header sticky di dalam area scroll; peta bergeser di bawahnya (z-index header menang).
+ * Header di-portal ke body (fixed, z-index maks) — di luar pohon DOM peta Leaflet.
  */
 html.customer-app-active,
 html.customer-app-active body {
@@ -271,6 +271,24 @@ html.customer-app-active body {
   max-height: 100%;
   overflow: hidden !important;
   overscroll-behavior: none;
+  position: fixed;
+  width: 100%;
+  inset: 0;
+}
+
+html.customer-app-active .customer-layout-root {
+  position: relative;
+  z-index: 0;
+}
+
+.customer-app-header-portal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 2147483000 !important;
+  background-color: #ffffff !important;
+  pointer-events: auto;
 }
 
 .customer-layout-root {
@@ -278,19 +296,7 @@ html.customer-app-active body {
   height: 100dvh;
   max-height: 100dvh;
   overflow: hidden;
-  isolation: isolate;
-}
-
-.customer-layout-root .customer-app-header {
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 10000 !important;
-  flex-shrink: 0;
-  background-color: #ffffff !important;
-  isolation: isolate;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-  backface-visibility: hidden;
+  z-index: 0;
 }
 
 .customer-layout-root .customer-scroll-layer {
@@ -301,21 +307,19 @@ html.customer-app-active body {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
 }
 
 .customer-layout-root .customer-scroll-content {
   position: relative !important;
   z-index: 0 !important;
-  isolation: isolate;
 }
 
 .customer-layout-root .customer-map-wrap {
   position: relative !important;
   z-index: 0 !important;
-  isolation: isolate;
   overflow: hidden !important;
-  contain: paint layout;
+  contain: paint;
+  clip-path: inset(0 round 0);
 }
 
 .customer-layout-root .leaflet-container {
@@ -324,10 +328,15 @@ html.customer-app-active body {
   overflow: hidden !important;
 }
 
-.customer-layout-root .leaflet-container * {
-  z-index: auto !important;
-}
-
+html.customer-app-active .leaflet-pane,
+html.customer-app-active .leaflet-tile-pane,
+html.customer-app-active .leaflet-overlay-pane,
+html.customer-app-active .leaflet-shadow-pane,
+html.customer-app-active .leaflet-marker-pane,
+html.customer-app-active .leaflet-tooltip-pane,
+html.customer-app-active .leaflet-popup-pane,
+html.customer-app-active .leaflet-map-pane,
+html.customer-app-active .leaflet-zoom-box,
 .customer-layout-root .leaflet-pane,
 .customer-layout-root .leaflet-tile-pane,
 .customer-layout-root .leaflet-overlay-pane,
@@ -337,17 +346,26 @@ html.customer-app-active body {
 .customer-layout-root .leaflet-popup-pane,
 .customer-layout-root .leaflet-map-pane,
 .customer-layout-root .leaflet-zoom-box {
-  z-index: auto !important;
+  z-index: 0 !important;
 }
 
+html.customer-app-active .leaflet-top,
+html.customer-app-active .leaflet-bottom,
+html.customer-app-active .leaflet-control,
 .customer-layout-root .leaflet-top,
-.customer-layout-root .leaflet-bottom {
-  z-index: 1 !important;
-}
-
+.customer-layout-root .leaflet-bottom,
 .customer-layout-root .leaflet-control,
 .customer-layout-root .leaflet-control-attribution {
   z-index: 1 !important;
+}
+
+html.customer-app-active .leaflet-zoom-animated,
+.customer-layout-root .leaflet-zoom-animated {
+  will-change: auto !important;
+}
+
+.customer-bottom-nav {
+  z-index: 2147482000 !important;
 }
 
 /* ——— Print: thermal struk (58mm) vs laporan penjualan (A4) ——— */
