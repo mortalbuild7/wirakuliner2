@@ -1,9 +1,16 @@
-/** Vercel.app dulu — DNS lebih stabil di beberapa jaringan operator HP. */
+/** Domain kanonik dulu — cookie & sesi konsisten di semua driver. */
 const DEFAULT_HOSTS = [
-  "https://wirakuliner2.vercel.app",
   "https://wirakuliner.web.id",
   "https://www.wirakuliner.web.id",
+  "https://wirakuliner2.vercel.app",
 ];
+
+/** URL health-check ringan per host. */
+export function getDriverPingUrls(): string[] {
+  return getDriverAppEntryUrls().map((entry) =>
+    entry.replace("/driver/app-entry", "/api/driver/ping")
+  );
+}
 
 function hostFromDriverEnv(): string | null {
   const raw = process.env.EXPO_PUBLIC_DRIVER_URL?.trim();

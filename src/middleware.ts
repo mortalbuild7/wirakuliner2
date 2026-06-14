@@ -170,7 +170,11 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  if (pathname === "/driver/app-entry") {
+  if (
+    pathname === "/driver/app-entry" ||
+    pathname === "/api/driver/ping" ||
+    pathname === "/api/driver/bridge-session"
+  ) {
     return response;
   }
 

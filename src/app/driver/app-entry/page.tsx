@@ -11,6 +11,7 @@ import {
 import { markFreshLogin } from "@/lib/hello-welcome";
 
 const STORAGE_KEY = "wira_bridge_tokens";
+const BRIDGE_TIMEOUT_MS = 12_000;
 
 type Tokens = { access_token: string; refresh_token: string };
 
@@ -23,6 +24,61 @@ function isRefreshReuseError(message?: string) {
   );
 }
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function verifyDriverSession(
+  supabase: ReturnType<typeof createClient>
+): Promise<Session | null> {
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) return null;
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session ?? null;
+}
+
+async function bridgeServerCookies(tokens: Tokens): Promise<string | null> {
+  try {
+    const bridgeRes = await fetchWithTimeout(
+      "/api/driver/bridge-session",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tokens),
+      },
+      BRIDGE_TIMEOUT_MS
+    );
+
+    if (bridgeRes.ok) return null;
+
+    const j = (await bridgeRes.json().catch(() => ({}))) as { error?: string };
+    return j.error ?? `Bridge gagal (HTTP ${bridgeRes.status})`;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/abort/i.test(msg)) {
+      return "Sinkron cookie timeout — lanjut dengan sesi lokal.";
+    }
+    return msg || "Bridge sesi gagal";
+  }
+}
+
 export default function DriverAppEntryPage() {
   const [msg, setMsg] = useState("Menghubungkan akun...");
   const appliedRef = useRef(false);
@@ -32,38 +88,31 @@ export default function DriverAppEntryPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function finishBoot(active: Session) {
+    async function completeLogin(active: Session) {
       if (cancelled || appliedRef.current) return;
 
-      const w = window as Window & { __WIRA_NATIVE_SESSION__?: Tokens };
+      const supabase = createClient();
       const tokens = {
         access_token: active.access_token,
         refresh_token: active.refresh_token,
       };
+
+      const w = window as Window & { __WIRA_NATIVE_SESSION__?: Tokens };
       w.__WIRA_NATIVE_SESSION__ = tokens;
       postNativeSessionSync(tokens);
 
       setMsg("Menyinkronkan cookie...");
-      try {
-        const bridgeRes = await fetch("/api/driver/bridge-session", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(tokens),
-        });
-        if (!bridgeRes.ok) {
-          const j = (await bridgeRes.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? "Bridge sesi gagal");
-        }
-      } catch (bridgeErr) {
+      const bridgeErr = await bridgeServerCookies(tokens);
+
+      const verified = await verifyDriverSession(supabase);
+      if (!verified?.user) {
         const rn = (
           window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
         ).ReactNativeWebView;
         rn?.postMessage(
           JSON.stringify({
             type: "WIRA_SESSION_FAILED",
-            message:
-              bridgeErr instanceof Error ? bridgeErr.message : "Bridge sesi gagal",
+            message: bridgeErr ?? "Sesi driver tidak valid setelah sinkron.",
           })
         );
         setMsg("Gagal sinkron sesi. Login ulang di aplikasi.");
@@ -71,12 +120,18 @@ export default function DriverAppEntryPage() {
       }
 
       appliedRef.current = true;
-      storeDriverTokens(tokens, true);
+      storeDriverTokens(
+        {
+          access_token: verified.access_token,
+          refresh_token: verified.refresh_token,
+        },
+        true
+      );
       postNativeDriverBoot("session_ok");
       postNativeDriverBoot("redirecting");
 
       markFreshLogin();
-      await new Promise((r) => setTimeout(r, 350));
+      await new Promise((r) => setTimeout(r, 200));
       window.location.replace("/driver");
     }
 
@@ -100,14 +155,12 @@ export default function DriverAppEntryPage() {
       runningRef.current = true;
       try {
         const supabase = createClient();
-        const {
-          data: { session: existing },
-        } = await supabase.auth.getSession();
+        const existing = await verifyDriverSession(supabase);
 
         if (existing?.user) {
           if (cancelled) return;
           setMsg("Memuat dashboard driver...");
-          await finishBoot(existing);
+          await completeLogin(existing);
           return;
         }
 
@@ -134,11 +187,9 @@ export default function DriverAppEntryPage() {
         if (error) {
           failedRefreshRef.current = tokens.refresh_token;
 
-          const {
-            data: { session: recovered },
-          } = await supabase.auth.getSession();
+          const recovered = await verifyDriverSession(supabase);
           if (recovered?.user) {
-            await finishBoot(recovered);
+            await completeLogin(recovered);
             return;
           }
 
@@ -164,11 +215,8 @@ export default function DriverAppEntryPage() {
           return;
         }
 
-        const {
-          data: { session: latest },
-        } = await supabase.auth.getSession();
-        const active = latest ?? data.session;
-        await finishBoot(active);
+        const latest = (await verifyDriverSession(supabase)) ?? data.session;
+        await completeLogin(latest);
       } finally {
         runningRef.current = false;
       }
@@ -207,14 +255,14 @@ export default function DriverAppEntryPage() {
       if (!native?.access_token || !native?.refresh_token) return;
       if (failedRefreshRef.current === native.refresh_token) return;
       void run();
-    }, 1200);
+    }, 1500);
 
     const timeout = setTimeout(() => {
       if (!cancelled && !appliedRef.current) {
         postNativeDriverBoot("waiting_token");
         setMsg("Menunggu token terlalu lama. Login ulang di aplikasi.");
       }
-    }, 15000);
+    }, 20000);
 
     return () => {
       cancelled = true;

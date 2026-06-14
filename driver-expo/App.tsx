@@ -24,9 +24,9 @@ import type { Session } from "@supabase/supabase-js";
 import { playNativeIncomingOrderSound } from "./lib/incoming-order-sound";
 
 const ALLOWED_HOSTS = [
-  "wirakuliner2.vercel.app",
   "wirakuliner.web.id",
   "www.wirakuliner.web.id",
+  "wirakuliner2.vercel.app",
   "localhost",
 ];
 
@@ -380,7 +380,6 @@ export default function App() {
   const [webLoading, setWebLoading] = useState(true);
   const [webUrlIndex, setWebUrlIndex] = useState(0);
   const [cacheBust, setCacheBust] = useState(0);
-  const [hostProbing, setHostProbing] = useState(false);
   const [webError, setWebError] = useState<string | null>(null);
   const [sessionInjected, setSessionInjected] = useState(false);
   const [driverState, setDriverState] = useState<DriverState>({
@@ -408,23 +407,23 @@ export default function App() {
   );
 
   const tryNextHost = useCallback(async () => {
-    setHostProbing(true);
     setWebError(null);
-    const picked = await pickReachableAppEntry(APP_ENTRY_URLS);
-    setHostProbing(false);
-    if (picked) {
-      webRetryRef.current = 0;
-      setWebUrlIndex(picked.index);
-      setCacheBust((n) => n + 1);
-      setWebLoading(true);
-      return true;
+    setWebLoading(true);
+    const nextIndex = (webUrlIndex + 1) % APP_ENTRY_URLS.length;
+    if (nextIndex === 0 && webUrlIndex !== 0) {
+      const picked = await pickReachableAppEntry(APP_ENTRY_URLS);
+      if (picked) {
+        webRetryRef.current = 0;
+        setWebUrlIndex(picked.index);
+        setCacheBust((n) => n + 1);
+        return true;
+      }
     }
-    setWebError(
-      "Tidak bisa terhubung ke server WIRA. Cek koneksi internet (WiFi/data), lalu coba lagi."
-    );
-    hideSpinner();
-    return false;
-  }, [hideSpinner]);
+    webRetryRef.current = 0;
+    setWebUrlIndex(nextIndex);
+    setCacheBust((n) => n + 1);
+    return true;
+  }, [webUrlIndex]);
 
   const handleWebLoadFailure = useCallback(
     (description: string, errorCode?: number, failedUrl?: string) => {
@@ -553,25 +552,18 @@ export default function App() {
     if (phase !== "app") return;
     let cancelled = false;
     void (async () => {
-      setHostProbing(true);
       const picked = await pickReachableAppEntry(APP_ENTRY_URLS);
       if (cancelled) return;
-      setHostProbing(false);
       if (picked) {
         setWebUrlIndex(picked.index);
-        setWebError(null);
-        setWebLoading(true);
-      } else {
-        setWebError(
-          "Server tidak terjangkau. Periksa sinyal internet lalu ketuk Coba lagi."
-        );
-        hideSpinner();
       }
+      setWebError(null);
+      setWebLoading(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [phase, hideSpinner]);
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== "app" || !session) return;
@@ -817,12 +809,6 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      {hostProbing ? (
-        <View style={styles.boot}>
-          <ActivityIndicator size="large" color="#34d399" />
-          <Text style={styles.probeText}>Menghubungkan ke server WIRA...</Text>
-        </View>
-      ) : (
       <DriverWebShell
         webRef={webRef}
         activeWebUrl={activeWebUrl}
@@ -852,7 +838,6 @@ export default function App() {
         reloadWebView={reloadWebView}
         onRetry={() => void tryNextHost()}
       />
-      )}
     </SafeAreaProvider>
   );
 }
@@ -865,11 +850,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
     gap: 12,
     paddingHorizontal: 24,
-  },
-  probeText: {
-    color: "#475569",
-    fontSize: 14,
-    textAlign: "center",
   },
   root: {
     flex: 1,
