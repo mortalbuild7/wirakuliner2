@@ -403,7 +403,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
           />
 
           <p className="text-[10px] text-muted-foreground">
-            Geser peta — pin hijau tetap di tengah; alamat diperbarui otomatis.
+            Ketuk pratinjau peta untuk menggeser pin hijau; alamat diperbarui otomatis.
           </p>
 
           <div className="flex flex-wrap gap-2">
@@ -520,7 +520,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
         </div>
         <p className="text-[10px] text-muted-foreground">
           {ride.showFlexiblePickup
-            ? "Pilih dari daftar atau geser pin biru di peta."
+            ? "Pilih dari daftar atau ketuk pratinjau peta untuk atur tujuan."
             : "Ketik alamat — pin biru mengikuti. Atau geser pin / ketuk peta."}
         </p>
         <DestinationMapContainer
