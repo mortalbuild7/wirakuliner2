@@ -94,11 +94,12 @@ export async function POST(req: Request) {
   });
 
   const admin = createAdminClient();
-  const { data: profile } = await withTimeout(
+  const profileResult = await withTimeout(
     admin.from("profiles").select("role").eq("id", jwtUser.user.id).single(),
     BRIDGE_SERVER_TIMEOUT_MS,
     "Cek profil"
   );
+  const profile = profileResult.data;
 
   if (profile?.role !== "driver") {
     return applySecurityHeaders(
