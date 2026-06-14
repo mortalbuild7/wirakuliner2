@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { ServiceType, DriverServiceCategory } from "@/types/database";
 
 const Inner = dynamic(
   () => import("@/components/driver/driver-route-map-inner").then((m) => m.DriverRouteMapInner),
@@ -14,6 +15,9 @@ export function DriverRouteMap(props: {
   deliveryLng: number;
   driverLat?: number | null;
   driverLng?: number | null;
+  serviceType?: ServiceType | null;
+  deliveryAddress?: string;
+  driverCategory?: DriverServiceCategory | string | null;
 }) {
   return <Inner {...props} />;
 }

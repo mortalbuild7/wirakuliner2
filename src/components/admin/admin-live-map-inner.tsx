@@ -4,9 +4,10 @@ import { useMemo } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import type { LiveDriverPin } from "@/lib/admin/live-drivers";
 import { JALAN_WIRA } from "@/lib/geo-config";
-import { driverMotorcycleIcon } from "@/lib/map-marker-icons";
-
-const driverPinIcon = driverMotorcycleIcon();
+import {
+  driverGpsIcon,
+  driverGpsVehicleFromCategory,
+} from "@/lib/map-marker-icons";
 
 export function AdminLiveMapInner({ drivers }: { drivers: LiveDriverPin[] }) {
   const center = useMemo(() => {
@@ -33,7 +34,7 @@ export function AdminLiveMapInner({ drivers }: { drivers: LiveDriverPin[] }) {
         <Marker
           key={d.id}
           position={[d.lat, d.lng]}
-          icon={driverPinIcon}
+          icon={driverGpsIcon(driverGpsVehicleFromCategory(d.serviceCategory))}
         >
           <Popup>
             <div className="text-sm">

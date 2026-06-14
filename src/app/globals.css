@@ -252,10 +252,10 @@
 
   .wira-driver-gps-marker__img {
     display: block;
-    width: var(--wira-driver-marker-size, 40px) !important;
-    height: var(--wira-driver-marker-size, 40px) !important;
-    max-width: var(--wira-driver-marker-size, 40px) !important;
-    max-height: var(--wira-driver-marker-size, 40px) !important;
+    width: var(--wira-driver-marker-w, 36px) !important;
+    height: var(--wira-driver-marker-h, 44px) !important;
+    max-width: var(--wira-driver-marker-w, 36px) !important;
+    max-height: var(--wira-driver-marker-h, 44px) !important;
     object-fit: contain;
     pointer-events: none;
   }

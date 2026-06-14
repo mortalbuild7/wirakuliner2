@@ -6,7 +6,7 @@ import L from "leaflet";
 import { DELIVERY_RADIUS_KM } from "@/lib/geo-config";
 import { GPS_LOCK_ZOOM } from "@/lib/map-location";
 import { bearingDegrees, DRIVER_NAV_ZOOM } from "@/lib/map-navigation";
-import { customerPickupIcon, driverMotorcycleIcon } from "@/lib/map-marker-icons";
+import { customerPickupIcon, driverGpsIcon, type DriverGpsVehicle } from "@/lib/map-marker-icons";
 import { MapGpsFollow } from "@/components/maps/map-gps-follow";
 
 const hubIcon = (label: string) =>
@@ -222,6 +222,7 @@ export function GpsLockMapInner({
   navigationTargetLabel = "C",
   navigationTargetColor = "#22d3ee",
   userMarkerKind = "customer",
+  driverVehicle = "motor",
   flyToTrigger,
   height,
   className = "h-full w-full",
@@ -250,8 +251,10 @@ export function GpsLockMapInner({
   navigationTarget?: { lat: number; lng: number } | null;
   navigationTargetLabel?: string;
   navigationTargetColor?: string;
-  /** `driver` = ikon motor (APK driver), `customer` = pin biru checkout. */
+  /** `driver` = ikon GPS armada, `customer` = pin biru checkout. */
   userMarkerKind?: "customer" | "driver";
+  /** Motor atau mobil — hanya untuk userMarkerKind driver. */
+  driverVehicle?: DriverGpsVehicle;
   /** Naikkan nilai untuk flyTo pin setelah geocode. */
   flyToTrigger?: number;
   height?: number | null;
@@ -274,7 +277,7 @@ export function GpsLockMapInner({
     : routeLine;
   const userIcon =
     userMarkerKind === "driver"
-      ? driverMotorcycleIcon(bearing)
+      ? driverGpsIcon(driverVehicle, bearing)
       : customerPickupIcon(bearing);
 
   const wrapStyle = height != null ? { height } : undefined;

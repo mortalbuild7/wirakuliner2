@@ -2,7 +2,12 @@
 
 import { MapContainer, Marker, Polyline, TileLayer } from "react-leaflet";
 import L from "leaflet";
-import { driverMotorcycleIcon } from "@/lib/map-marker-icons";
+import {
+  driverGpsIconForOrder,
+  driverGpsVehicleFromCategory,
+  driverGpsIcon,
+} from "@/lib/map-marker-icons";
+import type { ServiceType, DriverServiceCategory } from "@/types/database";
 
 const merchantIcon = L.divIcon({
   className: "",
@@ -18,8 +23,6 @@ const customerIcon = L.divIcon({
   iconAnchor: [16, 16],
 });
 
-const driverIcon = driverMotorcycleIcon();
-
 export function DriverRouteMapInner({
   merchantLat,
   merchantLng,
@@ -27,6 +30,9 @@ export function DriverRouteMapInner({
   deliveryLng,
   driverLat,
   driverLng,
+  serviceType,
+  deliveryAddress,
+  driverCategory,
 }: {
   merchantLat: number;
   merchantLng: number;
@@ -34,6 +40,9 @@ export function DriverRouteMapInner({
   deliveryLng: number;
   driverLat?: number | null;
   driverLng?: number | null;
+  serviceType?: ServiceType | null;
+  deliveryAddress?: string;
+  driverCategory?: DriverServiceCategory | string | null;
 }) {
   const centerLat = (merchantLat + deliveryLat) / 2;
   const centerLng = (merchantLng + deliveryLng) / 2;
@@ -41,6 +50,14 @@ export function DriverRouteMapInner({
     [merchantLat, merchantLng],
     [deliveryLat, deliveryLng],
   ];
+
+  const driverIcon =
+    serviceType != null || deliveryAddress
+      ? driverGpsIconForOrder({
+          service_type: serviceType,
+          delivery_address: deliveryAddress ?? "",
+        })
+      : driverGpsIcon(driverGpsVehicleFromCategory(driverCategory));
 
   return (
     <MapContainer

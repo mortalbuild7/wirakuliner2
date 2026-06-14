@@ -231,6 +231,9 @@ export default function DriverOrderDetailPage() {
           deliveryLng={order.delivery_lng}
           driverLat={driver?.current_lat}
           driverLng={driver?.current_lng}
+          serviceType={order.service_type}
+          deliveryAddress={order.delivery_address}
+          driverCategory={driver?.service_category}
         />
       )}
 

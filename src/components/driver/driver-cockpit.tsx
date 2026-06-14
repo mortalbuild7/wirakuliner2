@@ -12,6 +12,10 @@ import { DriverMapView } from "@/components/driver/driver-map-view";
 import { DriverStatusToggle } from "@/components/driver/driver-status-toggle";
 import { formatIdr } from "@/lib/utils";
 import {
+  driverGpsVehicleFromCategory,
+  driverGpsVehicleFromOrder,
+} from "@/lib/map-marker-icons";
+import {
   driverOrderStatusLabel,
   channelLabel,
   getTransitKind,
@@ -480,6 +484,9 @@ export function DriverCockpit() {
     const driverLat = live?.lat ?? driver?.current_lat;
     const driverLng = live?.lng ?? driver?.current_lng;
     const navigating = navMode != null;
+    const driverVehicle = order
+      ? driverGpsVehicleFromOrder(order)
+      : driverGpsVehicleFromCategory(driver?.service_category);
     return {
       merchantLat: orderPickup?.lat ?? shop?.latitude,
       merchantLng: orderPickup?.lng ?? shop?.longitude,
@@ -493,12 +500,14 @@ export function DriverCockpit() {
       navigationMode: navigating,
       navigationTarget: navigating ? navMode : null,
       navigationRouteLine: navigating ? navRouteLine ?? undefined : undefined,
+      driverVehicle,
     };
   }, [
     activeOrder,
     incomingOffer,
     driver?.current_lat,
     driver?.current_lng,
+    driver?.service_category,
     mapGps.fix,
     mapGps.zoomLocked,
     navMode,

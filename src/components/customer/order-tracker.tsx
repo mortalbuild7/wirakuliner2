@@ -406,6 +406,8 @@ export function OrderTracker({ orderId }: { orderId: string }) {
             driverLng={mapDriverLng}
             isRide={isTransit}
             orderStatus={order.order_status}
+            serviceType={order.service_type}
+            deliveryAddress={order.delivery_address}
           />
           <OrderTrackDeliveryLottie
             orderStatus={order.order_status}

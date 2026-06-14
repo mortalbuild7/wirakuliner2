@@ -1,4 +1,9 @@
 import L from "leaflet";
+import {
+  isNgomobilOrder,
+  type OrderChannelRecord,
+} from "@/lib/order-channel";
+import type { DriverServiceCategory, ServiceType } from "@/types/database";
 
 /** Pin hijau titik jemput NGOJEK. */
 export function ngojekPickupIcon(): L.DivIcon {
@@ -33,23 +38,67 @@ export function customerPickupIcon(bearingDeg?: number): L.DivIcon {
   });
 }
 
-/** PNG custom — lingkaran hijau + panah arah (public/markers/driver-gps.png, 40×40). */
-const DRIVER_GPS_MARKER_URL = "/markers/driver-gps.png";
-/** Ukuran tampilan marker driver di peta. */
-const DRIVER_MARKER_SIZE = 40;
+export type DriverGpsVehicle = "motor" | "mobil";
 
-/** Marker driver — gambar GPS custom, berputar mengikuti arah navigasi. */
-export function driverMotorcycleIcon(bearingDeg?: number): L.DivIcon {
+const MARKER_MOTOR_URL = "/markers/markermotorbg.png";
+const MARKER_MOBIL_URL = "/markers/markermobilbg.png";
+const DRIVER_MARKER_W = 36;
+const DRIVER_MARKER_H = 44;
+
+/** Tentukan ikon GPS driver dari jenis layanan pesanan. */
+export function driverGpsVehicleFromService(
+  serviceType?: ServiceType | string | null,
+  deliveryAddress?: string | null
+): DriverGpsVehicle {
+  const raw = String(serviceType ?? "").trim().toUpperCase();
+  if (raw === "NGOMOBIL" || raw === "CAR") return "mobil";
+  if (deliveryAddress && isNgomobilOrder(deliveryAddress)) return "mobil";
+  return "motor";
+}
+
+export function driverGpsVehicleFromOrder(
+  order: Pick<OrderChannelRecord, "service_type" | "delivery_address">
+): DriverGpsVehicle {
+  return driverGpsVehicleFromService(order.service_type, order.delivery_address);
+}
+
+/** Ikon driver saat belum ada order aktif — dari kategori armada driver. */
+export function driverGpsVehicleFromCategory(
+  category?: DriverServiceCategory | string | null
+): DriverGpsVehicle {
+  const raw = String(category ?? "").trim().toUpperCase();
+  if (raw === "MOBIL_PASSENGER" || raw === "MOBIL_CARGO") return "mobil";
+  return "motor";
+}
+
+/** Marker GPS driver — motor (markermotorbg) atau mobil (markermobilbg). */
+export function driverGpsIcon(
+  vehicle: DriverGpsVehicle = "motor",
+  bearingDeg?: number
+): L.DivIcon {
   const rotation =
     bearingDeg != null ? `transform:rotate(${bearingDeg}deg);` : "";
-  const s = DRIVER_MARKER_SIZE;
-  const half = s / 2;
+  const url = vehicle === "mobil" ? MARKER_MOBIL_URL : MARKER_MOTOR_URL;
+  const w = DRIVER_MARKER_W;
+  const h = DRIVER_MARKER_H;
   return L.divIcon({
     className: "wira-driver-gps-marker",
-    html: `<div class="wira-driver-gps-marker__wrap" style="width:${s}px;height:${s}px;--wira-driver-marker-size:${s}px;${rotation}">
-      <img src="${DRIVER_GPS_MARKER_URL}" alt="" width="${s}" height="${s}" draggable="false" class="wira-driver-gps-marker__img" />
+    html: `<div class="wira-driver-gps-marker__wrap" style="width:${w}px;height:${h}px;--wira-driver-marker-w:${w}px;--wira-driver-marker-h:${h}px;${rotation}">
+      <img src="${url}" alt="" width="${w}" height="${h}" draggable="false" class="wira-driver-gps-marker__img" />
     </div>`,
-    iconSize: [s, s],
-    iconAnchor: [half, half],
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h],
   });
+}
+
+export function driverGpsIconForOrder(
+  order: Pick<OrderChannelRecord, "service_type" | "delivery_address">,
+  bearingDeg?: number
+): L.DivIcon {
+  return driverGpsIcon(driverGpsVehicleFromOrder(order), bearingDeg);
+}
+
+/** @deprecated Gunakan driverGpsIcon("motor") */
+export function driverMotorcycleIcon(bearingDeg?: number): L.DivIcon {
+  return driverGpsIcon("motor", bearingDeg);
 }

@@ -2,6 +2,7 @@
 
 import { GpsLockMapInner, type GpsLockMapPoint } from "@/components/maps/gps-lock-map-inner";
 import { JALAN_WIRA } from "@/lib/geo-config";
+import type { DriverGpsVehicle } from "@/lib/map-marker-icons";
 import {
   driverNavTargetColor,
   driverNavTargetLabel,
@@ -21,6 +22,7 @@ export function DriverMapViewInner({
   navigationMode = false,
   navigationTarget,
   navigationRouteLine,
+  driverVehicle = "motor",
   className = "h-full w-full",
 }: {
   merchantLat?: number;
@@ -35,6 +37,7 @@ export function DriverMapViewInner({
   navigationMode?: boolean;
   navigationTarget?: DriverNavTarget | null;
   navigationRouteLine?: [number, number][];
+  driverVehicle?: DriverGpsVehicle;
   className?: string;
 }) {
   const hasMerchant = merchantLat != null && merchantLng != null;
@@ -105,6 +108,7 @@ export function DriverMapViewInner({
         navigationTarget ? driverNavTargetColor(navigationTarget) : "#22d3ee"
       }
       userMarkerKind="driver"
+      driverVehicle={driverVehicle}
       className={`${className} z-0 min-h-[280px]`}
     />
   );

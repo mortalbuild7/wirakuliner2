@@ -6,9 +6,10 @@ import L from "leaflet";
 import { MapFitBounds } from "@/components/maps/map-fit-bounds";
 import {
   customerPickupIcon,
-  driverMotorcycleIcon,
+  driverGpsIconForOrder,
   ngojekPickupIcon,
 } from "@/lib/map-marker-icons";
+import type { ServiceType } from "@/types/database";
 import { fetchCustomerRoadRoute } from "@/lib/road-route";
 import { useRoadRoute } from "@/hooks/use-road-route";
 import type { OrderStatus } from "@/types/database";
@@ -33,6 +34,8 @@ export function CustomerOrderTrackMapInner({
   driverLng,
   isRide = false,
   orderStatus,
+  serviceType,
+  deliveryAddress,
   className = `${MAP_HEIGHT} w-full`,
 }: {
   deliveryLat: number;
@@ -43,6 +46,8 @@ export function CustomerOrderTrackMapInner({
   driverLng?: number | null;
   isRide?: boolean;
   orderStatus?: OrderStatus;
+  serviceType?: ServiceType | null;
+  deliveryAddress?: string;
   className?: string;
 }) {
   const hasDriver =
@@ -138,6 +143,10 @@ export function CustomerOrderTrackMapInner({
 
   const activeRoute = navRouteLine ?? staticRideLine;
   const navActive = Boolean(navRouteLine && hasDriver);
+  const driverIcon = driverGpsIconForOrder({
+    service_type: serviceType,
+    delivery_address: deliveryAddress ?? "",
+  });
 
   return (
     <div className="customer-map-wrap relative z-0 isolate">
@@ -161,7 +170,7 @@ export function CustomerOrderTrackMapInner({
       )}
       <Marker position={[deliveryLat, deliveryLng]} icon={customerPickupIcon()} />
       {hasDriver && (
-        <Marker position={[driverLat!, driverLng!]} icon={driverMotorcycleIcon()} />
+        <Marker position={[driverLat!, driverLng!]} icon={driverIcon} />
       )}
       {hasDriver && driverNavTarget && navActive && (
         <Marker

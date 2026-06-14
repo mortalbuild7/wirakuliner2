@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { DriverNavTarget } from "@/lib/driver-map-nav";
+import type { DriverGpsVehicle } from "@/lib/map-marker-icons";
 
 const Inner = dynamic(
   () => import("@/components/driver/driver-map-view-inner").then((m) => m.DriverMapViewInner),
@@ -21,6 +22,7 @@ type Props = {
   navigationMode?: boolean;
   navigationTarget?: DriverNavTarget | null;
   navigationRouteLine?: [number, number][];
+  driverVehicle?: DriverGpsVehicle;
   className?: string;
 };
 
