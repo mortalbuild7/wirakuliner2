@@ -28,6 +28,12 @@ export const CUSTOMER_ACTIVE_ORDER_STATUSES: OrderStatus[] = [
 ];
 
 export const WIRA_ACTIVE_TRANSIT_ORDER_KEY = "wira_customer_active_transit_order";
+export const WIRA_ACTIVE_ORDER_CHANGED_EVENT = "wira:active-order-changed";
+
+function dispatchActiveOrderChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(WIRA_ACTIVE_ORDER_CHANGED_EVENT));
+}
 
 export function isCustomerActiveOrderStatus(status: OrderStatus): boolean {
   return CUSTOMER_ACTIVE_ORDER_STATUSES.includes(status);
@@ -62,6 +68,7 @@ export function persistActiveTransitOrderHint(hint: ActiveTransitOrderHint): voi
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(WIRA_ACTIVE_TRANSIT_ORDER_KEY, JSON.stringify(hint));
+    dispatchActiveOrderChanged();
   } catch {
     /* ignore quota */
   }
@@ -72,11 +79,13 @@ export function clearActiveTransitOrderHint(orderId?: string): void {
   try {
     if (!orderId) {
       localStorage.removeItem(WIRA_ACTIVE_TRANSIT_ORDER_KEY);
+      dispatchActiveOrderChanged();
       return;
     }
     const current = readActiveTransitOrderHint();
     if (current?.id === orderId) {
       localStorage.removeItem(WIRA_ACTIVE_TRANSIT_ORDER_KEY);
+      dispatchActiveOrderChanged();
     }
   } catch {
     /* ignore */

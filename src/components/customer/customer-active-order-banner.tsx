@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Bike, Car, ChevronRight, Loader2, Package } from "lucide-react";
+import { Bike, Car, ChevronRight, Package } from "lucide-react";
 import {
   channelLabelFromRecord,
   customerTrackerStatusLabel,
@@ -12,8 +12,7 @@ import {
   clearActiveTransitOrderHint,
   customerActiveOrderHref,
   persistActiveTransitOrderHint,
-  readActiveTransitOrderHint,
-  type ActiveTransitOrderHint,
+  WIRA_ACTIVE_ORDER_CHANGED_EVENT,
 } from "@/lib/customer-active-order";
 import type { Order, ServiceType } from "@/types/database";
 import { cn } from "@/lib/utils";
@@ -29,28 +28,16 @@ function serviceIcon(serviceType?: ServiceType | null) {
   return Bike;
 }
 
-function hintToOrder(hint: ActiveTransitOrderHint): ActiveOrder {
-  return {
-    id: hint.id,
-    order_status: hint.order_status,
-    delivery_address: hint.delivery_address,
-    service_type: hint.service_type ?? null,
-    driver_id: hint.driver_id ?? null,
-  };
-}
-
 /**
  * Banner beranda — pesanan transit (NGOJEK / NGOMOBIL / PAKET) yang masih berjalan.
- * Tahan refresh / tutup browser via localStorage + sinkron API.
+ * Hanya tampil setelah sinkron API (hindari cache localStorage yang basi).
  */
 export function CustomerActiveOrderBanner({ className }: { className?: string }) {
   const [order, setOrder] = useState<ActiveOrder | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const hint = readActiveTransitOrderHint();
-    if (hint) setOrder(hintToOrder(hint));
-
+    setLoading(true);
     try {
       const res = await fetch("/api/customer/orders/active", { credentials: "include" });
       if (res.status === 401) {
@@ -58,7 +45,12 @@ export function CustomerActiveOrderBanner({ className }: { className?: string })
         setOrder(null);
         return;
       }
-      if (!res.ok) return;
+
+      if (!res.ok) {
+        clearActiveTransitOrderHint();
+        setOrder(null);
+        return;
+      }
 
       const json = (await res.json()) as { order?: ActiveOrder | null };
       const active = json.order ?? null;
@@ -78,7 +70,7 @@ export function CustomerActiveOrderBanner({ className }: { className?: string })
         setOrder(null);
       }
     } catch {
-      /* keep local hint if offline */
+      setOrder(null);
     } finally {
       setLoading(false);
     }
@@ -92,15 +84,21 @@ export function CustomerActiveOrderBanner({ className }: { className?: string })
     const onVisible = () => {
       if (document.visibilityState === "visible") void load();
     };
+    const onActiveOrderChanged = () => {
+      void load();
+    };
+
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    window.addEventListener(WIRA_ACTIVE_ORDER_CHANGED_EVENT, onActiveOrderChanged);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener(WIRA_ACTIVE_ORDER_CHANGED_EVENT, onActiveOrderChanged);
+    };
   }, [load]);
 
-  if (loading && !order) {
+  if (loading || !order) {
     return null;
   }
-
-  if (!order) return null;
 
   const Icon = serviceIcon(order.service_type);
   const channel = channelLabelFromRecord(order);
@@ -156,9 +154,6 @@ export function CustomerActiveOrderBanner({ className }: { className?: string })
                 : "text-emerald-800 ring-emerald-200"
             )}
           >
-            {loading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : null}
             {statusLabel}
           </p>
         </div>

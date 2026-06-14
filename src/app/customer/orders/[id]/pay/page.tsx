@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
@@ -32,6 +32,7 @@ export default function CustomerOrderPayPage() {
   const [payLoading, setPayLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const paymentInitRef = useRef(false);
 
   const loadOrder = useCallback(async () => {
     setLoading(true);
@@ -50,15 +51,25 @@ export default function CustomerOrderPayPage() {
       }
 
       const next = json.order;
+      syncActiveTransitOrderFromOrder(next);
+
+      if (next.order_status === "cancelled") {
+        clearActiveTransitOrderHint(orderId);
+        router.replace("/customer");
+        return;
+      }
+
       if (next.order_status !== "pending_payment") {
         router.replace(`/customer/orders/${orderId}`);
         return;
       }
 
+      paymentInitRef.current = false;
+      setQrisPayment(null);
       setOrder(next);
-      syncActiveTransitOrderFromOrder(next);
     } catch {
       setError("Gagal memuat pesanan");
+      setOrder(null);
     } finally {
       setLoading(false);
     }
@@ -69,7 +80,7 @@ export default function CustomerOrderPayPage() {
   }, [loadOrder]);
 
   const startPayment = useCallback(async () => {
-    if (!order) return;
+    if (!order || payLoading) return;
     setPayLoading(true);
     setError(null);
     try {
@@ -86,13 +97,19 @@ export default function CustomerOrderPayPage() {
     } finally {
       setPayLoading(false);
     }
-  }, [order]);
+  }, [order, payLoading]);
 
   useEffect(() => {
-    if (order && !qrisPayment && !payLoading && !loading) {
-      void startPayment();
-    }
-  }, [order, qrisPayment, payLoading, loading, startPayment]);
+    if (!order || loading || qrisPayment || payLoading || paymentInitRef.current) return;
+    paymentInitRef.current = true;
+    void startPayment();
+  }, [order, loading, qrisPayment, payLoading, startPayment]);
+
+  const handleRetryPayment = useCallback(() => {
+    paymentInitRef.current = true;
+    setQrisPayment(null);
+    void startPayment();
+  }, [startPayment]);
 
   const handlePaid = useCallback(() => {
     if (!order) return;
@@ -193,12 +210,17 @@ export default function CustomerOrderPayPage() {
         </div>
       ) : null}
 
+      {!payLoading && !qrisPayment && error ? (
+        <Button type="button" className="w-full" onClick={handleRetryPayment}>
+          Coba lagi pembayaran
+        </Button>
+      ) : null}
+
       {qrisPayment ? (
         <QrisPaymentPanel
           data={qrisPayment}
           title={`Scan QRIS — pembayaran ${channel}`}
           onPaid={handlePaid}
-          onCancel={() => setQrisPayment(null)}
         />
       ) : null}
 
