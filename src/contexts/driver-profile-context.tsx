@@ -14,6 +14,64 @@ type DriverProfileValue = {
 
 const DriverProfileContext = createContext<DriverProfileValue | null>(null);
 
+function isApkWebView(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as Window & {
+    ReactNativeWebView?: unknown;
+    __WIRA_APK_WEBVIEW__?: boolean;
+  };
+  return Boolean(w.ReactNativeWebView || w.__WIRA_APK_WEBVIEW__);
+}
+
+async function fetchDriverMeBearer(
+  accessToken: string,
+  timeoutMs = 8_000
+): Promise<Driver | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch("/api/driver/me", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { driver?: Driver };
+    return j.driver ?? null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function queryDriverRow(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  timeoutMs = 8_000
+): Promise<Driver | null> {
+  try {
+    const { data, error } = await Promise.race([
+      supabase
+        .from("drivers")
+        .select(
+          "id,profile_id,name,phone,vehicle_plate,photo_url,status,current_lat,current_lng,service_category,fcm_token,reward_points,created_at"
+        )
+        .eq("profile_id", uid)
+        .maybeSingle(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), timeoutMs)
+      ),
+    ]);
+    if (error) console.warn("[driver profile]", error.message);
+    return (data as Driver) ?? null;
+  } catch (e) {
+    if (e instanceof Error && e.message === "timeout") {
+      console.warn("[driver profile] query timeout");
+    }
+    return null;
+  }
+}
+
 function postNativeReady(driver: Driver | null) {
   const rn = (window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } })
     .ReactNativeWebView;
@@ -39,6 +97,21 @@ function useDriverProfileImpl(): DriverProfileValue {
     try {
       await ensureDriverNativeSession(supabase);
 
+      const nativeTok = (
+        window as Window & {
+          __WIRA_NATIVE_SESSION__?: { access_token: string; refresh_token: string };
+        }
+      ).__WIRA_NATIVE_SESSION__?.access_token;
+
+      if (isApkWebView() && nativeTok) {
+        const apkDriver = await fetchDriverMeBearer(nativeTok);
+        if (apkDriver) {
+          setDriver(apkDriver);
+          setUserId(apkDriver.profile_id);
+          return;
+        }
+      }
+
       const sessionRes = await Promise.race([
         supabase.auth.getSession(),
         new Promise<{ data: { session: null } }>((resolve) =>
@@ -47,40 +120,27 @@ function useDriverProfileImpl(): DriverProfileValue {
       ]);
       let uid = sessionRes.data.session?.user?.id ?? null;
 
-      if (!uid) {
-        const tokens = (
-          window as Window & {
-            __WIRA_NATIVE_SESSION__?: { access_token: string; refresh_token: string };
-          }
-        ).__WIRA_NATIVE_SESSION__;
-        if (tokens?.access_token) {
-          const me = await fetch("/api/driver/me", {
-            headers: { Authorization: `Bearer ${tokens.access_token}` },
-          });
-          if (me.ok) {
-            const j = (await me.json()) as { driver?: Driver };
-            if (j.driver) {
-              setDriver(j.driver);
-              setUserId(j.driver.profile_id);
-              return;
-            }
-          }
+      if (!uid && nativeTok) {
+        const meDriver = await fetchDriverMeBearer(nativeTok);
+        if (meDriver) {
+          setDriver(meDriver);
+          setUserId(meDriver.profile_id);
+          return;
         }
         setDriver(null);
         setUserId(null);
         return;
       }
 
+      if (!uid) {
+        setDriver(null);
+        setUserId(null);
+        return;
+      }
+
       setUserId(uid);
-      const { data, error } = await supabase
-        .from("drivers")
-        .select(
-          "id,profile_id,name,phone,vehicle_plate,photo_url,status,current_lat,current_lng,service_category,fcm_token,reward_points,created_at"
-        )
-        .eq("profile_id", uid)
-        .maybeSingle();
-      if (error) console.warn("[driver profile]", error.message);
-      setDriver((data as Driver) ?? null);
+      const row = await queryDriverRow(supabase, uid);
+      setDriver(row);
     } catch (e) {
       console.warn("[driver profile]", e);
       setDriver(null);

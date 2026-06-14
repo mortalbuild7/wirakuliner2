@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { createClient, resetBrowserClient } from "@/lib/supabase/client";
 import { storeDriverTokens } from "@/lib/driver-native-session";
@@ -99,9 +100,11 @@ async function bridgeServerCookiesBlocking(tokens: Tokens): Promise<string | nul
 }
 
 export default function DriverAppEntryPage() {
+  const router = useRouter();
   const [msg, setMsg] = useState("Menghubungkan akun...");
   const appliedRef = useRef(false);
   const runningRef = useRef(false);
+  const navStartedRef = useRef(false);
   const failedRefreshRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -109,10 +112,37 @@ export default function DriverAppEntryPage() {
     let cancelled = false;
 
     function goToDriver() {
-      if (appliedRef.current) return;
-      appliedRef.current = true;
+      if (navStartedRef.current) return;
+      navStartedRef.current = true;
       markFreshLogin();
-      window.location.replace("/driver");
+      setMsg("Membuka dashboard driver...");
+
+      const target = new URL("/driver", window.location.origin).href;
+      postNativeDriverBoot("redirecting");
+
+      const rn = (
+        window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
+      ).ReactNativeWebView;
+      rn?.postMessage(JSON.stringify({ type: "WIRA_NAVIGATE", url: target }));
+
+      router.replace("/driver");
+
+      const retry = (attempt: number) => {
+        if (cancelled || !window.location.pathname.includes("app-entry")) return;
+        if (attempt >= 3) {
+          navStartedRef.current = false;
+          setMsg("Gagal membuka dashboard. Memuat ulang...");
+          window.location.assign(`${target}?_boot=${Date.now()}`);
+          return;
+        }
+        rn?.postMessage(
+          JSON.stringify({ type: "WIRA_NAVIGATE", url: `${target}?_boot=${attempt}` })
+        );
+        router.replace("/driver");
+        setTimeout(() => retry(attempt + 1), 2500);
+      };
+
+      setTimeout(() => retry(0), 2500);
     }
 
     async function completeLogin(active: Session) {
@@ -133,7 +163,7 @@ export default function DriverAppEntryPage() {
       const apk = isApkWebView();
 
       if (apk) {
-        setMsg("Membuka dashboard driver...");
+        appliedRef.current = true;
         bridgeServerCookiesFireAndForget(tokens);
         goToDriver();
         return;
@@ -163,6 +193,7 @@ export default function DriverAppEntryPage() {
         },
         true
       );
+      appliedRef.current = true;
       goToDriver();
     }
 

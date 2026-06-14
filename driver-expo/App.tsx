@@ -604,6 +604,9 @@ export default function App() {
       }
       if (isDriverHomeUrl(nav.url)) {
         hideSpinner();
+        if (sessionRef.current) {
+          injectSession(webRef, sessionRef.current, true);
+        }
       }
       if (nav.url.includes("/login") && sessionRef.current) {
         webRef.current?.stopLoading();
@@ -668,6 +671,17 @@ export default function App() {
           }
         }
 
+        if (data.type === "WIRA_NAVIGATE") {
+          const url = (data as { url?: string }).url;
+          if (url) {
+            hideSpinner();
+            nativeSessionInjectedRef.current = false;
+            webRef.current?.injectJavaScript(
+              `window.location.replace(${JSON.stringify(url)}); true;`
+            );
+          }
+        }
+
         if (data.type === "WIRA_DRIVER_STATE" || data.type === "WIRA_APP_READY") {
           setDriverState((s) => ({
             online: Boolean(data.online),
@@ -719,8 +733,8 @@ export default function App() {
     setWebError(null);
     webRef.current?.injectJavaScript(webErrorGuardScript());
     const active = sessionRef.current;
-    if (active && !nativeSessionInjectedRef.current) {
-      injectSession(webRef, active);
+    if (active) {
+      injectSession(webRef, active, true);
       sessionInjectedRef.current = true;
       setSessionInjected(true);
     }

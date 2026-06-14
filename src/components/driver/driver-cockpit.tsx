@@ -664,8 +664,8 @@ export function DriverCockpit() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-white text-slate-600">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
         <p className="text-sm">Memuat profil driver...</p>
       </div>
     );

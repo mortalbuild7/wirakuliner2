@@ -178,6 +178,12 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  /** WebView APK driver — auth via Bearer/native session, bukan cookie middleware. */
+  const driverApkUa = request.headers.get("user-agent") ?? "";
+  if (driverApkUa.includes("WIRADriverExpo") && pathname.startsWith("/driver")) {
+    return forwardPathHeader(request, response);
+  }
+
   /** API admin — role + MFA (kecuali endpoint login yang sudah di-rate-limit). */
   if (pathname.startsWith("/api/admin")) {
     const isLoginRoute =
