@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { isTransitOrder } from "@/lib/order-channel";
 import {
-  buildMidtransOrderId,
+  buildMidtransOrderIdWithRetry,
   chargeMidtransQris,
   createMidtransSnap,
   isMidtransConfigured,
@@ -24,6 +24,89 @@ function orderTotal(
   deliveryFee: number
 ): number {
   return Math.round(productAmount + deliveryFee);
+}
+
+type PendingPaymentRow = {
+  id: string;
+  midtrans_order_id: string;
+  qris_url: string | null;
+  qris_string: string | null;
+  gross_amount: number | string;
+  midtrans_transaction_id: string | null;
+};
+
+function canReusePendingPayment(row: PendingPaymentRow, grossAmount: number): boolean {
+  if (Number(row.gross_amount) !== grossAmount) return false;
+  return Boolean(row.qris_string || (row.qris_url && row.midtrans_transaction_id));
+}
+
+function reusePendingPaymentResponse(
+  row: PendingPaymentRow,
+  grossAmount: number,
+  paymentType: MidtransPaymentType,
+  referenceId: string
+) {
+  if (row.qris_string) {
+    return secureJsonResponse({
+      ok: true,
+      mode: "qris",
+      midtransOrderId: row.midtrans_order_id,
+      grossAmount,
+      paymentType,
+      orderId: paymentType === "topup" ? null : referenceId,
+      qris: {
+        qrString: row.qris_string,
+        qrUrl: row.qris_url,
+      },
+      reused: true,
+    });
+  }
+
+  return secureJsonResponse({
+    ok: true,
+    mode: "snap",
+    midtransOrderId: row.midtrans_order_id,
+    grossAmount,
+    paymentType,
+    orderId: paymentType === "topup" ? null : referenceId,
+    snap: {
+      token: row.midtrans_transaction_id!,
+      redirectUrl: row.qris_url!,
+    },
+    reused: true,
+  });
+}
+
+async function pickUniqueMidtransOrderId(
+  admin: ReturnType<typeof createAdminClient>,
+  paymentType: MidtransPaymentType,
+  referenceId: string
+): Promise<string> {
+  let attempt = 1;
+
+  if (paymentType !== "topup") {
+    const { count } = await admin
+      .from("payment_transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("order_id", referenceId);
+    attempt = Math.max(1, (count ?? 0) + 1);
+  }
+
+  for (let i = 0; i < 15; i++) {
+    const candidate = buildMidtransOrderIdWithRetry(
+      paymentType,
+      referenceId,
+      attempt + i
+    );
+    const { data: existing } = await admin
+      .from("payment_transactions")
+      .select("id")
+      .eq("midtrans_order_id", candidate)
+      .maybeSingle();
+    if (!existing) return candidate;
+  }
+
+  throw new Error("Gagal membuat ID pembayaran unik");
 }
 
 export async function POST(req: Request) {
@@ -144,12 +227,20 @@ export async function POST(req: Request) {
     }
   }
 
-  const midtransOrderId = buildMidtransOrderId(paymentType, referenceId);
+  let midtransOrderId: string;
+  try {
+    midtransOrderId = await pickUniqueMidtransOrderId(admin, paymentType, referenceId);
+  } catch (e) {
+    return secureJsonResponse(
+      { error: e instanceof Error ? e.message : "Gagal membuat ID pembayaran" },
+      { status: 500 }
+    );
+  }
 
   let pendingQuery = admin
     .from("payment_transactions")
     .select(
-      "id, midtrans_order_id, qris_url, qris_string, gross_amount, status"
+      "id, midtrans_order_id, qris_url, qris_string, gross_amount, status, midtrans_transaction_id"
     )
     .eq("customer_id", user.id)
     .eq("status", "pending")
@@ -165,22 +256,20 @@ export async function POST(req: Request) {
     .limit(1)
     .maybeSingle();
 
-  if (
-    existingPending?.qris_string &&
-    Number(existingPending.gross_amount) === grossAmount
-  ) {
-    return secureJsonResponse({
-      ok: true,
-      midtransOrderId: existingPending.midtrans_order_id,
+  if (existingPending && canReusePendingPayment(existingPending, grossAmount)) {
+    return reusePendingPaymentResponse(
+      existingPending,
       grossAmount,
       paymentType,
-      orderId: paymentType === "topup" ? null : referenceId,
-      qris: {
-        qrString: existingPending.qris_string,
-        qrUrl: existingPending.qris_url,
-      },
-      reused: true,
-    });
+      referenceId
+    );
+  }
+
+  if (existingPending && !canReusePendingPayment(existingPending, grossAmount)) {
+    await admin
+      .from("payment_transactions")
+      .update({ status: "cancel" })
+      .eq("id", existingPending.id);
   }
 
   const { data: ptRow, error: ptInsertErr } = await admin

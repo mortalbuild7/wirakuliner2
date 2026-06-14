@@ -80,11 +80,31 @@ export function formatMidtransError(
   return msg || "Gagal membuat QRIS Midtrans";
 }
 
+const MIDTRANS_ORDER_ID_MAX = 50;
+
 /** TOPUP-{32hex} atau ORDER-{32hex} — max 50 karakter Midtrans. */
 export function buildMidtransOrderId(type: MidtransPaymentType, referenceId: string): string {
+  return buildMidtransOrderIdWithRetry(type, referenceId, 1);
+}
+
+/** ID unik per percobaan bayar — hindari bentrok setelah transaksi cancel/gagal. */
+export function buildMidtransOrderIdWithRetry(
+  type: MidtransPaymentType,
+  referenceId: string,
+  attempt: number
+): string {
   const compact = referenceId.replace(/-/g, "");
   const prefix = type === "topup" ? "TOPUP" : "ORDER";
-  return `${prefix}-${compact}`;
+
+  if (attempt <= 1) {
+    const id = `${prefix}-${compact}`;
+    if (id.length <= MIDTRANS_ORDER_ID_MAX) return id;
+    return `${prefix}-${compact.slice(0, MIDTRANS_ORDER_ID_MAX - prefix.length - 1)}`;
+  }
+
+  const suffix = `R${attempt}`;
+  const maxCompact = MIDTRANS_ORDER_ID_MAX - prefix.length - 1 - suffix.length;
+  return `${prefix}-${compact.slice(0, Math.max(8, maxCompact))}-${suffix}`;
 }
 
 export function parseMidtransOrderId(midtransOrderId: string): {
