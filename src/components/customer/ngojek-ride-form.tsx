@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { CUSTOMER_GPS_INITIALIZING_MSG } from "@/lib/pickup-coords";
 import { isDriverAvailabilityBlockMessage } from "@/lib/customer-order-feedback";
 import { LocationSearchBar } from "@/components/maps/LocationSearchBar";
-import { PickupMapContainer } from "@/components/maps/PickupMapContainer";
 import {
   Bike,
   Car,
@@ -390,18 +389,12 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
             accentClass="text-emerald-800"
           />
 
-          <PickupMapContainer
-            centerLat={ride.pickupLat}
-            centerLng={ride.pickupLng}
-            hubLat={ride.pickupLat}
-            hubLng={ride.pickupLng}
-            panTrigger={ride.pickupMapFlyTrigger}
-            onMapIdle={ride.handlePickupMapIdle}
-            height={220}
-          />
+          <div className="flex h-[120px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-center text-xs text-slate-500">
+            Peta jemput dinonaktifkan sementara
+          </div>
 
           <p className="text-[10px] text-muted-foreground">
-            Geser peta — pin hijau tetap di tengah; alamat diperbarui otomatis.
+            Gunakan kolom alamat atau tombol GPS di bawah.
           </p>
 
           <div className="flex flex-wrap gap-2">
