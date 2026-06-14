@@ -6,25 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert } from "@/components/ui/alert";
-import { formatIdr } from "@/lib/utils";
 import { SERVICE_TYPE_LABEL, type ServiceType } from "@/lib/service-types";
 import { QrisPaymentPanel } from "@/components/payment/qris-payment-panel";
-import { PaymentMethodPicker } from "@/components/wallet/payment-method-picker";
-import { OrderConfirmation } from "@/components/customer/OrderConfirmation";
 import { useNgojekRide } from "@/hooks/use-ngojek-ride";
 import { cn } from "@/lib/utils";
-import { CUSTOMER_GPS_INITIALIZING_MSG } from "@/lib/pickup-coords";
 import { isDriverAvailabilityBlockMessage } from "@/lib/customer-order-feedback";
-import { LocationSearchBar } from "@/components/maps/LocationSearchBar";
-import { PickupMapContainer } from "@/components/maps/PickupMapContainer";
+import { RideLocationMapSection, type BookingStep } from "@/components/customer/ride-location-map-section";
 import {
   Bike,
   Car,
-  Crosshair,
   Loader2,
-  MapPin,
-  MapPinned,
-  Navigation,
   Package,
   Sparkles,
   Truck,
@@ -304,6 +295,7 @@ function PaketDetailsForm({
 
 export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
   const ride = useNgojekRide();
+  const [bookingStep, setBookingStep] = useState<BookingStep>("PICKUP");
 
   if (!ride.authReady) {
     return (
@@ -365,203 +357,11 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
         </Alert>
       )}
 
-      {ride.showFlexiblePickup ? (
-        <section className="glass-card relative space-y-3 p-4">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
-              <MapPinned className="h-4 w-4" />
-            </span>
-            <div>
-              <p className="text-xs font-bold text-emerald-800">Titik jemput</p>
-              <p className="text-[10px] font-medium text-slate-600">
-                Pesan untuk orang lain? Geser peta atau cari alamat manual.
-              </p>
-            </div>
-          </div>
+      <RideLocationMapSection ride={ride} onStepChange={setBookingStep} />
 
-          <LocationSearchBar
-            label="Alamat jemput"
-            value={ride.pickupAddress}
-            onChange={ride.onPickupAddressChange}
-            onSelect={ride.handlePickupSearchSelect}
-            placeholder="Contoh: Bandara Soekarno-Hatta, Mall Parung…"
-            nearLat={ride.pickupLat}
-            nearLng={ride.pickupLng}
-            accentClass="text-emerald-800"
-          />
-
-          <PickupMapContainer
-            centerLat={ride.pickupLat}
-            centerLng={ride.pickupLng}
-            hubLat={ride.pickupLat}
-            hubLng={ride.pickupLng}
-            panTrigger={ride.pickupMapFlyTrigger}
-            onMapIdle={ride.handlePickupMapIdle}
-            height={220}
-          />
-
-          <p className="text-[10px] text-muted-foreground">
-            Geser peta — pin hijau tetap di tengah; alamat diperbarui otomatis.
-          </p>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
-              onClick={ride.applyPickupFromDevice}
-              disabled={ride.gpsLoading || !ride.currentDeviceLocation}
-            >
-              <Crosshair className="mr-1 h-3.5 w-3.5" />
-              Gunakan lokasi saya
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="border-slate-200 text-slate-700 hover:bg-slate-50"
-              onClick={ride.refreshPickupGps}
-              disabled={ride.gpsLoading}
-            >
-              {ride.gpsLoading ? (
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Navigation className="mr-1 h-3.5 w-3.5" />
-              )}
-              Refresh GPS
-            </Button>
-          </div>
-          {ride.gpsInitStatus === "INITIALIZING_GPS" && (
-            <p className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
-              {ride.gpsLoading ? (
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-              ) : (
-                <Navigation className="h-3.5 w-3.5 shrink-0 opacity-70" />
-              )}
-              {CUSTOMER_GPS_INITIALIZING_MSG}
-            </p>
-          )}
-          {ride.currentDeviceLocation && ride.pickupAccuracyM != null && (
-            <p className="text-[10px] font-medium text-slate-600">
-              GPS perangkat: {ride.currentDeviceLocation.address} (±
-              {Math.round(ride.pickupAccuracyM)} m)
-            </p>
-          )}
-        </section>
-      ) : (
-        <section className="glass-card space-y-4 p-4">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
-              <Crosshair className="h-4 w-4" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <Label className="text-xs font-bold text-emerald-800">Titik jemput paket</Label>
-              <Input
-                value={ride.pickupAddress}
-                onChange={(e) => ride.onPickupAddressChange(e.target.value)}
-                placeholder="Lokasi pengambilan paket"
-                className="mt-1 border-slate-200 bg-white text-slate-900"
-              />
-            </div>
-          </div>
-        </section>
+      {ride.serviceType === "PAKET" && bookingStep === "CONFIRM" && (
+        <PaketDetailsForm ride={ride} />
       )}
-
-      <section className="glass-card relative z-0 isolate overflow-hidden space-y-3 p-4">
-        <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-sky-800">
-            <MapPin className="h-4 w-4" />
-          </span>
-          <div className="relative flex-1">
-            {ride.showFlexiblePickup ? (
-              <LocationSearchBar
-                label={ride.serviceType === "PAKET" ? "Alamat penerima" : "Tujuan"}
-                value={ride.destAddress}
-                onChange={ride.onDestAddressChange}
-                onSelect={ride.handleDestinationSearchSelect}
-                placeholder="Ketik alamat tujuan..."
-                nearLat={ride.pickupLat}
-                nearLng={ride.pickupLng}
-                accentClass="text-sky-800"
-              />
-            ) : (
-              <>
-                <Label className="text-xs font-semibold text-sky-800">Alamat penerima</Label>
-                <Input
-                  value={ride.destAddress}
-                  onChange={(e) => ride.onDestAddressChange(e.target.value)}
-                  placeholder="Alamat pengantaran paket..."
-                  className="mt-1 border-slate-200 bg-white pr-9 text-slate-900 placeholder:text-slate-400"
-                />
-                {ride.geocodingDest && (
-                  <Loader2 className="absolute right-3 top-[2.15rem] h-4 w-4 animate-spin text-sky-600" />
-                )}
-                {ride.destSuggestions.length > 0 && (
-                  <ul className="mt-1 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-md">
-                    {ride.destSuggestions.map((hit) => (
-                      <li key={`${hit.lat}-${hit.lng}-${hit.label}`}>
-                        <button
-                          type="button"
-                          className="w-full border-b border-slate-100 px-3 py-2.5 text-left text-xs text-slate-800 last:border-b-0 hover:bg-sky-50"
-                          onClick={() => ride.applyDestinationHit(hit)}
-                        >
-                          {hit.label}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-        <p className="text-[10px] text-muted-foreground">
-          {ride.showFlexiblePickup
-            ? "Pilih dari daftar alamat. (Peta tujuan — fase berikutnya)"
-            : "Ketik alamat tujuan di kolom di atas."}
-        </p>
-        <div className="flex h-[120px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-center text-xs text-slate-500">
-          Peta tujuan dinonaktifkan sementara — rebuild bertahap
-        </div>
-      </section>
-
-      {ride.serviceType === "PAKET" && <PaketDetailsForm ride={ride} />}
-
-      <section className="glass-card p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-600">Estimasi jarak</p>
-            <p className="text-lg font-bold text-slate-900">
-              {ride.distanceKm.toFixed(2)} km
-            </p>
-            <p className="text-[10px] font-medium text-slate-600">
-              {ride.quoting ? "Memperbarui tarif…" : ride.feeDescription}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs font-semibold text-slate-600">Tarif {ride.serviceType}</p>
-            <p className="flex items-center justify-end gap-2 text-2xl font-bold text-emerald-700">
-              {formatIdr(ride.rideFee)}
-              {ride.quoting && (
-                <Loader2 className="h-5 w-5 shrink-0 animate-spin opacity-70" />
-              )}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {ride.userId && (
-        <PaymentMethodPicker
-          value={ride.paymentMethod}
-          onChange={ride.setPaymentMethod}
-          walletBalance={ride.walletBalance}
-          total={ride.rideFee}
-          disabled={ride.placing}
-        />
-      )}
-
-      <OrderConfirmation ride={ride} />
 
       {ride.qrisPayment && (
         <QrisPaymentPanel

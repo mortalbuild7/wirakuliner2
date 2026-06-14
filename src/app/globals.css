@@ -295,13 +295,15 @@
   overflow: hidden !important;
 }
 
-.customer-layout-root .customer-ride-map .leaflet-pane,
 .customer-layout-root .customer-ride-map .leaflet-tile-pane,
-.customer-layout-root .customer-ride-map .leaflet-overlay-pane,
-.customer-layout-root .customer-ride-map .leaflet-shadow-pane,
-.customer-layout-root .customer-ride-map .leaflet-marker-pane,
 .customer-layout-root .customer-ride-map .leaflet-map-pane {
   z-index: 0 !important;
+}
+
+.customer-layout-root .customer-ride-map .leaflet-overlay-pane,
+.customer-layout-root .customer-ride-map .leaflet-marker-pane,
+.customer-layout-root .customer-ride-map .leaflet-shadow-pane {
+  z-index: 3 !important;
 }
 
 .customer-layout-root .customer-ride-map .leaflet-control-attribution {

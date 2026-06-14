@@ -1,37 +1,37 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { MapLoadErrorBoundary } from "@/components/maps/map-error-boundary";
+import { RideMapContainer, type RideMapContainerProps } from "@/components/maps/RideMapContainer";
 
-const PickupMapInner = dynamic(
-  () => import("@/components/maps/pickup-map-inner").then((m) => m.PickupMapInner),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[220px] items-center justify-center rounded-2xl bg-slate-100 text-sm text-slate-600">
-        Memuat peta jemput...
-      </div>
-    ),
-  }
-);
-
-export type PickupMapContainerProps = {
+export type PickupMapContainerProps = Omit<
+  RideMapContainerProps,
+  "bookingStep" | "pickupLat" | "pickupLng" | "destLat" | "destLng"
+> & {
   centerLat: number;
   centerLng: number;
   hubLat: number;
   hubLng: number;
-  hubLabel?: string;
-  showRadius?: boolean;
-  panTrigger?: number;
-  onMapIdle: (lat: number, lng: number) => void;
-  height?: number;
 };
 
-/** Peta jemput inline — satu layer wrapper di PickupMapInner. */
-export function PickupMapContainer(props: PickupMapContainerProps) {
+/** @deprecated Gunakan RideMapContainer dengan bookingStep. */
+export function PickupMapContainer({
+  centerLat,
+  centerLng,
+  hubLat,
+  hubLng,
+  ...rest
+}: PickupMapContainerProps) {
   return (
-    <MapLoadErrorBoundary title="Peta jemput gagal dimuat">
-      <PickupMapInner {...props} />
-    </MapLoadErrorBoundary>
+    <RideMapContainer
+      bookingStep="PICKUP"
+      centerLat={centerLat}
+      centerLng={centerLng}
+      pickupLat={centerLat}
+      pickupLng={centerLng}
+      destLat={centerLng}
+      destLng={centerLng}
+      hubLat={hubLat}
+      hubLng={hubLng}
+      {...rest}
+    />
   );
 }

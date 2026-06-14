@@ -880,6 +880,30 @@ export function useNgojekRide() {
     [setDestinationLocation, bumpDestinationMapFly]
   );
 
+  /** Setelah jemput dikunci — letakkan tujuan awal dekat jemput agar peta fokus ke langkah 2. */
+  const seedDestinationNearPickup = useCallback(() => {
+    const km = haversineKm(pickupLat, pickupLng, destLat, destLng);
+    const needsSeed = !destAddress.trim() || km > 2;
+    if (!needsSeed) {
+      bumpDestinationMapFly();
+      return;
+    }
+    patchDestinationLocation({
+      address: "Pilih titik tujuan di peta",
+      latitude: roundCoordForQuote(pickupLat + 0.004),
+      longitude: roundCoordForQuote(pickupLng + 0.004),
+    });
+    bumpDestinationMapFly();
+  }, [
+    pickupLat,
+    pickupLng,
+    destLat,
+    destLng,
+    destAddress,
+    patchDestinationLocation,
+    bumpDestinationMapFly,
+  ]);
+
   return {
     authReady,
     userId,
@@ -927,6 +951,7 @@ export function useNgojekRide() {
     refreshPickupGps,
     refreshPickupCoordsForSubmit,
     handleDestinationSearchSelect,
+    seedDestinationNearPickup,
     showFlexiblePickup,
     serviceGateStatus,
     bookRide,
