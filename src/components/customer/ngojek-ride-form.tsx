@@ -30,8 +30,6 @@ import {
   Truck,
 } from "lucide-react";
 
-import { DestinationMapContainer } from "@/components/maps/DestinationMapContainer";
-
 const SERVICE_OPTIONS: {
   type: ServiceType;
   icon: typeof Bike;
@@ -403,7 +401,7 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
           />
 
           <p className="text-[10px] text-muted-foreground">
-            Ketuk pratinjau peta untuk menggeser pin hijau; alamat diperbarui otomatis.
+            Geser peta — pin hijau tetap di tengah; alamat diperbarui otomatis.
           </p>
 
           <div className="flex flex-wrap gap-2">
@@ -520,19 +518,12 @@ export function NgojekRideForm({ embedded = false }: { embedded?: boolean }) {
         </div>
         <p className="text-[10px] text-muted-foreground">
           {ride.showFlexiblePickup
-            ? "Pilih dari daftar atau ketuk pratinjau peta untuk atur tujuan."
-            : "Ketik alamat — pin biru mengikuti. Atau geser pin / ketuk peta."}
+            ? "Pilih dari daftar alamat. (Peta tujuan — fase berikutnya)"
+            : "Ketik alamat tujuan di kolom di atas."}
         </p>
-        <DestinationMapContainer
-          lat={ride.destLat}
-          lng={ride.destLng}
-          hubLat={ride.pickupLat}
-          hubLng={ride.pickupLng}
-          hubLabel="J"
-          flyToTrigger={ride.mapFlyTrigger}
-          onLocationChange={ride.handleDestMapChange}
-          height={240}
-        />
+        <div className="flex h-[120px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-center text-xs text-slate-500">
+          Peta tujuan dinonaktifkan sementara — rebuild bertahap
+        </div>
       </section>
 
       {ride.serviceType === "PAKET" && <PaketDetailsForm ride={ride} />}

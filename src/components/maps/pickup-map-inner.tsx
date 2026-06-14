@@ -111,14 +111,13 @@ export function PickupMapInner({
 
   return (
     <div
-      className="customer-map-wrap relative z-0 isolate overflow-hidden rounded-2xl ring-1 ring-emerald-500/30"
+      className="customer-ride-map relative overflow-hidden rounded-2xl ring-1 ring-emerald-500/30"
       style={{ height, contain: "paint" }}
     >
       <MapContainer
         center={[centerLat, centerLng]}
         zoom={15}
         maxZoom={19}
-        preferCanvas
         scrollWheelZoom
         doubleClickZoom
         touchZoom
