@@ -9,7 +9,7 @@ export function CustomerExploreNav({ active }: { active: ExploreSection }) {
   return (
     <nav
       aria-label="Jelajah WIRA"
-      className="sticky top-0 z-20 -mx-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm"
+      className="sticky top-[var(--customer-header-offset,4.25rem)] z-20 -mx-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm"
     >
       <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5 shadow-sm">
         <Link

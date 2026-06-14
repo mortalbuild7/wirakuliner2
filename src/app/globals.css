@@ -263,12 +263,14 @@
 
 /*
  * Customer layout vs Leaflet — di luar @layer agar mengalahkan leaflet.css.
- * Scroll hanya di .customer-scroll-layer; header di luar area scroll (tidak bisa ditimpa peta).
+ * Header sticky di dalam area scroll; peta bergeser di bawahnya (z-index header menang).
  */
 html.customer-app-active,
 html.customer-app-active body {
   height: 100%;
-  overflow: hidden;
+  max-height: 100%;
+  overflow: hidden !important;
+  overscroll-behavior: none;
 }
 
 .customer-layout-root {
@@ -276,14 +278,19 @@ html.customer-app-active body {
   height: 100dvh;
   max-height: 100dvh;
   overflow: hidden;
+  isolation: isolate;
 }
 
 .customer-layout-root .customer-app-header {
-  position: relative !important;
-  flex-shrink: 0;
+  position: sticky !important;
+  top: 0 !important;
   z-index: 10000 !important;
+  flex-shrink: 0;
   background-color: #ffffff !important;
   isolation: isolate;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .customer-layout-root .customer-scroll-layer {
@@ -294,8 +301,13 @@ html.customer-app-active body {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior-y: contain;
-  isolation: isolate;
   -webkit-overflow-scrolling: touch;
+}
+
+.customer-layout-root .customer-scroll-content {
+  position: relative !important;
+  z-index: 0 !important;
+  isolation: isolate;
 }
 
 .customer-layout-root .customer-map-wrap {
@@ -303,13 +315,17 @@ html.customer-app-active body {
   z-index: 0 !important;
   isolation: isolate;
   overflow: hidden !important;
-  contain: paint;
-  transform: translateZ(0);
+  contain: paint layout;
 }
 
 .customer-layout-root .leaflet-container {
   z-index: 0 !important;
   position: relative !important;
+  overflow: hidden !important;
+}
+
+.customer-layout-root .leaflet-container * {
+  z-index: auto !important;
 }
 
 .customer-layout-root .leaflet-pane,
@@ -321,15 +337,15 @@ html.customer-app-active body {
 .customer-layout-root .leaflet-popup-pane,
 .customer-layout-root .leaflet-map-pane,
 .customer-layout-root .leaflet-zoom-box {
-  z-index: 0 !important;
+  z-index: auto !important;
 }
 
 .customer-layout-root .leaflet-top,
-.customer-layout-root .leaflet-bottom,
-.customer-layout-root .leaflet-control {
+.customer-layout-root .leaflet-bottom {
   z-index: 1 !important;
 }
 
+.customer-layout-root .leaflet-control,
 .customer-layout-root .leaflet-control-attribution {
   z-index: 1 !important;
 }

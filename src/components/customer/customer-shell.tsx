@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Toaster } from "sonner";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -41,7 +41,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   const [customerName, setCustomerName] = useState<string | null>(null);
   const supabase = createClient();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.classList.add("customer-app-active");
     return () => document.documentElement.classList.remove("customer-app-active");
   }, []);
@@ -59,49 +59,57 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   return (
-    <div className="customer-layout-root flex h-[100dvh] flex-col overflow-hidden bg-slate-50 text-slate-900">
+    <div
+      className="customer-layout-root flex h-[100dvh] flex-col overflow-hidden bg-slate-50 text-slate-900"
+      style={
+        {
+          "--customer-header-offset":
+            "calc(4.25rem + max(0.75rem, env(safe-area-inset-top, 0px)))",
+        } as React.CSSProperties
+      }
+    >
       <HelloWelcome />
-      <header
-        className="customer-app-header relative z-[10000] shrink-0 border-b border-slate-200 bg-white shadow-sm"
-        style={{ zIndex: 10000 }}
-      >
-        <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <Link href="/customer" className="flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/25">
-              <Sparkles className="h-5 w-5 text-white" />
-            </span>
-            <div className="flex flex-col gap-0.5">
-              <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
-                <p className="text-sm font-bold tracking-tight text-slate-900">WIRA</p>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">
-                  Kuliner
-                </p>
-              </div>
-              <PoweredByDaffacell variant="header" />
-            </div>
-          </Link>
-          <PoweredByDaffacell variant="hidden" />
-          <div className="flex items-center gap-2">
-            <WalletBalanceBadge href="/customer/wallet" />
-            {customerName ? (
-              <span
-                className="flex max-w-[9rem] items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50 px-3 py-1.5 text-[11px] font-medium text-emerald-800 sm:max-w-[12rem]"
-                title={customerName}
-              >
-                <User className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{customerName}</span>
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </header>
 
-      <main className="customer-scroll-layer relative z-0 mx-auto min-h-0 w-full max-w-mobile flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain isolate safe-pb-nav">
-        <CustomerModerationBanner />
-        {children}
+      <main className="customer-scroll-layer relative z-0 mx-auto min-h-0 w-full max-w-mobile flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain safe-pb-nav">
+        <header className="customer-app-header sticky top-0 z-[10000] border-b border-slate-200 bg-white shadow-sm">
+          <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+            <Link href="/customer" className="flex items-center gap-2.5">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/25">
+                <Sparkles className="h-5 w-5 text-white" />
+              </span>
+              <div className="flex flex-col gap-0.5">
+                <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+                  <p className="text-sm font-bold tracking-tight text-slate-900">WIRA</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">
+                    Kuliner
+                  </p>
+                </div>
+                <PoweredByDaffacell variant="header" />
+              </div>
+            </Link>
+            <PoweredByDaffacell variant="hidden" />
+            <div className="flex items-center gap-2">
+              <WalletBalanceBadge href="/customer/wallet" />
+              {customerName ? (
+                <span
+                  className="flex max-w-[9rem] items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50 px-3 py-1.5 text-[11px] font-medium text-emerald-800 sm:max-w-[12rem]"
+                  title={customerName}
+                >
+                  <User className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{customerName}</span>
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </header>
+
+        <div className="customer-scroll-content relative z-0 isolate">
+          <CustomerModerationBanner />
+          {children}
+        </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+      <nav className="fixed bottom-0 left-0 right-0 z-[10001] border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
         <div className="mx-auto flex max-w-mobile justify-around px-3 py-2">
           {NAV.map(({ href, label, icon: Icon, match }) => {
             const active = match(pathname);
