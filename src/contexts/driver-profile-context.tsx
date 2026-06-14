@@ -20,6 +20,14 @@ type DriverProfileValue = {
 
 const DriverProfileContext = createContext<DriverProfileValue | null>(null);
 
+function readPreloadedApkDriver(): Driver | null {
+  if (typeof window === "undefined") return null;
+  const w = window as Window & { __WIRA_NATIVE_DRIVER__?: Driver };
+  const d = w.__WIRA_NATIVE_DRIVER__;
+  if (!d?.id) return null;
+  return d;
+}
+
 async function fetchDriverMeBearer(
   accessToken: string,
   timeoutMs = 10_000
@@ -86,16 +94,17 @@ function postNativeReady(driver: Driver | null) {
 }
 
 function useDriverProfileImpl(): DriverProfileValue {
-  const [driver, setDriver] = useState<Driver | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const preloaded = isDriverApkWebView() ? readPreloadedApkDriver() : null;
+  const [driver, setDriver] = useState<Driver | null>(preloaded);
+  const [userId, setUserId] = useState<string | null>(preloaded?.profile_id ?? null);
+  const [loading, setLoading] = useState(!preloaded);
   const supabase = createClient();
   const refreshGenRef = useRef(0);
   const refreshingRef = useRef(false);
   const loadedTokenRef = useRef<string | null>(null);
-  const nativeReadySentRef = useRef(false);
+  const nativeReadySentRef = useRef(Boolean(preloaded));
   const sessionFailAtRef = useRef(0);
-  const driverRef = useRef<Driver | null>(null);
+  const driverRef = useRef<Driver | null>(preloaded);
 
   useEffect(() => {
     driverRef.current = driver;
@@ -111,14 +120,34 @@ function useDriverProfileImpl(): DriverProfileValue {
 
       try {
         if (isDriverApkWebView()) {
+          const pre = readPreloadedApkDriver();
+          if (pre?.id && !currentDriver) {
+            setDriver(pre);
+            setUserId(pre.profile_id);
+            if (!nativeReadySentRef.current) {
+              nativeReadySentRef.current = true;
+              postNativeReady(pre);
+            }
+            return;
+          }
+
+          if (pre?.id && currentDriver?.id === pre.id && silent) {
+            return;
+          }
+
           const token =
-            getNativeAccessToken() ?? (await waitForNativeAccessToken(silent ? 1_500 : 4_000));
+            getNativeAccessToken() ?? (await waitForNativeAccessToken(silent ? 800 : 3_000));
           if (gen !== refreshGenRef.current) return;
 
           if (!token) {
+            if (pre?.id) {
+              setDriver(pre);
+              setUserId(pre.profile_id);
+              return;
+            }
             if (!silent && !currentDriver) {
               const now = Date.now();
-              if (now - sessionFailAtRef.current > 30_000) {
+              if (now - sessionFailAtRef.current > 60_000) {
                 sessionFailAtRef.current = now;
                 postNativeSessionFailed("Token driver belum tersedia");
               }
@@ -144,9 +173,15 @@ function useDriverProfileImpl(): DriverProfileValue {
             return;
           }
 
+          if (pre?.id) {
+            setDriver(pre);
+            setUserId(pre.profile_id);
+            return;
+          }
+
           if (!silent && !currentDriver && (status === 401 || status === 403)) {
             const now = Date.now();
-            if (now - sessionFailAtRef.current > 30_000) {
+            if (now - sessionFailAtRef.current > 60_000) {
               sessionFailAtRef.current = now;
               postNativeSessionFailed("Sesi driver kedaluwarsa — login ulang");
             }
@@ -181,7 +216,13 @@ function useDriverProfileImpl(): DriverProfileValue {
         }
       } catch (e) {
         console.warn("[driver profile]", e);
-        if (!silent) setDriver(null);
+        const pre = readPreloadedApkDriver();
+        if (pre?.id) {
+          setDriver(pre);
+          setUserId(pre.profile_id);
+        } else if (!silent) {
+          setDriver(null);
+        }
       } finally {
         refreshingRef.current = false;
         if (gen === refreshGenRef.current) {
@@ -193,41 +234,18 @@ function useDriverProfileImpl(): DriverProfileValue {
   );
 
   useEffect(() => {
+    if (preloaded) {
+      postNativeReady(preloaded);
+      return;
+    }
     void refresh();
 
-    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-    function onNativeSession(e: Event) {
-      const detail = (e as CustomEvent<{ refresh_token?: string }>).detail;
-      const rt = detail?.refresh_token ?? null;
-      if (rt && loadedTokenRef.current && driverRef.current) return;
-
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        void refresh({ silent: Boolean(driverRef.current) });
-      }, 400);
-    }
-    window.addEventListener("wira-set-session", onNativeSession);
-
-    let sub: { unsubscribe: () => void } | undefined;
-    if (!isDriverApkWebView()) {
-      const { data } = supabase.auth.onAuthStateChange(() => {
-        void refresh({ silent: true });
-      });
-      sub = data.subscription;
-    }
-
-    const safety = setTimeout(() => setLoading(false), 12_000);
-
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      window.removeEventListener("wira-set-session", onNativeSession);
-      sub?.unsubscribe();
-      clearTimeout(safety);
-    };
-  }, [refresh, supabase]);
+    const safety = setTimeout(() => setLoading(false), 8_000);
+    return () => clearTimeout(safety);
+  }, [preloaded, refresh]);
 
   useEffect(() => {
-    if (!driver?.id) return;
+    if (!driver?.id || isDriverApkWebView()) return;
     const ch = supabase
       .channel(`driver-profile-${driver.id}`)
       .on(

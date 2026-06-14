@@ -16,6 +16,7 @@ import type { WebViewMessageEvent, WebViewNavigation } from "react-native-webvie
 import { DriverLoginScreen } from "./components/DriverLoginScreen";
 import { clearLocalAuth, restoreNativeSession, syncNativeSession } from "./lib/auth-session";
 import { fetchDriverMeNative, setDriverStatusNative } from "./lib/driver-api";
+import type { NativeDriverProfile } from "./lib/driver-api";
 import { getDriverAppEntryUrls, getDriverHomeUrls } from "./lib/driver-url";
 import { pickReachableAppEntry } from "./lib/host-probe";
 import { supabase } from "./lib/supabase";
@@ -170,6 +171,18 @@ function apkSessionBootstrapScript(session: Session, dispatchEvent = false) {
   `;
 }
 
+function nativeDriverBootstrapScript(driver: NativeDriverProfile) {
+  const payload = JSON.stringify(driver);
+  return `
+    (function() {
+      window.__WIRA_APK_WEBVIEW__ = true;
+      window.__WIRA_NATIVE_DRIVER__ = ${payload};
+      window.__WIRA_DRIVER_PRELOADED__ = true;
+    })();
+    true;
+  `;
+}
+
 /** Lewati app-entry sebelum React — langsung ke dashboard jika token sudah ada. */
 function skipAppEntryRedirectScript() {
   return `
@@ -299,7 +312,7 @@ function DriverWebShell({
           ref={webRef}
           source={{ uri: activeWebUrl }}
           style={styles.web}
-          startInLoadingState
+          startInLoadingState={false}
           cacheEnabled={!useNoCache}
           cacheMode={
             Platform.OS === "android"
@@ -462,11 +475,49 @@ export default function App() {
     hasDriver: false,
   });
   const [webUiReady, setWebUiReady] = useState(false);
+  const [webGateReady, setWebGateReady] = useState(false);
+  const [gateError, setGateError] = useState<string | null>(null);
+  const prefetchedDriverRef = useRef<NativeDriverProfile | null>(null);
+  const gateRunningRef = useRef(false);
 
   const hideSpinner = useCallback(() => {
     setWebLoading(false);
     setWebUiReady(true);
   }, []);
+
+  const prepareWebGate = useCallback(async (active: Session) => {
+    if (gateRunningRef.current) return;
+    gateRunningRef.current = true;
+    setGateError(null);
+    setWebGateReady(false);
+    try {
+      const picked = await pickReachableAppEntry(APP_ENTRY_URLS);
+      if (picked) setWebUrlIndex(picked.index);
+
+      const { ok, json } = await fetchDriverMeNative(active.access_token);
+      if (!ok || !json.driver) {
+        throw new Error(json.error || "Gagal memuat profil driver");
+      }
+
+      prefetchedDriverRef.current = json.driver;
+      const d = json.driver;
+      setDriverState({
+        hasDriver: true,
+        online: d.status === "idle" || d.status === "delivering",
+        delivering: d.status === "delivering",
+      });
+      bootCompleteRef.current = true;
+      bootGraceUntilRef.current = Date.now() + 30_000;
+      setWebGateReady(true);
+      hideSpinner();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Gagal memuat profil driver";
+      setGateError(msg);
+      prefetchedDriverRef.current = null;
+    } finally {
+      gateRunningRef.current = false;
+    }
+  }, [hideSpinner]);
 
   const activeWebUrl = forcedWebUrl ?? DRIVER_HOME_URLS[webUrlIndex] ?? DRIVER_HOME_URLS[0];
 
@@ -479,7 +530,7 @@ export default function App() {
       setWebError(null);
       hideSpinner();
       if (sessionRef.current) {
-        injectSession(webRef, sessionRef.current, true);
+        injectSession(webRef, sessionRef.current, false);
       }
       const path = (() => {
         try {
@@ -613,16 +664,27 @@ export default function App() {
     sessionRetryRef.current = 0;
     sessionInjectedRef.current = false;
     nativeSessionInjectedRef.current = false;
+    lastInjectedRefreshRef.current = null;
     setSessionInjected(false);
-    navigateToDriverDashboard();
-  }, [navigateToDriverDashboard]);
+    setWebGateReady(false);
+    prefetchedDriverRef.current = null;
+    await prepareWebGate(next);
+  }, [prepareWebGate]);
 
   const beforeLoadScript = useMemo(() => {
     const bootstrap = nativeToolbarBootstrapScript();
     const skipEntry = skipAppEntryRedirectScript();
+    const driver = prefetchedDriverRef.current;
+    const driverScript = driver ? nativeDriverBootstrapScript(driver) : "";
     if (!session) return bootstrap + skipEntry + webErrorGuardScript();
-    return bootstrap + apkSessionBootstrapScript(session, false) + skipEntry + webErrorGuardScript();
-  }, [session?.access_token, session?.refresh_token]);
+    return (
+      bootstrap +
+      apkSessionBootstrapScript(session, false) +
+      driverScript +
+      skipEntry +
+      webErrorGuardScript()
+    );
+  }, [session?.access_token, session?.refresh_token, webGateReady]);
 
   useEffect(() => {
     sessionRef.current = session;
@@ -674,42 +736,9 @@ export default function App() {
   }, [phase]);
 
   useEffect(() => {
-    if (phase !== "app") return;
-    let cancelled = false;
-    void (async () => {
-      const picked = await pickReachableAppEntry(APP_ENTRY_URLS);
-      if (cancelled) return;
-      if (picked) {
-        setWebUrlIndex(picked.index);
-      }
-      setWebError(null);
-      setWebLoading(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [phase]);
-
-  useEffect(() => {
     if (phase !== "app" || !session) return;
-
-    void fetchDriverMeNative(session.access_token).then(({ ok, json }) => {
-      if (!ok || !json.driver) return;
-      const d = json.driver;
-      setDriverState({
-        hasDriver: true,
-        online: d.status === "idle" || d.status === "delivering",
-        delivering: d.status === "delivering",
-      });
-      hideSpinner();
-    });
-
-    const stopSpinner = setTimeout(hideSpinner, 4000);
-
-    return () => {
-      clearTimeout(stopSpinner);
-    };
-  }, [phase, session, hideSpinner]);
+    void prepareWebGate(session);
+  }, [phase, session, prepareWebGate]);
 
   const onNavChange = useCallback(
     (nav: WebViewNavigation) => {
@@ -890,10 +919,8 @@ export default function App() {
       sessionInjectedRef.current = true;
       setSessionInjected(true);
     }
-    if (!webUiReady) {
-      setTimeout(hideSpinner, 800);
-    }
-  }, [hideSpinner, webUiReady]);
+    hideSpinner();
+  }, [hideSpinner]);
 
   async function handleToggle() {
     if (phase !== "app") {
@@ -943,6 +970,7 @@ export default function App() {
     return (
       <View style={styles.boot}>
         <ActivityIndicator size="large" color="#34d399" />
+        <Text style={styles.bootText}>Membuka aplikasi...</Text>
       </View>
     );
   }
@@ -968,8 +996,10 @@ export default function App() {
               setWebUrlIndex(0);
               setForcedWebUrl(null);
               setWebError(null);
-              setWebLoading(true);
+              setWebLoading(false);
               setWebUiReady(false);
+              setWebGateReady(false);
+              prefetchedDriverRef.current = null;
               nativeSessionInjectedRef.current = false;
               lastInjectedRefreshRef.current = null;
               setPhase("app");
@@ -985,6 +1015,34 @@ export default function App() {
       <View style={styles.boot}>
         <ActivityIndicator size="large" color="#34d399" />
         <Text style={styles.bootText}>Menyiapkan sesi driver...</Text>
+      </View>
+    );
+  }
+
+  if (!webGateReady) {
+    return (
+      <View style={styles.boot}>
+        <ActivityIndicator size="large" color="#34d399" />
+        <Text style={styles.bootText}>{gateError ?? "Memuat profil driver..."}</Text>
+        {gateError ? (
+          <Pressable
+            style={styles.errorRetryBtn}
+            onPress={() => void prepareWebGate(session)}
+          >
+            <Text style={styles.errorRetryText}>Coba lagi</Text>
+          </Pressable>
+        ) : null}
+        {gateError ? (
+          <Pressable
+            style={[styles.errorRetryBtn, { marginTop: 8, borderColor: "#fecaca" }]}
+            onPress={() => {
+              setGateError(null);
+              setPhase("login");
+            }}
+          >
+            <Text style={[styles.errorRetryText, { color: "#dc2626" }]}>Login ulang</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
@@ -1005,7 +1063,6 @@ export default function App() {
         onLogout={() => void handleLogout()}
         onWebLoadStart={() => {
           setWebError(null);
-          if (!webUiReady) setWebLoading(true);
         }}
         onWebLoadEnd={onWebLoadEnd}
         onNavChange={onNavChange}
@@ -1020,7 +1077,7 @@ export default function App() {
         reloadWebView={reloadWebView}
         onRetry={() => void tryNextHost()}
         onEscapeBridge={() => forceDriverDashboard()}
-        showWebLoader={webLoading && !webUiReady}
+        showWebLoader={false}
       />
     </SafeAreaProvider>
   );
