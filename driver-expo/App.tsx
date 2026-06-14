@@ -16,7 +16,7 @@ import type { WebViewMessageEvent, WebViewNavigation } from "react-native-webvie
 import { DriverLoginScreen } from "./components/DriverLoginScreen";
 import { clearLocalAuth, restoreNativeSession, syncNativeSession } from "./lib/auth-session";
 import { fetchDriverMeNative, setDriverStatusNative } from "./lib/driver-api";
-import { getDriverAppEntryUrls } from "./lib/driver-url";
+import { getDriverAppEntryUrls, getDriverHomeUrls } from "./lib/driver-url";
 import { pickReachableAppEntry } from "./lib/host-probe";
 import { getAppEntryUrl, supabase } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
@@ -35,6 +35,7 @@ const ALLOWED_HOSTS = [
 const WEB_LOAD_TIMEOUT_MS = 28_000;
 
 const APP_ENTRY_URLS = getDriverAppEntryUrls();
+const DRIVER_HOME_URLS = getDriverHomeUrls();
 const WEB_TIMEOUT_CODES = new Set([-8, 8, -6, 6]);
 const nativeSessionInjectedRef = { current: false };
 
@@ -374,6 +375,7 @@ export default function App() {
   const sessionRef = useRef<Session | null>(null);
   const sessionInjectedRef = useRef(false);
   const bootCompleteRef = useRef(false);
+  const bootGraceUntilRef = useRef(0);
   const sessionRetryRef = useRef(0);
   const chunkReloadRef = useRef(0);
   const webRetryRef = useRef(0);
@@ -392,7 +394,7 @@ export default function App() {
 
   const hideSpinner = useCallback(() => setWebLoading(false), []);
 
-  const activeWebUrl = APP_ENTRY_URLS[webUrlIndex] ?? APP_ENTRY_URLS[0];
+  const activeWebUrl = DRIVER_HOME_URLS[webUrlIndex] ?? DRIVER_HOME_URLS[0];
 
   const reloadWebView = useCallback(
     (resetRetries = false) => {
@@ -552,6 +554,7 @@ export default function App() {
 
   useEffect(() => {
     if (phase !== "app") return;
+    bootGraceUntilRef.current = Date.now() + 25_000;
     void initDriverOrderNotifications();
   }, [phase]);
 
@@ -600,6 +603,24 @@ export default function App() {
         webRef.current?.goBack();
         return;
       }
+
+      if (isDriverHomeUrl(nav.url)) {
+        bootCompleteRef.current = true;
+        hideSpinner();
+        if (sessionRef.current) {
+          injectSession(webRef, sessionRef.current, true);
+        }
+        return;
+      }
+
+      if (isDriverWebPath(nav.url)) {
+        hideSpinner();
+        return;
+      }
+
+      const inBootGrace = Date.now() < bootGraceUntilRef.current;
+      if (inBootGrace) return;
+
       if (
         nav.url.includes("error=unauthorized") ||
         nav.url.includes("need=customer") ||
@@ -609,12 +630,7 @@ export default function App() {
         redirectToAppEntry();
         return;
       }
-      if (isDriverHomeUrl(nav.url)) {
-        hideSpinner();
-        if (sessionRef.current) {
-          injectSession(webRef, sessionRef.current, true);
-        }
-      }
+
       if (nav.url.includes("/login") && sessionRef.current) {
         webRef.current?.stopLoading();
         redirectToAppEntry();
@@ -674,6 +690,7 @@ export default function App() {
         if (data.type === "WIRA_DRIVER_BOOT") {
           if (data.step === "session_ok" || data.step === "redirecting") {
             bootCompleteRef.current = true;
+            bootGraceUntilRef.current = Date.now() + 20_000;
             hideSpinner();
           }
         }
@@ -682,7 +699,9 @@ export default function App() {
           const url = (data as { url?: string }).url;
           if (url) {
             hideSpinner();
+            bootGraceUntilRef.current = Date.now() + 20_000;
             nativeSessionInjectedRef.current = false;
+            setWebLoading(true);
             webRef.current?.injectJavaScript(
               `window.location.replace(${JSON.stringify(url)}); true;`
             );

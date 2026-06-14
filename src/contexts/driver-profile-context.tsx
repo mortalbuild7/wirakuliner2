@@ -108,6 +108,7 @@ function useDriverProfileImpl(): DriverProfileValue {
         if (apkDriver) {
           setDriver(apkDriver);
           setUserId(apkDriver.profile_id);
+          postNativeReady(apkDriver);
           return;
         }
       }
@@ -125,6 +126,7 @@ function useDriverProfileImpl(): DriverProfileValue {
         if (meDriver) {
           setDriver(meDriver);
           setUserId(meDriver.profile_id);
+          postNativeReady(meDriver);
           return;
         }
         setDriver(null);
@@ -141,6 +143,7 @@ function useDriverProfileImpl(): DriverProfileValue {
       setUserId(uid);
       const row = await queryDriverRow(supabase, uid);
       setDriver(row);
+      if (row) postNativeReady(row);
     } catch (e) {
       console.warn("[driver profile]", e);
       setDriver(null);

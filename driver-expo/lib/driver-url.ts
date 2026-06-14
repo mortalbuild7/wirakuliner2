@@ -45,3 +45,14 @@ export function getDriverAppEntryUrls(): string[] {
 export function getAppEntryUrl(): string {
   return getDriverAppEntryUrls()[0];
 }
+
+/** URL dashboard driver — muat langsung, hindari putaran app-entry di WebView. */
+export function getDriverHomeUrls(): string[] {
+  return getDriverAppEntryUrls().map((entry) =>
+    entry.replace("/driver/app-entry", "/driver")
+  );
+}
+
+export function getDriverHomeUrl(): string {
+  return getDriverHomeUrls()[0];
+}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { createClient, resetBrowserClient } from "@/lib/supabase/client";
 import { storeDriverTokens } from "@/lib/driver-native-session";
@@ -48,7 +47,6 @@ async function fetchWithTimeout(
   }
 }
 
-/** Baca sesi lokal — tanpa panggilan jaringan getUser (cepat di WebView APK). */
 async function readLocalSession(
   supabase: ReturnType<typeof createClient>
 ): Promise<Session | null> {
@@ -69,7 +67,7 @@ function bridgeServerCookiesFireAndForget(tokens: Tokens) {
     },
     BRIDGE_TIMEOUT_MS
   ).catch(() => {
-    /* best-effort — tidak blokir login APK */
+    /* best-effort */
   });
 }
 
@@ -100,11 +98,9 @@ async function bridgeServerCookiesBlocking(tokens: Tokens): Promise<string | nul
 }
 
 export default function DriverAppEntryPage() {
-  const router = useRouter();
   const [msg, setMsg] = useState("Menghubungkan akun...");
   const appliedRef = useRef(false);
   const runningRef = useRef(false);
-  const navStartedRef = useRef(false);
   const failedRefreshRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -112,41 +108,32 @@ export default function DriverAppEntryPage() {
     let cancelled = false;
 
     function goToDriver() {
-      if (navStartedRef.current) return;
-      navStartedRef.current = true;
       markFreshLogin();
       setMsg("Membuka dashboard driver...");
-
-      const target = new URL("/driver", window.location.origin).href;
       postNativeDriverBoot("redirecting");
 
-      const rn = (
-        window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
-      ).ReactNativeWebView;
-      rn?.postMessage(JSON.stringify({ type: "WIRA_NAVIGATE", url: target }));
+      const target = `${window.location.origin}/driver`;
+      window.location.replace(target);
 
-      router.replace("/driver");
-
-      const retry = (attempt: number) => {
-        if (cancelled || !window.location.pathname.includes("app-entry")) return;
-        if (attempt >= 3) {
-          navStartedRef.current = false;
-          setMsg("Gagal membuka dashboard. Memuat ulang...");
-          window.location.assign(`${target}?_boot=${Date.now()}`);
-          return;
+      window.setTimeout(() => {
+        if (cancelled) return;
+        if (window.location.pathname.includes("app-entry")) {
+          window.location.href = `${target}?_boot=${Date.now()}`;
         }
-        rn?.postMessage(
-          JSON.stringify({ type: "WIRA_NAVIGATE", url: `${target}?_boot=${attempt}` })
-        );
-        router.replace("/driver");
-        setTimeout(() => retry(attempt + 1), 2500);
-      };
+      }, 2000);
 
-      setTimeout(() => retry(0), 2500);
+      window.setTimeout(() => {
+        if (cancelled) return;
+        if (window.location.pathname.includes("app-entry")) {
+          appliedRef.current = false;
+          window.location.assign(`${target}?_force=${Date.now()}`);
+        }
+      }, 5000);
     }
 
     async function completeLogin(active: Session) {
       if (cancelled || appliedRef.current) return;
+      appliedRef.current = true;
 
       const tokens = {
         access_token: active.access_token,
@@ -158,12 +145,10 @@ export default function DriverAppEntryPage() {
       postNativeSessionSync(tokens);
       storeDriverTokens(tokens, true);
       postNativeDriverBoot("session_ok");
-      postNativeDriverBoot("redirecting");
 
       const apk = isApkWebView();
 
       if (apk) {
-        appliedRef.current = true;
         bridgeServerCookiesFireAndForget(tokens);
         goToDriver();
         return;
@@ -173,6 +158,7 @@ export default function DriverAppEntryPage() {
       const bridgeErr = await bridgeServerCookiesBlocking(tokens);
       const verified = await readLocalSession(createClient());
       if (!verified?.user) {
+        appliedRef.current = false;
         const rn = (
           window as Window & { ReactNativeWebView?: { postMessage: (s: string) => void } }
         ).ReactNativeWebView;
@@ -193,7 +179,6 @@ export default function DriverAppEntryPage() {
         },
         true
       );
-      appliedRef.current = true;
       goToDriver();
     }
 
