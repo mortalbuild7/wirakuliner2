@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { createClient, resetBrowserClient } from "@/lib/supabase/client";
 import { storeDriverTokens } from "@/lib/driver-native-session";
@@ -142,9 +142,22 @@ function apkRedirectToDriver(tokens: Tokens) {
 
 export default function DriverAppEntryPage() {
   const [msg, setMsg] = useState("Menghubungkan akun...");
+  const [apkBoot, setApkBoot] = useState(false);
   const appliedRef = useRef(false);
   const runningRef = useRef(false);
   const failedRefreshRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    if (!isApkWebView()) return;
+    setApkBoot(true);
+    const early = readInjectedTokens();
+    if (early) {
+      appliedRef.current = true;
+      apkRedirectToDriver(early);
+      return;
+    }
+    requestNativeSession();
+  }, []);
 
   useEffect(() => {
     resetBrowserClient();
@@ -158,6 +171,7 @@ export default function DriverAppEntryPage() {
         return;
       }
       requestNativeSession();
+      return;
     }
 
     function goToDriver(tokens: Tokens) {
@@ -337,6 +351,17 @@ export default function DriverAppEntryPage() {
       clearTimeout(timeout);
     };
   }, []);
+
+  if (apkBoot) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-white px-6">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+          <p className="text-sm text-slate-600">Membuka dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-[100dvh] items-center justify-center px-6">

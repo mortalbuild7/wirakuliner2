@@ -66,7 +66,7 @@
         }
 
         function goDriver() {
-          window.location.replace("/driver/app-entry");
+          window.location.replace("/driver");
         }
 
         function applySession(detail) {
@@ -109,6 +109,17 @@
         if (window.__WIRA_NATIVE_SESSION__) {
           applySession(window.__WIRA_NATIVE_SESSION__);
         }
+
+        try {
+          var p = location.pathname || "";
+          if (
+            (p.indexOf("/driver/app-entry") !== -1 || p.indexOf("driver-bridge") !== -1) &&
+            window.__WIRA_NATIVE_SESSION__ &&
+            window.__WIRA_NATIVE_SESSION__.access_token
+          ) {
+            window.location.replace("/driver");
+          }
+        } catch (e) {}
 
         setInterval(function () {
           if (!done && window.__WIRA_NATIVE_SESSION__) {

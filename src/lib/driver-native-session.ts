@@ -7,9 +7,11 @@ type Tokens = { access_token: string; refresh_token: string };
 
 function isReactNativeWebView(): boolean {
   if (typeof window === "undefined") return false;
-  return Boolean(
-    (window as Window & { ReactNativeWebView?: unknown }).ReactNativeWebView
-  );
+  const w = window as Window & {
+    ReactNativeWebView?: unknown;
+    __WIRA_APK_WEBVIEW__?: boolean;
+  };
+  return Boolean(w.ReactNativeWebView || w.__WIRA_APK_WEBVIEW__);
 }
 
 /** Simpan token terbaru di memori WebView + sync ke APK native. */
@@ -108,6 +110,12 @@ export async function ensureDriverNativeSession(supabase: SupabaseClient): Promi
   const w = window as Window & { __WIRA_NATIVE_SESSION_APPLIED__?: boolean };
   if (w.__WIRA_NATIVE_SESSION_APPLIED__) return;
 
+  const tokens = readStoredTokens();
+  if (isReactNativeWebView() && tokens?.access_token) {
+    w.__WIRA_NATIVE_SESSION_APPLIED__ = true;
+    return;
+  }
+
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -123,7 +131,6 @@ export async function ensureDriverNativeSession(supabase: SupabaseClient): Promi
     return;
   }
 
-  const tokens = readStoredTokens();
   if (!tokens) return;
 
   try {

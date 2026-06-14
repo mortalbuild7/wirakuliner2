@@ -170,6 +170,13 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  const driverApkUa = request.headers.get("user-agent") ?? "";
+  if (driverApkUa.includes("WIRADriverExpo")) {
+    if (pathname === "/driver/app-entry" || pathname === "/driver-bridge.html") {
+      return withSecurity(NextResponse.redirect(new URL("/driver", request.url)));
+    }
+  }
+
   if (
     pathname === "/driver/app-entry" ||
     pathname === "/api/driver/ping" ||
@@ -179,7 +186,6 @@ export async function middleware(request: NextRequest) {
   }
 
   /** WebView APK driver — auth via Bearer/native session, bukan cookie middleware. */
-  const driverApkUa = request.headers.get("user-agent") ?? "";
   if (driverApkUa.includes("WIRADriverExpo") && pathname.startsWith("/driver")) {
     return forwardPathHeader(request, response);
   }

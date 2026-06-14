@@ -69,7 +69,7 @@ function injectSession(
 ) {
   if (!webRef.current) return false;
   if (nativeSessionInjectedRef.current && !force) return false;
-  webRef.current.injectJavaScript(sessionBootstrapScript(session));
+  webRef.current.injectJavaScript(apkSessionBootstrapScript(session));
   nativeSessionInjectedRef.current = true;
   return true;
 }
@@ -127,21 +127,33 @@ function webErrorGuardScript() {
   `;
 }
 
-function sessionBootstrapScript(session: Session) {
+function apkSessionBootstrapScript(session: Session) {
   const payload = JSON.stringify({
     access_token: session.access_token,
     refresh_token: session.refresh_token,
   });
   return `
     (function() {
+      window.__WIRA_APK_WEBVIEW__ = true;
       var detail = ${payload};
       var prev = window.__WIRA_NATIVE_SESSION__;
       if (prev && prev.refresh_token === detail.refresh_token && window.__WIRA_SESSION_INJECTED__) {
+        var path0 = location.pathname || '';
+        if (path0.indexOf('/driver/app-entry') !== -1 || path0.indexOf('driver-bridge') !== -1) {
+          location.replace('/driver');
+        }
         return;
       }
       window.__WIRA_NATIVE_SESSION__ = detail;
       window.__WIRA_SESSION_INJECTED__ = true;
+      try {
+        sessionStorage.setItem('wira_bridge_tokens', JSON.stringify(detail));
+      } catch (e) {}
       window.dispatchEvent(new CustomEvent('wira-set-session', { detail: detail }));
+      var path = location.pathname || '';
+      if (path.indexOf('/driver/app-entry') !== -1 || path.indexOf('driver-bridge') !== -1) {
+        location.replace('/driver');
+      }
     })();
     true;
   `;
@@ -221,6 +233,7 @@ function DriverWebShell({
   onContentProcessTerminate,
   reloadWebView,
   onRetry,
+  onEscapeBridge,
 }: {
   webRef: React.RefObject<WebView | null>;
   activeWebUrl: string;
@@ -242,6 +255,7 @@ function DriverWebShell({
   onContentProcessTerminate: () => void;
   reloadWebView: (resetRetries?: boolean) => void;
   onRetry: () => void;
+  onEscapeBridge?: () => void;
 }) {
   const toggleDisabled = driverState.delivering && driverState.online;
 
@@ -290,6 +304,10 @@ function DriverWebShell({
             try {
               const p = new URL(req.url).pathname;
               if (p.startsWith("/customer") || p.startsWith("/merchant") || p.startsWith("/admin")) {
+                return false;
+              }
+              if (p.includes("/driver/app-entry") || p.includes("driver-bridge")) {
+                onEscapeBridge?.();
                 return false;
               }
               return true;
@@ -432,6 +450,34 @@ export default function App() {
 
   const activeWebUrl = forcedWebUrl ?? DRIVER_HOME_URLS[webUrlIndex] ?? DRIVER_HOME_URLS[0];
 
+  const forceDriverDashboard = useCallback(
+    (url?: string) => {
+      const target = url ?? DRIVER_HOME_URLS[webUrlIndex] ?? DRIVER_HOME_URLS[0];
+      bootGraceUntilRef.current = Date.now() + 30_000;
+      bootCompleteRef.current = true;
+      setForcedWebUrl(null);
+      setWebError(null);
+      hideSpinner();
+      if (sessionRef.current) {
+        injectSession(webRef, sessionRef.current, true);
+      }
+      const path = (() => {
+        try {
+          return new URL(target).pathname;
+        } catch {
+          return "/driver";
+        }
+      })();
+      webRef.current?.injectJavaScript(`
+        (function() {
+          try { location.replace(${JSON.stringify(path)}); } catch (e) {}
+        })();
+        true;
+      `);
+    },
+    [hideSpinner, webUrlIndex]
+  );
+
   const navigateToDriverDashboard = useCallback(
     (url?: string) => {
       const target = url ?? DRIVER_HOME_URLS[webUrlIndex] ?? DRIVER_HOME_URLS[0];
@@ -524,7 +570,7 @@ export default function App() {
 
   const redirectToAppEntry = useCallback(() => {
     if (sessionRef.current) {
-      navigateToDriverDashboard();
+      forceDriverDashboard();
       return;
     }
     bootCompleteRef.current = false;
@@ -534,7 +580,7 @@ export default function App() {
     setForcedWebUrl(null);
     setWebError(null);
     setPhase("login");
-  }, [navigateToDriverDashboard]);
+  }, [forceDriverDashboard]);
 
   const reinjectFreshSession = useCallback(async () => {
     const next = await restoreNativeSession();
@@ -555,9 +601,7 @@ export default function App() {
     const bootstrap = nativeToolbarBootstrapScript();
     const skipEntry = skipAppEntryRedirectScript();
     if (!session) return bootstrap + skipEntry + webErrorGuardScript();
-    return (
-      bootstrap + sessionBootstrapScript(session) + skipEntry + webErrorGuardScript()
-    );
+    return bootstrap + apkSessionBootstrapScript(session) + skipEntry + webErrorGuardScript();
   }, [session?.access_token, session?.refresh_token]);
 
   useEffect(() => {
@@ -665,21 +709,9 @@ export default function App() {
         return;
       }
 
-      if (nav.url.includes("/driver/app-entry")) {
+      if (nav.url.includes("/driver/app-entry") || nav.url.includes("driver-bridge")) {
         if (sessionRef.current) {
-          injectSession(webRef, sessionRef.current, true);
-          webRef.current?.injectJavaScript(`
-            (function() {
-              try {
-                window.__WIRA_APK_WEBVIEW__ = true;
-                if ((location.pathname || '').indexOf('/driver/app-entry') !== -1) {
-                  location.replace('/driver');
-                }
-              } catch (e) {}
-            })();
-            true;
-          `);
-          hideSpinner();
+          forceDriverDashboard();
         }
         return;
       }
@@ -707,7 +739,7 @@ export default function App() {
         redirectToAppEntry();
       }
     },
-    [hideSpinner, navigateToDriverDashboard, redirectToAppEntry]
+    [hideSpinner, forceDriverDashboard, redirectToAppEntry]
   );
 
   const onMessage = useCallback(
@@ -769,25 +801,13 @@ export default function App() {
         if (data.type === "WIRA_REQUEST_SESSION") {
           const active = sessionRef.current;
           if (active) {
-            injectSession(webRef, active, true);
-            webRef.current?.injectJavaScript(`
-              (function() {
-                try {
-                  if ((location.pathname || '').indexOf('/driver/app-entry') !== -1) {
-                    location.replace('/driver');
-                  }
-                } catch (e) {}
-              })();
-              true;
-            `);
-            hideSpinner();
+            forceDriverDashboard();
           }
         }
 
         if (data.type === "WIRA_NAVIGATE" || data.type === "WIRA_GO_DRIVER") {
           const url = (data as { url?: string }).url;
-          setForcedWebUrl(null);
-          navigateToDriverDashboard(url);
+          forceDriverDashboard(url);
         }
 
         if (data.type === "WIRA_DRIVER_STATE" || data.type === "WIRA_APP_READY") {
@@ -837,7 +857,7 @@ export default function App() {
         /* ignore */
       }
     },
-    [hideSpinner, navigateToDriverDashboard, reinjectFreshSession]
+    [hideSpinner, forceDriverDashboard, reinjectFreshSession]
   );
 
   const onWebLoadEnd = useCallback(() => {
@@ -913,6 +933,7 @@ export default function App() {
           <DriverLoginScreen
             onLoggedIn={async () => {
               const { data } = await supabase.auth.getSession();
+              if (!data.session) return;
               sessionRef.current = data.session;
               setSession(data.session);
               bootCompleteRef.current = false;
@@ -931,6 +952,15 @@ export default function App() {
           />
         </SafeAreaView>
       </SafeAreaProvider>
+    );
+  }
+
+  if (!session) {
+    return (
+      <View style={styles.boot}>
+        <ActivityIndicator size="large" color="#34d399" />
+        <Text style={styles.bootText}>Menyiapkan sesi driver...</Text>
+      </View>
     );
   }
 
@@ -964,6 +994,7 @@ export default function App() {
         onContentProcessTerminate={() => reloadWebView(false)}
         reloadWebView={reloadWebView}
         onRetry={() => void tryNextHost()}
+        onEscapeBridge={() => forceDriverDashboard()}
       />
     </SafeAreaProvider>
   );
@@ -977,6 +1008,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
     gap: 12,
     paddingHorizontal: 24,
+  },
+  bootText: {
+    color: "#64748b",
+    fontSize: 13,
+    fontWeight: "500",
   },
   root: {
     flex: 1,
