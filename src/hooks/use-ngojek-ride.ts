@@ -20,7 +20,7 @@ import {
   type PackageDetailsInput,
 } from "@/lib/ngojek-ride-logic";
 import { formatTransitAddressByService } from "@/lib/order-channel";
-import { persistActiveTransitOrderHint } from "@/lib/customer-active-order";
+import { upsertActiveOrderHint } from "@/lib/customer-active-order";
 import {
   createQrisPayment,
   isPaymentBypassEnabled,
@@ -665,7 +665,7 @@ export function useNgojekRide() {
           delivery_address: addr,
         };
         sessionStorage.setItem(`wira_track_${orderId}`, JSON.stringify(snapshot));
-        persistActiveTransitOrderHint({
+        upsertActiveOrderHint({
           id: orderId,
           order_status: "paid",
           delivery_address: addr,
@@ -807,7 +807,7 @@ export function useNgojekRide() {
       }
 
       if (json.needsPayment) {
-        persistActiveTransitOrderHint({
+        upsertActiveOrderHint({
           id: orderId,
           order_status: "pending_payment",
           delivery_address: formatTransitAddressByService(

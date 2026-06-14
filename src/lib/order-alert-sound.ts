@@ -131,7 +131,14 @@ export async function playMerchantNewOrderSound(): Promise<void> {
   return playOrderAlertSound({ repeats: 3, volume: 0.98, notifyNative: false });
 }
 
-/** Driver: penawaran order masuk. */
+/** Driver: penawaran order masuk (browser — APK memakai notifikasi status bar). */
 export async function playDriverIncomingOrderSound(): Promise<void> {
+  if (typeof window !== "undefined") {
+    const w = window as Window & {
+      ReactNativeWebView?: unknown;
+      __WIRA_APK_WEBVIEW__?: boolean;
+    };
+    if (w.ReactNativeWebView || w.__WIRA_APK_WEBVIEW__) return;
+  }
   return playOrderAlertSound({ repeats: 3, volume: 0.98, notifyNative: true });
 }

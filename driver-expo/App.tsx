@@ -6,7 +6,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  Vibration,
   View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
@@ -21,7 +20,10 @@ import { getDriverAppEntryUrls } from "./lib/driver-url";
 import { pickReachableAppEntry } from "./lib/host-probe";
 import { getAppEntryUrl, supabase } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
-import { playNativeIncomingOrderSound } from "./lib/incoming-order-sound";
+import {
+  initDriverOrderNotifications,
+  postIncomingOrderNotification,
+} from "./lib/driver-order-notification";
 
 const ALLOWED_HOSTS = [
   "wirakuliner.web.id",
@@ -550,6 +552,11 @@ export default function App() {
 
   useEffect(() => {
     if (phase !== "app") return;
+    void initDriverOrderNotifications();
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "app") return;
     let cancelled = false;
     void (async () => {
       const picked = await pickReachableAppEntry(APP_ENTRY_URLS);
@@ -692,8 +699,12 @@ export default function App() {
         }
 
         if (data.type === "WIRA_INCOMING_ORDER") {
-          Vibration.vibrate([0, 220, 120, 220, 120, 220, 120, 400]);
-          void playNativeIncomingOrderSound();
+          void postIncomingOrderNotification({
+            orderId: (data as { orderId?: string }).orderId ?? `order-${Date.now()}`,
+            title: (data as { title?: string }).title ?? "Order masuk",
+            body: (data as { body?: string }).body ?? "Buka aplikasi untuk melihat detail order",
+            channel: (data as { channel?: string }).channel,
+          });
         }
 
         if (data.type === "CHUNK_LOAD_ERROR") {

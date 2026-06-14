@@ -46,7 +46,7 @@ import {
   useThankYouOverlay,
 } from "@/components/customer/order-track-lottie";
 import { DRIVER_STATUS_LABEL } from "@/lib/driver";
-import type { DriverStatus, Order, OrderItem } from "@/types/database";
+import type { DriverStatus, Order, OrderItem, ServiceType } from "@/types/database";
 import {
   Award,
   Bike,
@@ -72,6 +72,10 @@ import {
   isRelevantIncomingOrderForDriver,
   type DriverIncomingOrderRow,
 } from "@/lib/driver-incoming-order";
+import {
+  isDriverApkWebView,
+  notifyDriverApkIncomingOrder,
+} from "@/lib/driver-apk-incoming-notify";
 import { isOrderAlertAudioUnlocked } from "@/lib/order-alert-sound";
 import { cn } from "@/lib/utils";
 import { useDriverNavRoute } from "@/hooks/use-driver-nav-route";
@@ -196,17 +200,37 @@ export function DriverCockpit() {
     return () => window.clearTimeout(timer);
   }, [driver?.id]);
 
+  const signalIncomingOrder = useCallback(
+    (order: OrderRow | DriverIncomingOrderRow) => {
+      if (!order.id) return;
+      if (lastAlertOrderIdRef.current === order.id) return;
+      lastAlertOrderIdRef.current = order.id;
+
+      if (isDriverApkWebView()) {
+        notifyDriverApkIncomingOrder({
+          id: order.id,
+          delivery_address: order.delivery_address ?? "",
+          delivery_fee: "delivery_fee" in order ? order.delivery_fee : undefined,
+          service_type: (order.service_type ?? null) as ServiceType | null,
+        });
+        return;
+      }
+
+      window.alert(DRIVER_INCOMING_ALERT_MESSAGE);
+      void playDriverIncomingOrderSound();
+    },
+    []
+  );
+
   useEffect(() => {
     if (!incomingOffer?.id || hasActive || !isOnline) return;
     if (!orderAlertsReadyRef.current) return;
-    if (lastAlertOrderIdRef.current === incomingOffer.id) return;
-    lastAlertOrderIdRef.current = incomingOffer.id;
-    window.alert(DRIVER_INCOMING_ALERT_MESSAGE);
-    void playDriverIncomingOrderSound();
-  }, [incomingOffer?.id, hasActive, isOnline]);
+    signalIncomingOrder(incomingOffer);
+  }, [incomingOffer?.id, hasActive, isOnline, signalIncomingOrder]);
 
-  /** Ulangi suara peringatan selama penawaran masih aktif (30 detik). */
+  /** Ulangi suara peringatan selama penawaran masih aktif (browser saja — APK pakai notifikasi status bar). */
   useEffect(() => {
+    if (isDriverApkWebView()) return;
     if (!incomingOffer?.id || hasActive || !isOnline || offerCountdown <= 0) return;
     if (!orderAlertsReadyRef.current) return;
 
@@ -247,14 +271,10 @@ export function DriverCockpit() {
       if (!driver?.id || !isOnline || hasActive) return;
       if (!orderAlertsReadyRef.current) return;
       if (!isRelevantIncomingOrderForDriver(order, driver, isOnline)) return;
-      if (lastAlertOrderIdRef.current === order.id) return;
-      lastAlertOrderIdRef.current = order.id ?? null;
-
-      window.alert(DRIVER_INCOMING_ALERT_MESSAGE);
-      void playDriverIncomingOrderSound();
+      signalIncomingOrder(order as OrderRow);
       void loadPool();
     },
-    [driver, hasActive, isOnline, loadPool]
+    [driver, hasActive, isOnline, loadPool, signalIncomingOrder]
   );
 
   const loadStats = useCallback(async () => {

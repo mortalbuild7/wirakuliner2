@@ -2,7 +2,7 @@
   "expo": {
     "name": "WIRA Driver",
     "slug": "wira-driver",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -34,6 +34,14 @@
       ]
     },
     "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#10b981",
+          "defaultChannel": "wira-driver-incoming-orders"
+        }
+      ],
       [
         "expo-splash-screen",
         {

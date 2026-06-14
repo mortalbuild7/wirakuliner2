@@ -15,9 +15,9 @@ import {
   parseTransitLegs,
 } from "@/lib/order-channel";
 import {
-  forceClearActiveTransitOrderHint,
-  persistActiveTransitOrderHint,
-  syncActiveTransitOrderFromOrder,
+  forceClearActiveOrdersHint,
+  upsertActiveOrderHint,
+  syncActiveOrderFromOrder,
 } from "@/lib/customer-active-order";
 import { createQrisPayment } from "@/lib/payment-flow";
 import { formatIdr } from "@/lib/utils";
@@ -53,12 +53,12 @@ export default function CustomerOrderPayPage() {
       const next = json.order;
 
       if (next.order_status === "cancelled") {
-        forceClearActiveTransitOrderHint();
+        forceClearActiveOrdersHint();
         router.replace("/customer");
         return;
       }
 
-      syncActiveTransitOrderFromOrder(next);
+      syncActiveOrderFromOrder(next);
 
       if (next.order_status !== "pending_payment") {
         router.replace(`/customer/orders/${orderId}`);
@@ -114,7 +114,7 @@ export default function CustomerOrderPayPage() {
 
   const handlePaid = useCallback(() => {
     if (!order) return;
-    persistActiveTransitOrderHint({
+    upsertActiveOrderHint({
       id: order.id,
       order_status: "paid",
       delivery_address: order.delivery_address,
@@ -144,7 +144,7 @@ export default function CustomerOrderPayPage() {
         setError(json.error ?? "Gagal membatalkan pesanan");
         return;
       }
-      forceClearActiveTransitOrderHint();
+      forceClearActiveOrdersHint();
       router.replace("/customer");
       router.refresh();
     } catch {

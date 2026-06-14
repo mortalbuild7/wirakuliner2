@@ -11,6 +11,10 @@ import { PoweredByDaffacell } from "@/components/brand/powered-by-daffacell";
 import { CustomerModerationBanner } from "@/components/customer/customer-moderation-banner";
 import { WalletBalanceBadge } from "@/components/wallet/wallet-balance-badge";
 import { HelloWelcome } from "@/components/shared/HelloWelcome";
+import { CustomerOrdersMonitorProvider } from "@/contexts/customer-orders-monitor-context";
+import { CustomerNotificationTray } from "@/components/customer/customer-notification-tray";
+import { CustomerActiveOrdersPanel } from "@/components/customer/customer-active-orders-panel";
+import { useCustomerOrdersMonitor } from "@/contexts/customer-orders-monitor-context";
 
 const NAV = [
   {
@@ -36,15 +40,51 @@ const NAV = [
   },
 ];
 
-/**
- * Layout customer — fase 1 (bongkar total):
- * - Header statis di flex (bukan fixed, bukan portal)
- * - Hanya <main> yang scroll
- */
-export function CustomerShell({ children }: { children: React.ReactNode }) {
+function CustomerNav() {
+  const pathname = usePathname();
+  const { activeOrders, totalChatUnread } = useCustomerOrdersMonitor();
+  const badgeCount = activeOrders.length + totalChatUnread;
+
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+      <div className="mx-auto flex max-w-mobile justify-around px-3 py-2">
+        {NAV.map(({ href, label, icon: Icon, match }) => {
+          const active = match(pathname);
+          const showBadge = href === "/customer/orders" && badgeCount > 0;
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "relative flex min-w-[4.5rem] flex-col items-center gap-1 rounded-2xl px-3 py-2.5 text-[11px] font-semibold transition-all active:scale-95",
+                active
+                  ? "bg-emerald-50 text-emerald-800 glow-ring"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              )}
+            >
+              <span className="relative">
+                <Icon className={cn("h-5 w-5", active && "text-emerald-600")} />
+                {showBadge ? (
+                  <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-600 px-1 text-[9px] font-bold text-white">
+                    {badgeCount > 9 ? "9+" : badgeCount}
+                  </span>
+                ) : null}
+              </span>
+              {label}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function CustomerShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [customerName, setCustomerName] = useState<string | null>(null);
   const supabase = createClient();
+  const showCompactStrip =
+    pathname !== "/customer" && !pathname?.startsWith("/customer/orders");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -61,6 +101,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="customer-layout-root flex h-[100dvh] flex-col overflow-hidden bg-slate-50 text-slate-900">
       <HelloWelcome />
+      <CustomerNotificationTray />
 
       <header className="customer-app-header shrink-0 border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -94,35 +135,39 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
+      {showCompactStrip ? <CustomerActiveOrdersPanel variant="compact" /> : null}
+
       <main className="customer-scroll-layer mx-auto min-h-0 w-full max-w-mobile flex-1 overflow-y-auto safe-pb-nav">
         <CustomerModerationBanner />
         {children}
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
-        <div className="mx-auto flex max-w-mobile justify-around px-3 py-2">
-          {NAV.map(({ href, label, icon: Icon, match }) => {
-            const active = match(pathname);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex min-w-[4.5rem] flex-col items-center gap-1 rounded-2xl px-3 py-2.5 text-[11px] font-semibold transition-all active:scale-95",
-                  active
-                    ? "bg-emerald-50 text-emerald-800 glow-ring"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                )}
-              >
-                <Icon className={cn("h-5 w-5", active && "text-emerald-600")} />
-                {label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
-
+      <CustomerNav />
       <Toaster position="top-center" richColors closeButton />
     </div>
+  );
+}
+
+/**
+ * Layout customer — fase 1 (bongkar total):
+ * - Header statis di flex (bukan fixed, bukan portal)
+ * - Hanya <main> yang scroll
+ */
+export function CustomerShell({ children }: { children: React.ReactNode }) {
+  const [userId, setUserId] = useState<string | null>(null);
+  const supabase = createClient();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUserId(session?.user?.id ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [supabase]);
+
+  return (
+    <CustomerOrdersMonitorProvider userId={userId}>
+      <CustomerShellInner>{children}</CustomerShellInner>
+    </CustomerOrdersMonitorProvider>
   );
 }
