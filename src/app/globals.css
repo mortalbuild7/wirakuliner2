@@ -262,29 +262,40 @@
 }
 
 /*
- * Customer layout vs Leaflet — HARUS di luar @layer agar mengalahkan leaflet.css (unlayered).
- * Leaflet bawaan: .leaflet-pane z-index 400–700, .leaflet-control z-index 800.
+ * Customer layout vs Leaflet — di luar @layer agar mengalahkan leaflet.css.
+ * Scroll hanya di .customer-scroll-layer; header di luar area scroll (tidak bisa ditimpa peta).
  */
+html.customer-app-active,
+html.customer-app-active body {
+  height: 100%;
+  overflow: hidden;
+}
+
 .customer-layout-root {
-  --customer-header-offset: calc(4.25rem + max(0.75rem, env(safe-area-inset-top, 0px)));
+  position: relative;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 .customer-layout-root .customer-app-header {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
+  position: relative !important;
+  flex-shrink: 0;
   z-index: 10000 !important;
   background-color: #ffffff !important;
   isolation: isolate;
-  transform: translateZ(0);
-  will-change: transform;
 }
 
 .customer-layout-root .customer-scroll-layer {
   position: relative !important;
   z-index: 0 !important;
+  min-height: 0 !important;
+  flex: 1 1 auto;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain;
   isolation: isolate;
+  -webkit-overflow-scrolling: touch;
 }
 
 .customer-layout-root .customer-map-wrap {
@@ -293,6 +304,7 @@
   isolation: isolate;
   overflow: hidden !important;
   contain: paint;
+  transform: translateZ(0);
 }
 
 .customer-layout-root .leaflet-container {

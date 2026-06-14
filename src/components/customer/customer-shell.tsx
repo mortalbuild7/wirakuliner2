@@ -42,6 +42,11 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
   useEffect(() => {
+    document.documentElement.classList.add("customer-app-active");
+    return () => document.documentElement.classList.remove("customer-app-active");
+  }, []);
+
+  useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
       supabase
@@ -54,11 +59,11 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   return (
-    <div className="customer-layout-root min-h-[100dvh] bg-slate-50 text-slate-900">
+    <div className="customer-layout-root flex h-[100dvh] flex-col overflow-hidden bg-slate-50 text-slate-900">
       <HelloWelcome />
       <header
-        className="customer-app-header fixed inset-x-0 top-0 z-[10000] border-b border-slate-200 bg-white shadow-sm"
-        style={{ zIndex: 10000, position: "fixed", top: 0, left: 0, right: 0 }}
+        className="customer-app-header relative z-[10000] shrink-0 border-b border-slate-200 bg-white shadow-sm"
+        style={{ zIndex: 10000 }}
       >
         <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <Link href="/customer" className="flex items-center gap-2.5">
@@ -91,12 +96,12 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <div className="customer-scroll-layer relative z-0 isolate mx-auto max-w-mobile safe-pb-nav pt-[var(--customer-header-offset)]">
+      <main className="customer-scroll-layer relative z-0 mx-auto min-h-0 w-full max-w-mobile flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain isolate safe-pb-nav">
         <CustomerModerationBanner />
         {children}
-      </div>
+      </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 glass-panel pb-[env(safe-area-inset-bottom,0px)]">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
         <div className="mx-auto flex max-w-mobile justify-around px-3 py-2">
           {NAV.map(({ href, label, icon: Icon, match }) => {
             const active = match(pathname);
