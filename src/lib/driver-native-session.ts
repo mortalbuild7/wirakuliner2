@@ -43,6 +43,38 @@ export function getNativeAccessToken(): string | null {
   return readStoredTokens()?.access_token ?? null;
 }
 
+export function isDriverApkWebView(): boolean {
+  return isReactNativeWebView();
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Tunggu token inject dari APK native (polling singkat). */
+export async function waitForNativeAccessToken(maxMs = 4_000): Promise<string | null> {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    const tok = getNativeAccessToken();
+    if (tok) return tok;
+    await sleep(250);
+  }
+  return getNativeAccessToken();
+}
+
+async function getSessionWithTimeout(
+  supabase: SupabaseClient,
+  timeoutMs = 4_000
+): Promise<{ session: { access_token: string; refresh_token: string; user: { id: string } } | null }> {
+  const result = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<{ data: { session: null } }>((resolve) =>
+      setTimeout(() => resolve({ data: { session: null } }), timeoutMs)
+    ),
+  ]);
+  return { session: result.data.session ?? null };
+}
+
 function readStoredTokens(): Tokens | null {
   if (typeof window === "undefined") return null;
 
@@ -62,16 +94,18 @@ function readStoredTokens(): Tokens | null {
   return null;
 }
 
-/** Ambil access token terbaru — prioritas sesi Supabase web (cookie), bukan token inject lama. */
+/** Ambil access token terbaru — APK: native inject dulu, web: cookie sesi. */
 export async function getDriverAccessToken(): Promise<string | null> {
   if (typeof window === "undefined") return null;
+
+  if (isReactNativeWebView()) {
+    return (await waitForNativeAccessToken(2_000)) ?? getNativeAccessToken();
+  }
 
   try {
     const { createClient } = await import("@/lib/supabase/client");
     const supabase = createClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const { session } = await getSessionWithTimeout(supabase, 3_000);
 
     if (session?.access_token && session.refresh_token) {
       storeDriverTokens(
@@ -111,14 +145,14 @@ export async function ensureDriverNativeSession(supabase: SupabaseClient): Promi
   if (w.__WIRA_NATIVE_SESSION_APPLIED__) return;
 
   const tokens = readStoredTokens();
-  if (isReactNativeWebView() && tokens?.access_token) {
-    w.__WIRA_NATIVE_SESSION_APPLIED__ = true;
+  if (isReactNativeWebView()) {
+    if (tokens?.access_token) {
+      w.__WIRA_NATIVE_SESSION_APPLIED__ = true;
+    }
     return;
   }
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const { session } = await getSessionWithTimeout(supabase);
   if (session?.user) {
     storeDriverTokens(
       {
@@ -134,10 +168,19 @@ export async function ensureDriverNativeSession(supabase: SupabaseClient): Promi
   if (!tokens) return;
 
   try {
-    const { data, error } = await supabase.auth.setSession({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-    });
+    const setResult = await Promise.race([
+      supabase.auth.setSession({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+      }),
+      new Promise<{ data: { session: null }; error: { message: string } }>((resolve) =>
+        setTimeout(
+          () => resolve({ data: { session: null }, error: { message: "setSession timeout" } }),
+          5_000
+        )
+      ),
+    ]);
+    const { data, error } = setResult;
     if (error) {
       console.warn("[driver native session]", error.message);
       return;

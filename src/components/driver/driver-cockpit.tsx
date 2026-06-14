@@ -687,6 +687,13 @@ export function DriverCockpit() {
       <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-white text-slate-600">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
         <p className="text-sm">Memuat profil driver...</p>
+        <button
+          type="button"
+          className="mt-2 text-xs text-emerald-700 underline"
+          onClick={() => void refresh()}
+        >
+          Muat ulang
+        </button>
       </div>
     );
   }

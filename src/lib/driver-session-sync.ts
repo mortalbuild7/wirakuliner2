@@ -21,3 +21,11 @@ export function postNativeSessionSync(session: {
 export function postNativeDriverBoot(step: "session_ok" | "redirecting" | "waiting_token") {
   postNative({ type: "WIRA_DRIVER_BOOT", step });
 }
+
+/** Minta APK native perbaiki / inject ulang sesi. */
+export function postNativeSessionFailed(message?: string) {
+  postNative({
+    type: "WIRA_SESSION_FAILED",
+    message: message ?? "Profil driver gagal dimuat",
+  });
+}

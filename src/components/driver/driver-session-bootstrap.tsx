@@ -10,6 +10,15 @@ import {
 /** Terapkan & sinkronkan token APK ↔ WebView (hindari refresh token bentrok). */
 export function DriverSessionBootstrap() {
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const w = window as Window & {
+      ReactNativeWebView?: unknown;
+      __WIRA_APK_WEBVIEW__?: boolean;
+    };
+    const isApk = Boolean(w.ReactNativeWebView || w.__WIRA_APK_WEBVIEW__);
+    if (isApk) return;
+
     const supabase = createClient();
 
     async function run() {
@@ -17,8 +26,8 @@ export function DriverSessionBootstrap() {
     }
 
     function onNative() {
-      const w = window as Window & { __WIRA_NATIVE_SESSION_APPLIED__?: boolean };
-      w.__WIRA_NATIVE_SESSION_APPLIED__ = false;
+      const applied = window as Window & { __WIRA_NATIVE_SESSION_APPLIED__?: boolean };
+      applied.__WIRA_NATIVE_SESSION_APPLIED__ = false;
       void run();
     }
 
