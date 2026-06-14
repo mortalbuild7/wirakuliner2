@@ -54,11 +54,11 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   return (
-    <div className="wira-mesh min-h-[100dvh] text-slate-900">
+    <div className="customer-layout-root min-h-[100dvh] bg-slate-50 text-slate-900">
       <HelloWelcome />
       <header
-        className="customer-app-header sticky top-0 z-[9999] border-b border-slate-200 bg-white shadow-sm"
-        style={{ zIndex: 9999 }}
+        className="customer-app-header fixed inset-x-0 top-0 z-[10000] border-b border-slate-200 bg-white shadow-sm"
+        style={{ zIndex: 10000, position: "fixed", top: 0, left: 0, right: 0 }}
       >
         <div className="mx-auto flex max-w-mobile items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <Link href="/customer" className="flex items-center gap-2.5">
@@ -91,8 +91,10 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <CustomerModerationBanner />
-      <div className="safe-pb-nav mx-auto max-w-mobile">{children}</div>
+      <div className="customer-scroll-layer relative z-0 isolate mx-auto max-w-mobile safe-pb-nav pt-[var(--customer-header-offset)]">
+        <CustomerModerationBanner />
+        {children}
+      </div>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 glass-panel pb-[env(safe-area-inset-bottom,0px)]">
         <div className="mx-auto flex max-w-mobile justify-around px-3 py-2">

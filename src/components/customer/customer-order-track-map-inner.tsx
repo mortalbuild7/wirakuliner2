@@ -140,7 +140,7 @@ export function CustomerOrderTrackMapInner({
   const navActive = Boolean(navRouteLine && hasDriver);
 
   return (
-    <div className="customer-map-wrap relative z-10 isolate">
+    <div className="customer-map-wrap relative z-0 isolate">
       <MapContainer
         center={center}
         zoom={15}

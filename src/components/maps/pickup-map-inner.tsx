@@ -111,8 +111,8 @@ export function PickupMapInner({
 
   return (
     <div
-      className="customer-map-wrap relative z-10 isolate overflow-hidden rounded-2xl ring-1 ring-emerald-500/30"
-      style={{ height }}
+      className="customer-map-wrap relative z-0 isolate overflow-hidden rounded-2xl ring-1 ring-emerald-500/30"
+      style={{ height, contain: "paint" }}
     >
       <MapContainer
         center={[centerLat, centerLng]}

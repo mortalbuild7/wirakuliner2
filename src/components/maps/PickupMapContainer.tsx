@@ -46,7 +46,9 @@ export type PickupMapContainerProps = {
 export function PickupMapContainer(props: PickupMapContainerProps) {
   return (
     <MapLoadErrorBoundary title="Peta jemput gagal dimuat">
-      <PickupMapInner {...props} />
+      <div className="customer-map-wrap relative z-0 isolate">
+        <PickupMapInner {...props} />
+      </div>
     </MapLoadErrorBoundary>
   );
 }

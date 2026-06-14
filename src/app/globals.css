@@ -233,36 +233,6 @@
     z-index: 0;
   }
 
-  /* Customer: peta Leaflet selalu di bawah header sticky */
-  .customer-app-header {
-    position: sticky;
-    top: 0;
-    z-index: 9999 !important;
-    background-color: #ffffff !important;
-    isolation: isolate;
-  }
-
-  .customer-map-wrap {
-    position: relative;
-    z-index: 10;
-    isolation: isolate;
-  }
-
-  .customer-map-wrap .leaflet-container {
-    z-index: 0 !important;
-  }
-
-  .customer-map-wrap .leaflet-pane,
-  .customer-map-wrap .leaflet-top,
-  .customer-map-wrap .leaflet-bottom,
-  .customer-map-wrap .leaflet-control {
-    z-index: 1 !important;
-  }
-
-  .customer-map-wrap .leaflet-control-attribution {
-    z-index: 2 !important;
-  }
-
   .leaflet-control-zoom a {
     @apply !rounded-2xl !border-slate-200/80 !bg-white/95 !text-emerald-600 !shadow-md;
   }
@@ -289,6 +259,67 @@
     object-fit: contain;
     pointer-events: none;
   }
+}
+
+/*
+ * Customer layout vs Leaflet — HARUS di luar @layer agar mengalahkan leaflet.css (unlayered).
+ * Leaflet bawaan: .leaflet-pane z-index 400–700, .leaflet-control z-index 800.
+ */
+.customer-layout-root {
+  --customer-header-offset: calc(4.25rem + max(0.75rem, env(safe-area-inset-top, 0px)));
+}
+
+.customer-layout-root .customer-app-header {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 10000 !important;
+  background-color: #ffffff !important;
+  isolation: isolate;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.customer-layout-root .customer-scroll-layer {
+  position: relative !important;
+  z-index: 0 !important;
+  isolation: isolate;
+}
+
+.customer-layout-root .customer-map-wrap {
+  position: relative !important;
+  z-index: 0 !important;
+  isolation: isolate;
+  overflow: hidden !important;
+  contain: paint;
+}
+
+.customer-layout-root .leaflet-container {
+  z-index: 0 !important;
+  position: relative !important;
+}
+
+.customer-layout-root .leaflet-pane,
+.customer-layout-root .leaflet-tile-pane,
+.customer-layout-root .leaflet-overlay-pane,
+.customer-layout-root .leaflet-shadow-pane,
+.customer-layout-root .leaflet-marker-pane,
+.customer-layout-root .leaflet-tooltip-pane,
+.customer-layout-root .leaflet-popup-pane,
+.customer-layout-root .leaflet-map-pane,
+.customer-layout-root .leaflet-zoom-box {
+  z-index: 0 !important;
+}
+
+.customer-layout-root .leaflet-top,
+.customer-layout-root .leaflet-bottom,
+.customer-layout-root .leaflet-control {
+  z-index: 1 !important;
+}
+
+.customer-layout-root .leaflet-control-attribution {
+  z-index: 1 !important;
 }
 
 /* ——— Print: thermal struk (58mm) vs laporan penjualan (A4) ——— */
