@@ -20,6 +20,7 @@ import {
   type PackageDetailsInput,
 } from "@/lib/ngojek-ride-logic";
 import { formatTransitAddressByService } from "@/lib/order-channel";
+import { persistActiveTransitOrderHint } from "@/lib/customer-active-order";
 import {
   createQrisPayment,
   isPaymentBypassEnabled,
@@ -658,14 +659,20 @@ export function useNgojekRide() {
           pickupAddress.trim() || "Lokasi jemput",
           destAddress.trim()
         );
-        sessionStorage.setItem(
-          `wira_track_${orderId}`,
-          JSON.stringify({
-            id: orderId,
-            order_status: "paid",
-            delivery_address: addr,
-          })
-        );
+        const snapshot = {
+          id: orderId,
+          order_status: "paid" as const,
+          delivery_address: addr,
+        };
+        sessionStorage.setItem(`wira_track_${orderId}`, JSON.stringify(snapshot));
+        persistActiveTransitOrderHint({
+          id: orderId,
+          order_status: "paid",
+          delivery_address: addr,
+          service_type: serviceType,
+          driver_id: null,
+          updated_at: new Date().toISOString(),
+        });
       } catch {
         /* ignore */
       }

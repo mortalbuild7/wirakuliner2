@@ -36,6 +36,7 @@ import Link from "next/link";
 import { isOrderChatClosed, isOrderChatOpen } from "@/lib/order-chat";
 import { CustomerOrderChatButton } from "@/components/customer/customer-order-chat-button";
 import { useCustomerOrderChatNotify } from "@/hooks/use-customer-order-chat-notify";
+import { syncActiveTransitOrderFromOrder } from "@/lib/customer-active-order";
 import type { DriverPublicInfo, Order, OrderStatus } from "@/types/database";
 
 const FOOD_STEPS: { status: OrderStatus; label: string; icon: React.ReactNode }[] = [
@@ -95,6 +96,7 @@ export function OrderTracker({ orderId }: { orderId: string }) {
       setDriverInfo(driver ?? null);
       setError(null);
       setLoading(false);
+      syncActiveTransitOrderFromOrder(next);
     },
     []
   );
