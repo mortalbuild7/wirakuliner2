@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "id.web.wirakuliner.driver",
+      "softwareKeyboardLayoutMode": "resize",
       "backgroundColor": "#ffffff",
       "adaptiveIcon": {
         "backgroundColor": "#f8fafc",

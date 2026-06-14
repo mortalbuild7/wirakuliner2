@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -18,10 +20,21 @@ type Props = {
 };
 
 export function DriverLoginScreen({ onLoggedIn }: Props) {
+  const scrollRef = useRef<ScrollView>(null);
+  const passwordYRef = useRef(0);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function scrollToPassword() {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, passwordYRef.current - 24),
+        animated: true,
+      });
+    }, 80);
+  }
 
   async function handleLogin() {
     setError(null);
@@ -65,58 +78,81 @@ export function DriverLoginScreen({ onLoggedIn }: Props) {
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
     >
-      <View style={styles.welcome}>
-        <Image
-          source={require("../assets/logo.png")}
-          style={styles.logo}
-          resizeMode="contain"
-          accessibilityLabel="WIRA Driver"
-        />
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.badge}>WIRA DRIVER</Text>
-        <Text style={styles.title}>Masuk Driver</Text>
-        <Text style={styles.sub}>
-          Login langsung di aplikasi. Admin membuat akun di panel Admin → Drivers.
-        </Text>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        onScrollBeginDrag={Keyboard.dismiss}
+      >
+        <View style={styles.welcome}>
+          <Image
+            source={require("../assets/logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityLabel="WIRA Driver"
+          />
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.badge}>WIRA DRIVER</Text>
+          <Text style={styles.title}>Masuk Driver</Text>
+          <Text style={styles.sub}>
+            Login langsung di aplikasi. Admin membuat akun di panel Admin → Drivers.
+          </Text>
 
-        {error && <Text style={styles.error}>{error}</Text>}
+          {error && <Text style={styles.error}>{error}</Text>}
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="driver@email.com"
-          placeholderTextColor="#64748b"
-        />
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholder="driver@email.com"
+            placeholderTextColor="#64748b"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => scrollToPassword()}
+          />
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholder="••••••••"
-          placeholderTextColor="#64748b"
-        />
+          <View
+            onLayout={(e) => {
+              passwordYRef.current = e.nativeEvent.layout.y;
+            }}
+          >
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="••••••••"
+              placeholderTextColor="#64748b"
+              returnKeyType="done"
+              onFocus={scrollToPassword}
+              onSubmitEditing={() => void handleLogin()}
+            />
+          </View>
 
-        <Pressable
-          style={[styles.btn, loading && styles.btnDisabled]}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#0f172a" />
-          ) : (
-            <Text style={styles.btnText}>Masuk</Text>
-          )}
-        </Pressable>
-      </View>
+          <Pressable
+            style={[styles.btn, loading && styles.btnDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#0f172a" />
+            ) : (
+              <Text style={styles.btnText}>Masuk</Text>
+            )}
+          </Pressable>
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -125,8 +161,15 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: "#0f172a",
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
     padding: 24,
+    paddingBottom: 40,
   },
   welcome: {
     alignItems: "center",
