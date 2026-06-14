@@ -6,11 +6,11 @@ export const revalidate = 0;
 
 export default function CustomerRidePage() {
   return (
-    <main className="px-4 py-4">
+    <div className="px-4 py-4">
       <CustomerExploreNav active="ngojek" />
       <div className="pt-4">
         <NgojekRideForm embedded />
       </div>
-    </main>
+    </div>
   );
 }
